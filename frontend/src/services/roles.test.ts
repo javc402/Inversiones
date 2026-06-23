@@ -42,24 +42,35 @@ describe('Roles Service', () => {
         error: null,
       });
 
-      const mockSelect = vi.fn().mockReturnThis();
-      const mockEq = vi.fn().mockReturnThis();
-      const mockSingle = vi.fn().mockResolvedValueOnce({
-        data: { roles: mockRole },
+      // Primera query: obtener role_id del perfil
+      const mockSelectProfile = vi.fn().mockReturnThis();
+      const mockEqProfile = vi.fn().mockReturnThis();
+      const mockSingleProfile = vi.fn().mockResolvedValueOnce({
+        data: { role_id: 'role-123' },
         error: null,
       });
 
-      vi.mocked(supabase.from).mockReturnValueOnce({
-        select: mockSelect,
-      } as any);
-
-      mockSelect.mockReturnValueOnce({
-        eq: mockEq,
+      // Segunda query: obtener el rol por id
+      const mockSelectRole = vi.fn().mockReturnThis();
+      const mockEqRole = vi.fn().mockReturnThis();
+      const mockSingleRole = vi.fn().mockResolvedValueOnce({
+        data: mockRole,
+        error: null,
       });
 
-      mockEq.mockReturnValueOnce({
-        single: mockSingle,
-      });
+      vi.mocked(supabase.from)
+        .mockReturnValueOnce({
+          select: mockSelectProfile,
+        } as any)
+        .mockReturnValueOnce({
+          select: mockSelectRole,
+        } as any);
+
+      mockSelectProfile.mockReturnValueOnce({ eq: mockEqProfile });
+      mockEqProfile.mockReturnValueOnce({ single: mockSingleProfile });
+
+      mockSelectRole.mockReturnValueOnce({ eq: mockEqRole });
+      mockEqRole.mockReturnValueOnce({ single: mockSingleRole });
 
       const result = await getCurrentUserRole();
       expect(result).toEqual(mockRole);

@@ -28,28 +28,26 @@ export async function getCurrentUserRole(): Promise<Role | null> {
 
     if (!user) return null;
 
-    const { data, error } = await supabase
+    const { data: profile, error: profileError } = await supabase
       .from('user_profiles')
-      .select(
-        `
-        role_id,
-        roles (
-          id,
-          name,
-          description
-        )
-      `
-      )
+      .select('role_id')
       .eq('user_id', user.id)
       .single();
 
-    if (error || !data) return null;
+    if (profileError || !profile) return null;
 
-    const roleData = data.roles as unknown as Role;
-    return roleData;
+    const { data: role, error: roleError } = await supabase
+      .from('roles')
+      .select('id, name, description')
+      .eq('id', profile.role_id)
+      .single();
+
+    if (roleError || !role) return null;
+
+    return role as Role;
   } catch (error) {
     console.error('Error fetching user role:', error);
-    throw error;
+    return null;
   }
 }
 
