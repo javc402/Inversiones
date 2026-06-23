@@ -7,334 +7,332 @@
     <link rel="stylesheet" href="assets/css/paleta.css">
     <style>
         body {
-            display: flex;
-            flex-direction: column;
+            background-color: var(--color-gray-100);
         }
 
-        header {
-            background: linear-gradient(135deg, #0c3a7f 0%, #1565c0 100%);
-        }
-
-        .main-wrapper {
-            display: flex;
-            flex: 1;
-        }
-
-        .sidebar {
-            width: 250px;
-            background-color: #0c3a7f;
+        .header {
+            background: var(--gradient-primary);
             color: white;
-            padding: 24px;
-            min-height: calc(100vh - 80px);
+            padding: var(--spacing-lg) var(--spacing-2xl);
+            box-shadow: var(--shadow-md);
+            margin-bottom: var(--spacing-2xl);
         }
 
-        .sidebar-item {
-            padding: 12px 16px;
-            margin-bottom: 8px;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 300ms;
-            color: rgba(255, 255, 255, 0.8);
+        .header-title {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-bold);
+            margin: 0;
         }
 
-        .sidebar-item.active {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: white;
-            font-weight: 600;
+        .container {
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 0 var(--spacing-lg) var(--spacing-2xl);
         }
 
-        .content {
-            flex: 1;
-            padding: 32px;
-            overflow-y: auto;
-        }
-
-        .page-header {
-            margin-bottom: 32px;
-        }
-
-        .page-title {
-            color: var(--color-dark);
-            margin-bottom: 8px;
-        }
-
-        .page-subtitle {
-            color: var(--color-gray-600);
-        }
-
-        .form-container {
-            max-width: 800px;
-            background: white;
-            border-radius: 12px;
-            padding: 32px;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        .form-card {
+            background: var(--color-white);
+            border-radius: var(--border-radius-xl);
+            box-shadow: var(--shadow);
+            overflow: hidden;
         }
 
         .form-section {
-            margin-bottom: 32px;
+            padding: var(--spacing-2xl);
+            border-bottom: 1px solid var(--color-gray-200);
         }
 
-        .form-section-title {
-            font-size: 18px;
-            font-weight: 600;
-            margin-bottom: 16px;
-            padding-bottom: 12px;
-            border-bottom: 2px solid var(--color-primary-lighter);
-            color: var(--color-primary);
+        .form-section:last-child {
+            border-bottom: none;
         }
 
-        .form-row {
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .section-number {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            background: var(--gradient-primary);
+            color: white;
+            border-radius: 50%;
+            font-weight: var(--font-weight-bold);
+            font-size: var(--font-size-sm);
+        }
+
+        .section-title {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-dark);
+            margin: 0;
+        }
+
+        .form-group {
+            margin-bottom: var(--spacing-lg);
             display: grid;
             grid-template-columns: 1fr 1fr;
-            gap: 24px;
-            margin-bottom: 20px;
+            gap: var(--spacing-lg);
         }
 
-        .form-row.full {
-            grid-template-columns: 1fr;
+        .form-group.full {
+            grid-column: 1 / -1;
         }
 
-        .alert {
-            background-color: rgba(33, 150, 243, 0.1);
+        .form-label {
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-gray-700);
+            display: block;
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .form-input,
+        .form-select,
+        .form-textarea {
+            width: 100%;
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: var(--font-size-base);
+            border: 1px solid var(--color-gray-300);
+            border-radius: var(--border-radius-lg);
+            font-family: var(--font-family-base);
+            transition: all var(--transition);
+        }
+
+        .form-input:focus,
+        .form-select:focus,
+        .form-textarea:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-lighter);
+        }
+
+        .form-textarea {
+            grid-column: 1 / -1;
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .info-alert {
+            background: var(--color-info-lighter);
             border-left: 4px solid var(--color-info);
+            padding: var(--spacing-lg);
+            border-radius: var(--border-radius-lg);
+            margin-bottom: var(--spacing-2xl);
             color: var(--color-info);
-            padding: 16px;
-            border-radius: 8px;
-            margin-bottom: 24px;
-        }
-
-        .validation-summary {
-            background-color: rgba(76, 175, 80, 0.1);
-            border-left: 4px solid var(--color-success);
-            color: var(--color-success);
-            padding: 16px;
-            border-radius: 8px;
-            margin-top: 24px;
-        }
-
-        .validation-summary.error {
-            background-color: rgba(244, 67, 54, 0.1);
-            border-left-color: var(--color-danger);
-            color: var(--color-danger);
+            font-size: var(--font-size-sm);
+            line-height: var(--line-height-relaxed);
         }
 
         .form-actions {
             display: flex;
-            gap: 12px;
-            margin-top: 32px;
-            padding-top: 24px;
+            gap: var(--spacing-md);
+            justify-content: flex-end;
+            padding: var(--spacing-2xl);
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
             border-top: 1px solid var(--color-gray-200);
         }
 
-        .form-actions .btn {
-            flex: 1;
+        .btn {
+            padding: var(--spacing-md) var(--spacing-2xl);
+            font-size: var(--font-size-base);
+            font-weight: var(--font-weight-semibold);
+            border: none;
+            border-radius: var(--border-radius-lg);
+            cursor: pointer;
+            transition: all var(--transition);
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .btn-primary:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .btn-secondary {
+            background-color: var(--color-gray-200);
+            color: var(--color-dark);
+        }
+
+        .btn-secondary:hover {
+            background-color: var(--color-gray-300);
         }
 
         @media (max-width: 768px) {
-            .sidebar {
-                width: 100%;
-                min-height: auto;
-            }
-
-            .main-wrapper {
-                flex-direction: column;
-            }
-
-            .content {
-                padding: 16px;
-            }
-
-            .form-row {
+            .form-group {
                 grid-template-columns: 1fr;
             }
 
-            .form-container {
-                padding: 16px;
+            .form-section {
+                padding: var(--spacing-lg);
             }
 
             .form-actions {
                 flex-direction: column;
             }
+
+            .btn {
+                width: 100%;
+            }
         }
     </style>
 </head>
 <body>
-    <header>
-        <div class="header-content">
-            <div class="logo">📈 Inversiones</div>
-            <nav>
-                <a href="#" style="color: rgba(255,255,255,0.8);">Mi Perfil</a>
-                <a href="#" style="color: rgba(255,255,255,0.8);">Ayuda</a>
-                <a href="#" style="color: rgba(255,255,255,0.8);">Salir</a>
-            </nav>
+    <div class="header">
+        <h1 class="header-title">Nueva Operación</h1>
+    </div>
+
+    <div class="container">
+        <div class="info-alert">
+            ℹ️ Complete todos los campos del formulario. Los cálculos como Duración y algunos análisis se completarán automáticamente.
         </div>
-    </header>
 
-    <div class="main-wrapper">
-        <aside class="sidebar">
-            <div class="sidebar-item">📊 Dashboard</div>
-            <div class="sidebar-item active">📝 Operaciones</div>
-            <div class="sidebar-item">📈 Análisis</div>
-            <div class="sidebar-item">⚙️ Planes</div>
-        </aside>
-
-        <main class="content">
-            <div class="page-header">
-                <h1 class="page-title">Nueva Operación</h1>
-                <p class="page-subtitle">Registra una nueva operación de trading</p>
-            </div>
-
-            <div class="form-container">
-                <div class="alert">
-                    ℹ️ Todos los campos son obligatorios. Los tiempos deben estar en formato 24 horas.
+        <form class="form-card">
+            <!-- Sección 1: Información Temporal -->
+            <div class="form-section">
+                <div class="section-header">
+                    <div class="section-number">1</div>
+                    <h2 class="section-title">Información Temporal</h2>
                 </div>
-
-                <form>
-                    <!-- SECCIÓN 1: INFORMACIÓN TEMPORAL -->
-                    <div class="form-section">
-                        <div class="form-section-title">📅 Información Temporal</div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Fecha</label>
-                                <input type="date" class="form-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Semana</label>
-                                <select class="form-select" required>
-                                    <option value="">Selecciona...</option>
-                                    <option value="1st">1st</option>
-                                    <option value="2nd">2nd</option>
-                                    <option value="3rd">3rd</option>
-                                    <option value="4th">4th</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Hora Entrada (HH:MM)</label>
-                                <input type="time" class="form-input" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Hora Salida (HH:MM)</label>
-                                <input type="time" class="form-input" required>
-                            </div>
-                        </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">Fecha</label>
+                        <input type="date" class="form-input" value="2026-06-23">
                     </div>
-
-                    <!-- SECCIÓN 2: INFORMACIÓN DE LA OPERACIÓN -->
-                    <div class="form-section">
-                        <div class="form-section-title">💱 Información de la Operación</div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Par de Divisa</label>
-                                <input type="text" class="form-input" placeholder="ej: EURUSD" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Tipo</label>
-                                <select class="form-select" required>
-                                    <option value="">Selecciona...</option>
-                                    <option value="vela">Vela Envolvente</option>
-                                    <option value="pre">PRE</option>
-                                    <option value="post">POST</option>
-                                    <option value="sistema">Modelo Sistem</option>
-                                </select>
-                            </div>
-                        </div>
-
-                        <div class="form-row full">
-                            <div class="form-group">
-                                <label class="form-label">Noticia / Evento</label>
-                                <input type="text" class="form-input" placeholder="ej: NFP, FOMC...">
-                                <span class="form-hint">Evento económico si aplica</span>
-                            </div>
-                        </div>
+                    <div>
+                        <label class="form-label">Semana del Mes</label>
+                        <select class="form-select">
+                            <option>Seleccionar...</option>
+                            <option>1ra Semana</option>
+                            <option>2da Semana</option>
+                            <option>3ra Semana</option>
+                            <option>4ta Semana</option>
+                        </select>
                     </div>
-
-                    <!-- SECCIÓN 3: ANÁLISIS TÉCNICO -->
-                    <div class="form-section">
-                        <div class="form-section-title">📊 Análisis Técnico</div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Protocolo/Patrón</label>
-                                <input type="text" class="form-input" placeholder="ej: Engulfing, Doji...">
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Modelo de Trading</label>
-                                <input type="text" class="form-input" placeholder="ej: M5, H1...">
-                            </div>
-                        </div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">RR Ratio (1:X)</label>
-                                <input type="number" class="form-input" placeholder="ej: 2" step="0.1" required>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Drawdown (%)</label>
-                                <input type="number" class="form-input" placeholder="ej: 0.5" step="0.01">
-                            </div>
-                        </div>
+                </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">Hora de Entrada</label>
+                        <input type="time" class="form-input">
                     </div>
-
-                    <!-- SECCIÓN 4: RESULTADO -->
-                    <div class="form-section">
-                        <div class="form-section-title">✅ Resultado</div>
-
-                        <div class="form-row">
-                            <div class="form-group">
-                                <label class="form-label">Estado</label>
-                                <select class="form-select" required>
-                                    <option value="">Selecciona...</option>
-                                    <option value="ganancia">✅ Ganancia</option>
-                                    <option value="perdida">❌ Pérdida</option>
-                                    <option value="breakeven">➡️ Break Even</option>
-                                </select>
-                            </div>
-                            <div class="form-group">
-                                <label class="form-label">Monto ($)</label>
-                                <input type="number" class="form-input" placeholder="ej: 250.50" step="0.01" required>
-                            </div>
-                        </div>
-
-                        <div class="form-row full">
-                            <div class="form-group">
-                                <label class="form-label">Notas / Observaciones</label>
-                                <textarea class="form-textarea" placeholder="Detalles adicionales, razón del resultado, lecciones aprendidas..."></textarea>
-                            </div>
-                        </div>
+                    <div>
+                        <label class="form-label">Hora de Salida</label>
+                        <input type="time" class="form-input">
                     </div>
-
-                    <!-- SECCIÓN 5: REFERENCIAS -->
-                    <div class="form-section">
-                        <div class="form-section-title">🔗 Referencias</div>
-
-                        <div class="form-row full">
-                            <div class="form-group">
-                                <label class="form-label">Link Chart M5 (Ejecución)</label>
-                                <input type="url" class="form-input" placeholder="https://...">
-                                <span class="form-hint">Link a screenshot o chart del análisis</span>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- RESUMEN Y VALIDACIÓN -->
-                    <div class="validation-summary">
-                        ✓ Todos los campos requeridos están completos
-                    </div>
-
-                    <!-- ACCIONES -->
-                    <div class="form-actions">
-                        <button type="button" class="btn btn-secondary">Cancelar</button>
-                        <button type="reset" class="btn btn-secondary">Limpiar</button>
-                        <button type="submit" class="btn btn-primary">Guardar Operación</button>
-                    </div>
-                </form>
+                </div>
             </div>
-        </main>
+
+            <!-- Sección 2: Información de la Operación -->
+            <div class="form-section">
+                <div class="section-header">
+                    <div class="section-number">2</div>
+                    <h2 class="section-title">Información de la Operación</h2>
+                </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">Par de Divisa</label>
+                        <input type="text" class="form-input" placeholder="ej: EURUSD">
+                    </div>
+                    <div>
+                        <label class="form-label">Tipo</label>
+                        <select class="form-select">
+                            <option>Seleccionar...</option>
+                            <option>Vela Envolvente</option>
+                            <option>PRE-POST</option>
+                            <option>Modelo</option>
+                            <option>Otro</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Noticia / Evento (Opcional)</label>
+                    <input type="text" class="form-input" placeholder="ej: Reporte de empleos">
+                </div>
+            </div>
+
+            <!-- Sección 3: Análisis Técnico -->
+            <div class="form-section">
+                <div class="section-header">
+                    <div class="section-number">3</div>
+                    <h2 class="section-title">Análisis Técnico</h2>
+                </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">Protocolo / Patrón</label>
+                        <input type="text" class="form-input" placeholder="ej: Protocolo Vela Envolvente">
+                    </div>
+                    <div>
+                        <label class="form-label">Modelo</label>
+                        <input type="text" class="form-input" placeholder="ej: Modelo A">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">RR Ratio (1:X)</label>
+                        <input type="number" class="form-input" placeholder="ej: 2.5">
+                    </div>
+                    <div>
+                        <label class="form-label">Drawdown (%)</label>
+                        <input type="number" class="form-input" placeholder="ej: 5.2">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sección 4: Resultado -->
+            <div class="form-section">
+                <div class="section-header">
+                    <div class="section-number">4</div>
+                    <h2 class="section-title">Resultado de la Operación</h2>
+                </div>
+                <div class="form-group">
+                    <div>
+                        <label class="form-label">Estado</label>
+                        <select class="form-select">
+                            <option>Seleccionar...</option>
+                            <option>✅ Ganancia</option>
+                            <option>❌ Pérdida</option>
+                            <option>➡️ Break Even</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="form-label">Monto USD</label>
+                        <input type="number" class="form-input" placeholder="ej: 250.00">
+                    </div>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Notas (Opcional)</label>
+                    <textarea class="form-textarea" placeholder="Anota lo que consideres importante..."></textarea>
+                </div>
+            </div>
+
+            <!-- Sección 5: Referencias -->
+            <div class="form-section">
+                <div class="section-header">
+                    <div class="section-number">5</div>
+                    <h2 class="section-title">Referencias</h2>
+                </div>
+                <div class="form-group full">
+                    <label class="form-label">Link Chart M5</label>
+                    <input type="url" class="form-input" placeholder="https://...">
+                </div>
+            </div>
+
+            <!-- Acciones -->
+            <div class="form-actions">
+                <button type="reset" class="btn btn-secondary">Limpiar</button>
+                <button type="submit" class="btn btn-primary">Guardar Operación</button>
+            </div>
+        </form>
     </div>
 </body>
 </html>

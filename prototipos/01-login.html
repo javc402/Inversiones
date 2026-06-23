@@ -3,141 +3,239 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Login - Inversiones | Sistema de Trading</title>
+    <title>Inversiones - Login</title>
     <link rel="stylesheet" href="assets/css/paleta.css">
     <style>
-        .login-page {
+        body {
+            margin: 0;
+            padding: 0;
+            height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            min-height: 100vh;
-            background: linear-gradient(135deg, #0c3a7f 0%, #1565c0 50%, #2196f3 100%);
+            background: var(--gradient-primary);
+            font-family: var(--font-family-base);
         }
 
         .login-container {
-            background-color: white;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-            padding: 48px;
-            max-width: 400px;
-            width: 90%;
+            width: 100%;
+            max-width: 420px;
+            padding: var(--spacing-lg);
         }
 
-        .login-header {
+        .login-card {
+            background: var(--color-white);
+            border-radius: var(--border-radius-xl);
+            box-shadow: var(--shadow-2xl);
+            padding: var(--spacing-3xl) var(--spacing-2xl);
             text-align: center;
-            margin-bottom: 32px;
         }
 
         .login-logo {
-            font-size: 40px;
-            font-weight: bold;
+            font-size: var(--font-size-4xl);
+            font-weight: var(--font-weight-bold);
             color: var(--color-primary);
-            margin-bottom: 16px;
-        }
-
-        .login-title {
-            font-size: 24px;
-            font-weight: bold;
-            color: var(--color-dark);
-            margin-bottom: 8px;
+            margin-bottom: var(--spacing-sm);
+            letter-spacing: -1px;
         }
 
         .login-subtitle {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray-500);
+            margin-bottom: var(--spacing-2xl);
+            font-weight: var(--font-weight-normal);
+        }
+
+        .login-welcome {
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-dark);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .login-description {
+            font-size: var(--font-size-sm);
             color: var(--color-gray-600);
-            font-size: 14px;
+            margin-bottom: var(--spacing-2xl);
+            line-height: var(--line-height-relaxed);
         }
 
-        .login-form {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+        .form-group {
+            margin-bottom: var(--spacing-lg);
+            text-align: left;
         }
 
-        .login-form .btn {
+        .form-label {
+            display: block;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-gray-700);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .form-input {
             width: 100%;
-            padding: 12px;
-            font-size: 16px;
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: var(--font-size-base);
+            border: 1px solid var(--color-gray-300);
+            border-radius: var(--border-radius-lg);
+            background-color: var(--color-white);
+            color: var(--color-dark);
+            transition: all var(--transition);
+            font-family: var(--font-family-base);
         }
 
-        .login-footer {
-            text-align: center;
-            margin-top: 24px;
-            font-size: 14px;
-            color: var(--color-gray-600);
+        .form-input:focus {
+            outline: none;
+            border-color: var(--color-primary);
+            box-shadow: 0 0 0 3px var(--color-primary-lighter);
         }
 
-        .login-footer a {
-            color: var(--color-primary);
-            text-decoration: none;
-        }
-
-        .login-footer a:hover {
-            text-decoration: underline;
+        .form-input::placeholder {
+            color: var(--color-gray-400);
         }
 
         .checkbox-group {
             display: flex;
             align-items: center;
-            gap: 8px;
+            margin-bottom: var(--spacing-lg);
+            gap: var(--spacing-md);
         }
 
-        .checkbox-group label {
+        .checkbox {
+            width: 18px;
+            height: 18px;
             cursor: pointer;
-            font-size: 14px;
+            accent-color: var(--color-primary);
+        }
+
+        .checkbox-label {
+            font-size: var(--font-size-sm);
             color: var(--color-gray-700);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .forgotten-link {
+            text-align: right;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .forgotten-link a {
+            font-size: var(--font-size-sm);
+            color: var(--color-primary);
+            text-decoration: none;
+            font-weight: var(--font-weight-semibold);
+            transition: color var(--transition);
+        }
+
+        .forgotten-link a:hover {
+            color: var(--color-primary-light);
+        }
+
+        .login-button {
+            width: 100%;
+            padding: var(--spacing-md) var(--spacing-lg);
+            font-size: var(--font-size-base);
+            font-weight: var(--font-weight-semibold);
+            background: var(--gradient-primary);
+            color: white;
+            border: none;
+            border-radius: var(--border-radius-lg);
+            cursor: pointer;
+            box-shadow: var(--shadow-md);
+            transition: all var(--transition);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .login-button:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        .signup-section {
+            border-top: 1px solid var(--color-gray-200);
+            padding-top: var(--spacing-lg);
+            font-size: var(--font-size-sm);
+            color: var(--color-gray-600);
+        }
+
+        .signup-link {
+            color: var(--color-primary);
+            text-decoration: none;
+            font-weight: var(--font-weight-semibold);
+            transition: color var(--transition);
+        }
+
+        .signup-link:hover {
+            color: var(--color-primary-light);
         }
 
         @media (max-width: 640px) {
-            .login-container {
-                padding: 32px 20px;
+            .login-card {
+                padding: var(--spacing-2xl) var(--spacing-lg);
             }
 
             .login-logo {
-                font-size: 32px;
+                font-size: var(--font-size-3xl);
             }
 
-            .login-title {
-                font-size: 20px;
+            .login-welcome {
+                font-size: var(--font-size-lg);
             }
         }
     </style>
 </head>
 <body>
-    <div class="login-page">
-        <div class="login-container">
-            <div class="login-header">
-                <div class="login-logo">📈</div>
-                <div class="login-title">Inversiones</div>
-                <div class="login-subtitle">Sistema de Gestión de Trading</div>
-            </div>
+    <div class="login-container">
+        <div class="login-card">
+            <div class="login-logo">inversiones</div>
+            <div class="login-subtitle">Trading Management System</div>
 
-            <form class="login-form">
+            <h1 class="login-welcome">¡Bienvenido!</h1>
+            <p class="login-description">
+                Ingresa a tu cuenta para gestionar tus operaciones de trading y analizar tu desempeño.
+            </p>
+
+            <form>
                 <div class="form-group">
                     <label class="form-label">Correo Electrónico</label>
-                    <input type="email" class="form-input" placeholder="tu@email.com" required>
+                    <input 
+                        type="email" 
+                        class="form-input" 
+                        placeholder="tu@email.com"
+                        required
+                    >
                 </div>
 
                 <div class="form-group">
                     <label class="form-label">Contraseña</label>
-                    <input type="password" class="form-input" placeholder="••••••••" required>
+                    <input 
+                        type="password" 
+                        class="form-input" 
+                        placeholder="••••••••"
+                        required
+                    >
                 </div>
 
                 <div class="checkbox-group">
-                    <input type="checkbox" id="remember" name="remember">
-                    <label for="remember">Recuérdame</label>
+                    <input type="checkbox" id="remember" class="checkbox">
+                    <label for="remember" class="checkbox-label">Recuérdame en este dispositivo</label>
                 </div>
 
-                <button type="submit" class="btn btn-primary btn-lg">
-                    Iniciar Sesión
-                </button>
+                <div class="forgotten-link">
+                    <a href="#forgot">¿Olvidaste tu contraseña?</a>
+                </div>
 
-                <button type="button" class="btn btn-secondary btn-lg">
-                    Crear Cuenta
-                </button>
+                <button type="submit" class="login-button">Iniciar Sesión</button>
             </form>
 
-            <div class="login-footer">
-                <a href="#">¿Olvidaste tu contraseña?</a>
+            <div class="signup-section">
+                ¿No tienes cuenta? <a href="#signup" class="signup-link">Regístrate aquí</a>
             </div>
         </div>
     </div>
