@@ -98,7 +98,7 @@ export async function listAllUsers(): Promise<UserProfile[]> {
 
     if (error) throw error;
 
-    return (data || []) as UserProfile[];
+    return (data || []) as unknown as UserProfile[];
   } catch (error) {
     console.error('Error listing users:', error);
     throw error;
