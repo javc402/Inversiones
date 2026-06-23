@@ -4,6 +4,7 @@ const authMocks = vi.hoisted(() => ({
   signInWithPassword: vi.fn(),
   signUp: vi.fn(),
   signOutMock: vi.fn(),
+  from: vi.fn(),
 }))
 
 vi.mock('@lib/supabase', () => ({
@@ -13,10 +14,11 @@ vi.mock('@lib/supabase', () => ({
       signUp: authMocks.signUp,
       signOut: authMocks.signOutMock,
     },
+    from: authMocks.from,
   },
 }))
 
-import { signInWithEmail, signOut, signUpWithEmail } from './auth'
+import { signInWithEmail, signOut, signUpWithEmail, createUserProfile } from './auth'
 
 describe('auth service', () => {
   beforeEach(() => {
@@ -41,8 +43,33 @@ describe('auth service', () => {
   })
 
   it('signUpWithEmail retorna data cuando no hay error', async () => {
-    const data = { session: null, user: { id: '1' } }
+    const data = { session: null, user: { id: 'user-123' } }
     authMocks.signUp.mockResolvedValueOnce({ data, error: null })
+
+    // Mock para createUserProfile
+    const mockSelect = vi.fn().mockReturnThis()
+    const mockEq = vi.fn().mockReturnThis()
+    const mockSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'role-1' },
+      error: null,
+    })
+    const mockInsert = vi.fn().mockResolvedValueOnce({ error: null })
+
+    authMocks.from
+      .mockReturnValueOnce({
+        select: mockSelect,
+      })
+      .mockReturnValueOnce({
+        insert: mockInsert,
+      })
+
+    mockSelect.mockReturnValueOnce({
+      eq: mockEq,
+    })
+
+    mockEq.mockReturnValueOnce({
+      single: mockSingle,
+    })
 
     const result = await signUpWithEmail('nuevo@correo.com', '123456')
 
@@ -55,6 +82,40 @@ describe('auth service', () => {
     authMocks.signUp.mockResolvedValueOnce({ data: null, error })
 
     await expect(signUpWithEmail('nuevo@correo.com', '123456')).rejects.toThrow('no se pudo crear la cuenta')
+  })
+
+  it('createUserProfile crea perfil con rol user y estado pending', async () => {
+    const mockSelect = vi.fn().mockReturnThis()
+    const mockEq = vi.fn().mockReturnThis()
+    const mockSingle = vi.fn().mockResolvedValueOnce({
+      data: { id: 'role-1' },
+      error: null,
+    })
+    const mockInsert = vi.fn().mockResolvedValueOnce({ error: null })
+
+    authMocks.from
+      .mockReturnValueOnce({
+        select: mockSelect,
+      })
+      .mockReturnValueOnce({
+        insert: mockInsert,
+      })
+
+    mockSelect.mockReturnValueOnce({
+      eq: mockEq,
+    })
+
+    mockEq.mockReturnValueOnce({
+      single: mockSingle,
+    })
+
+    await createUserProfile('user-123', 'user')
+
+    expect(mockInsert).toHaveBeenCalledWith({
+      user_id: 'user-123',
+      role_id: 'role-1',
+      status: 'pending',
+    })
   })
 
   it('signOut completa correctamente', async () => {
