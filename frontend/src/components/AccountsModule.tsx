@@ -69,6 +69,10 @@ function toNumberOrUndefined(value: string): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+function toStringOrEmpty(value: number | null): string {
+  return value === null ? '' : String(value);
+}
+
 function mapAccountToForm(account: TradingAccount): AccountFormState {
   return {
     name: account.name,
@@ -79,17 +83,17 @@ function mapAccountToForm(account: TradingAccount): AccountFormState {
     base_currency: account.base_currency,
     leverage: account.leverage ?? '',
     initial_balance: String(account.initial_balance),
-    initial_equity: account.initial_equity !== null ? String(account.initial_equity) : '',
+    initial_equity: toStringOrEmpty(account.initial_equity),
     opened_at: account.opened_at.slice(0, 10),
     status: account.status,
-    risk_per_trade_pct: account.risk_per_trade_pct !== null ? String(account.risk_per_trade_pct) : '',
-    max_daily_risk_pct: account.max_daily_risk_pct !== null ? String(account.max_daily_risk_pct) : '',
-    max_drawdown_pct: account.max_drawdown_pct !== null ? String(account.max_drawdown_pct) : '',
+    risk_per_trade_pct: toStringOrEmpty(account.risk_per_trade_pct),
+    max_daily_risk_pct: toStringOrEmpty(account.max_daily_risk_pct),
+    max_drawdown_pct: toStringOrEmpty(account.max_drawdown_pct),
     funding_firm: account.funding_firm ?? '',
     challenge_phase: account.challenge_phase ?? 'phase_1',
-    profit_target_pct: account.profit_target_pct !== null ? String(account.profit_target_pct) : '',
-    daily_loss_limit_pct: account.daily_loss_limit_pct !== null ? String(account.daily_loss_limit_pct) : '',
-    max_loss_limit_pct: account.max_loss_limit_pct !== null ? String(account.max_loss_limit_pct) : '',
+    profit_target_pct: toStringOrEmpty(account.profit_target_pct),
+    daily_loss_limit_pct: toStringOrEmpty(account.daily_loss_limit_pct),
+    max_loss_limit_pct: toStringOrEmpty(account.max_loss_limit_pct),
     payout_cycle: account.payout_cycle ?? 'monthly',
     notes: account.notes ?? '',
   };
@@ -169,6 +173,56 @@ export default function AccountsModule() {
       return matchesQuery && matchesType && matchesStatus;
     });
   }, [accounts, query, typeFilter, statusFilter]);
+
+  const accountsContent = useMemo(() => {
+    if (loading) {
+      return <p className="accounts-loading">Cargando cuentas...</p>;
+    }
+
+    if (filteredAccounts.length === 0) {
+      return <p className="accounts-empty">Aun no tienes cuentas registradas.</p>;
+    }
+
+    return (
+      <div className="accounts-grid">
+        {filteredAccounts.map((account) => (
+          <article key={account.id} className="account-card">
+            <h3>{account.name}</h3>
+            <p>
+              <strong>Alias:</strong> {account.alias || '-'}
+            </p>
+            <p>
+              <strong>Broker/Firma:</strong> {account.broker_name}
+            </p>
+            <p>
+              <strong>Tipo:</strong> {account.account_type.toUpperCase()}
+            </p>
+            <p>
+              <strong>Plataforma:</strong> {account.platform.toUpperCase()}
+            </p>
+            <p>
+              <strong>Estado:</strong> {account.status === 'active' ? 'ACTIVA' : 'INACTIVA'}
+            </p>
+            <p>
+              <strong>Balance:</strong> {account.initial_balance.toLocaleString()} {account.base_currency}
+            </p>
+            <p>
+              <strong>Riesgo/Trade:</strong> {account.risk_per_trade_pct ?? '-'}%
+            </p>
+
+            <div className="account-card-actions">
+              <button type="button" className="secondary-btn" onClick={() => openEditModal(account)}>
+                Editar
+              </button>
+              <button type="button" className="secondary-btn" onClick={() => void handleToggleStatus(account)}>
+                {account.status === 'active' ? 'Inactivar' : 'Activar'}
+              </button>
+            </div>
+          </article>
+        ))}
+      </div>
+    );
+  }, [filteredAccounts, loading]);
 
   function openCreateModal() {
     setModalMode('create');
@@ -269,48 +323,16 @@ export default function AccountsModule() {
 
       {error && <p className="accounts-error">{error}</p>}
 
-      {loading ? (
-        <p className="accounts-loading">Cargando cuentas...</p>
-      ) : filteredAccounts.length === 0 ? (
-        <p className="accounts-empty">Aun no tienes cuentas registradas.</p>
-      ) : (
-        <div className="accounts-grid">
-          {filteredAccounts.map((account) => (
-            <article key={account.id} className="account-card">
-              <h3>{account.name}</h3>
-              <p><strong>Alias:</strong> {account.alias || '-'}</p>
-              <p><strong>Broker/Firma:</strong> {account.broker_name}</p>
-              <p><strong>Tipo:</strong> {account.account_type.toUpperCase()}</p>
-              <p><strong>Plataforma:</strong> {account.platform.toUpperCase()}</p>
-              <p><strong>Estado:</strong> {account.status === 'active' ? 'ACTIVA' : 'INACTIVA'}</p>
-              <p><strong>Balance:</strong> {account.initial_balance.toLocaleString()} {account.base_currency}</p>
-              <p><strong>Riesgo/Trade:</strong> {account.risk_per_trade_pct ?? '-'}%</p>
-
-              <div className="account-card-actions">
-                <button type="button" className="secondary-btn" onClick={() => openEditModal(account)}>
-                  Editar
-                </button>
-                <button
-                  type="button"
-                  className="secondary-btn"
-                  onClick={() => void handleToggleStatus(account)}
-                >
-                  {account.status === 'active' ? 'Inactivar' : 'Activar'}
-                </button>
-              </div>
-            </article>
-          ))}
-        </div>
-      )}
+      {accountsContent}
 
       {modalOpen && (
-        <div className="accounts-modal-overlay" role="dialog" aria-modal="true" aria-label="Formulario cuenta">
+        <dialog className="accounts-modal-overlay" open aria-label="Formulario cuenta">
           <div className="accounts-modal">
             <h2>{modalMode === 'create' ? 'Crear cuenta' : 'Editar cuenta'}</h2>
 
             <form className="accounts-form" onSubmit={handleSaveAccount}>
               <label>
-                Nombre de la cuenta *
+                <span>Nombre de la cuenta *</span>
                 <input
                   value={form.name}
                   onChange={(event) => handleFormChange('name', event.target.value)}
@@ -319,7 +341,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Alias
+                <span>Alias</span>
                 <input
                   value={form.alias}
                   onChange={(event) => handleFormChange('alias', event.target.value)}
@@ -327,7 +349,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Broker/Firma *
+                <span>Broker/Firma *</span>
                 <input
                   value={form.broker_name}
                   onChange={(event) => handleFormChange('broker_name', event.target.value)}
@@ -336,7 +358,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Tipo de cuenta *
+                <span>Tipo de cuenta *</span>
                 <select
                   value={form.account_type}
                   onChange={(event) => handleFormChange('account_type', event.target.value as TradingAccountType)}
@@ -348,7 +370,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Plataforma *
+                <span>Plataforma *</span>
                 <select
                   value={form.platform}
                   onChange={(event) =>
@@ -363,7 +385,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Moneda base *
+                <span>Moneda base *</span>
                 <input
                   value={form.base_currency}
                   onChange={(event) => handleFormChange('base_currency', event.target.value)}
@@ -372,7 +394,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Apalancamiento
+                <span>Apalancamiento</span>
                 <input
                   value={form.leverage}
                   onChange={(event) => handleFormChange('leverage', event.target.value)}
@@ -380,7 +402,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Balance inicial *
+                <span>Balance inicial *</span>
                 <input
                   type="number"
                   min="0"
@@ -392,7 +414,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Equity inicial
+                <span>Equity inicial</span>
                 <input
                   type="number"
                   min="0"
@@ -403,7 +425,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Fecha apertura *
+                <span>Fecha apertura *</span>
                 <input
                   type="date"
                   value={form.opened_at}
@@ -413,7 +435,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Estado *
+                <span>Estado *</span>
                 <select
                   value={form.status}
                   onChange={(event) => handleFormChange('status', event.target.value as TradingAccountStatus)}
@@ -424,7 +446,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Riesgo max por operación %
+                <span>Riesgo max por operación %</span>
                 <input
                   type="number"
                   min="0"
@@ -435,7 +457,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Riesgo diario max %
+                <span>Riesgo diario max %</span>
                 <input
                   type="number"
                   min="0"
@@ -446,7 +468,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                Drawdown max permitido %
+                <span>Drawdown max permitido %</span>
                 <input
                   type="number"
                   min="0"
@@ -459,7 +481,7 @@ export default function AccountsModule() {
               {form.account_type === 'funded' && (
                 <>
                   <label>
-                    Firma de fondeo
+                    <span>Firma de fondeo</span>
                     <input
                       value={form.funding_firm}
                       onChange={(event) => handleFormChange('funding_firm', event.target.value)}
@@ -467,7 +489,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    Fase desafío
+                    <span>Fase desafío</span>
                     <select
                       value={form.challenge_phase}
                       onChange={(event) => handleFormChange('challenge_phase', event.target.value)}
@@ -479,7 +501,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    Target beneficio %
+                    <span>Target beneficio %</span>
                     <input
                       type="number"
                       min="0"
@@ -490,7 +512,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    Límite pérdida diaria %
+                    <span>Límite pérdida diaria %</span>
                     <input
                       type="number"
                       min="0"
@@ -501,7 +523,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    Límite pérdida total %
+                    <span>Límite pérdida total %</span>
                     <input
                       type="number"
                       min="0"
@@ -512,7 +534,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    Ciclo de pago
+                    <span>Ciclo de pago</span>
                     <select
                       value={form.payout_cycle}
                       onChange={(event) => handleFormChange('payout_cycle', event.target.value)}
@@ -526,7 +548,7 @@ export default function AccountsModule() {
               )}
 
               <label className="accounts-notes-field">
-                Observaciones
+                <span>Observaciones</span>
                 <textarea
                   value={form.notes}
                   onChange={(event) => handleFormChange('notes', event.target.value)}
@@ -544,7 +566,7 @@ export default function AccountsModule() {
               </div>
             </form>
           </div>
-        </div>
+        </dialog>
       )}
     </section>
   );

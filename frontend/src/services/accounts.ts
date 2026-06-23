@@ -76,14 +76,16 @@ async function logAccountActivity(
 
     if (!user) return;
 
+    const logMetadata: Record<string, unknown> = { targetAccountId };
+    if (metadata) {
+      Object.assign(logMetadata, metadata);
+    }
+
     await supabase.from('activity_logs').insert({
       user_id: user.id,
       action,
       target_user_id: user.id,
-      metadata: {
-        targetAccountId,
-        ...(metadata ?? {}),
-      },
+      metadata: logMetadata,
     });
   } catch (error) {
     console.error('Error writing account activity log:', error);
