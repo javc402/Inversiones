@@ -14,6 +14,8 @@ export default function LoginPage() {
   const [success, setSuccess] = useState('');
 
   const isSignIn = mode === 'signin';
+  const isSignUp = mode === 'signup';
+  const submitLabel = loading ? 'Procesando...' : isSignIn ? 'Entrar' : 'Crear cuenta';
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -70,7 +72,7 @@ export default function LoginPage() {
           </button>
           <button
             type="button"
-            className={`auth-mode-btn ${!isSignIn ? 'active' : ''}`}
+            className={`auth-mode-btn ${isSignUp ? 'active' : ''}`}
             onClick={() => setMode('signup')}
           >
             Crear cuenta
@@ -101,7 +103,7 @@ export default function LoginPage() {
           />
 
           <button type="submit" className="primary-btn" disabled={loading}>
-            {loading ? 'Procesando...' : isSignIn ? 'Entrar' : 'Crear cuenta'}
+            {submitLabel}
           </button>
         </form>
 

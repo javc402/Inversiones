@@ -5,6 +5,7 @@ export interface UserProfile {
   user_id: string;
   role_id: string;
   status: 'pending' | 'active' | 'inactive';
+  roles?: Pick<Role, 'name'>;
   email?: string;
   created_at: string;
   updated_at: string;

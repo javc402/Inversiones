@@ -127,9 +127,9 @@ describe('AdminPanel Component', () => {
   });
 
   it('should refresh users on button click', async () => {
-    vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce([]);
+    vi.mocked(rolesService.listAllUsers).mockResolvedValue([]);
 
-    const { rerender } = render(<AdminPanel />);
+    render(<AdminPanel />);
 
     await waitFor(() => {
       expect(screen.getByText('Actualizar')).toBeInTheDocument();

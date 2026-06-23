@@ -52,7 +52,7 @@ export default function AdminPanel() {
       setUsers(
         users.map((u) =>
           u.user_id === userId
-            ? { ...u, roles: { name: 'admin' } as any }
+            ? { ...u, roles: { name: 'admin' } }
             : u
         )
       );
@@ -68,7 +68,7 @@ export default function AdminPanel() {
       setUsers(
         users.map((u) =>
           u.user_id === userId
-            ? { ...u, roles: { name: 'user' } as any }
+            ? { ...u, roles: { name: 'user' } }
             : u
         )
       );

@@ -41,7 +41,7 @@ const recentTrades = [
   { date: '22/06/2026', pair: 'EURGBP', type: 'SELL', result: '+$140', status: 'Exito' },
 ];
 
-export default function DashboardPage({ userEmail, onSignOut }: DashboardPageProps) {
+export default function DashboardPage({ userEmail, onSignOut }: Readonly<DashboardPageProps>) {
   return (
     <main className="dashboard-layout">
       <header className="dashboard-header">

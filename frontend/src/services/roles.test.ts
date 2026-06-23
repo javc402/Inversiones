@@ -2,11 +2,8 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { supabase } from '@lib/supabase';
 import {
   getCurrentUserRole,
-  getCurrentUserProfile,
-  listAllUsers,
   updateUserStatus,
   assignAdminRole,
-  removeAdminRole,
   approveUserRegistration,
   rejectUserRegistration,
 } from '@services/roles';
