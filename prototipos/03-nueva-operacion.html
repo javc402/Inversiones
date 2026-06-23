@@ -1,0 +1,340 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Nueva Operación - Inversiones</title>
+    <link rel="stylesheet" href="assets/css/paleta.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0c3a7f 0%, #1565c0 100%);
+        }
+
+        .main-wrapper {
+            display: flex;
+            flex: 1;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #0c3a7f;
+            color: white;
+            padding: 24px;
+            min-height: calc(100vh - 80px);
+        }
+
+        .sidebar-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 300ms;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .sidebar-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-weight: 600;
+        }
+
+        .content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .page-header {
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            color: var(--color-dark);
+            margin-bottom: 8px;
+        }
+
+        .page-subtitle {
+            color: var(--color-gray-600);
+        }
+
+        .form-container {
+            max-width: 800px;
+            background: white;
+            border-radius: 12px;
+            padding: 32px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .form-section {
+            margin-bottom: 32px;
+        }
+
+        .form-section-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid var(--color-primary-lighter);
+            color: var(--color-primary);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 20px;
+        }
+
+        .form-row.full {
+            grid-template-columns: 1fr;
+        }
+
+        .alert {
+            background-color: rgba(33, 150, 243, 0.1);
+            border-left: 4px solid var(--color-info);
+            color: var(--color-info);
+            padding: 16px;
+            border-radius: 8px;
+            margin-bottom: 24px;
+        }
+
+        .validation-summary {
+            background-color: rgba(76, 175, 80, 0.1);
+            border-left: 4px solid var(--color-success);
+            color: var(--color-success);
+            padding: 16px;
+            border-radius: 8px;
+            margin-top: 24px;
+        }
+
+        .validation-summary.error {
+            background-color: rgba(244, 67, 54, 0.1);
+            border-left-color: var(--color-danger);
+            color: var(--color-danger);
+        }
+
+        .form-actions {
+            display: flex;
+            gap: 12px;
+            margin-top: 32px;
+            padding-top: 24px;
+            border-top: 1px solid var(--color-gray-200);
+        }
+
+        .form-actions .btn {
+            flex: 1;
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+            }
+
+            .main-wrapper {
+                flex-direction: column;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+
+            .form-container {
+                padding: 16px;
+            }
+
+            .form-actions {
+                flex-direction: column;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">📈 Inversiones</div>
+            <nav>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Mi Perfil</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Ayuda</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Salir</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="main-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-item">📊 Dashboard</div>
+            <div class="sidebar-item active">📝 Operaciones</div>
+            <div class="sidebar-item">📈 Análisis</div>
+            <div class="sidebar-item">⚙️ Planes</div>
+        </aside>
+
+        <main class="content">
+            <div class="page-header">
+                <h1 class="page-title">Nueva Operación</h1>
+                <p class="page-subtitle">Registra una nueva operación de trading</p>
+            </div>
+
+            <div class="form-container">
+                <div class="alert">
+                    ℹ️ Todos los campos son obligatorios. Los tiempos deben estar en formato 24 horas.
+                </div>
+
+                <form>
+                    <!-- SECCIÓN 1: INFORMACIÓN TEMPORAL -->
+                    <div class="form-section">
+                        <div class="form-section-title">📅 Información Temporal</div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Fecha</label>
+                                <input type="date" class="form-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Semana</label>
+                                <select class="form-select" required>
+                                    <option value="">Selecciona...</option>
+                                    <option value="1st">1st</option>
+                                    <option value="2nd">2nd</option>
+                                    <option value="3rd">3rd</option>
+                                    <option value="4th">4th</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Hora Entrada (HH:MM)</label>
+                                <input type="time" class="form-input" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Hora Salida (HH:MM)</label>
+                                <input type="time" class="form-input" required>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 2: INFORMACIÓN DE LA OPERACIÓN -->
+                    <div class="form-section">
+                        <div class="form-section-title">💱 Información de la Operación</div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Par de Divisa</label>
+                                <input type="text" class="form-input" placeholder="ej: EURUSD" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Tipo</label>
+                                <select class="form-select" required>
+                                    <option value="">Selecciona...</option>
+                                    <option value="vela">Vela Envolvente</option>
+                                    <option value="pre">PRE</option>
+                                    <option value="post">POST</option>
+                                    <option value="sistema">Modelo Sistem</option>
+                                </select>
+                            </div>
+                        </div>
+
+                        <div class="form-row full">
+                            <div class="form-group">
+                                <label class="form-label">Noticia / Evento</label>
+                                <input type="text" class="form-input" placeholder="ej: NFP, FOMC...">
+                                <span class="form-hint">Evento económico si aplica</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 3: ANÁLISIS TÉCNICO -->
+                    <div class="form-section">
+                        <div class="form-section-title">📊 Análisis Técnico</div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Protocolo/Patrón</label>
+                                <input type="text" class="form-input" placeholder="ej: Engulfing, Doji...">
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Modelo de Trading</label>
+                                <input type="text" class="form-input" placeholder="ej: M5, H1...">
+                            </div>
+                        </div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">RR Ratio (1:X)</label>
+                                <input type="number" class="form-input" placeholder="ej: 2" step="0.1" required>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Drawdown (%)</label>
+                                <input type="number" class="form-input" placeholder="ej: 0.5" step="0.01">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 4: RESULTADO -->
+                    <div class="form-section">
+                        <div class="form-section-title">✅ Resultado</div>
+
+                        <div class="form-row">
+                            <div class="form-group">
+                                <label class="form-label">Estado</label>
+                                <select class="form-select" required>
+                                    <option value="">Selecciona...</option>
+                                    <option value="ganancia">✅ Ganancia</option>
+                                    <option value="perdida">❌ Pérdida</option>
+                                    <option value="breakeven">➡️ Break Even</option>
+                                </select>
+                            </div>
+                            <div class="form-group">
+                                <label class="form-label">Monto ($)</label>
+                                <input type="number" class="form-input" placeholder="ej: 250.50" step="0.01" required>
+                            </div>
+                        </div>
+
+                        <div class="form-row full">
+                            <div class="form-group">
+                                <label class="form-label">Notas / Observaciones</label>
+                                <textarea class="form-textarea" placeholder="Detalles adicionales, razón del resultado, lecciones aprendidas..."></textarea>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- SECCIÓN 5: REFERENCIAS -->
+                    <div class="form-section">
+                        <div class="form-section-title">🔗 Referencias</div>
+
+                        <div class="form-row full">
+                            <div class="form-group">
+                                <label class="form-label">Link Chart M5 (Ejecución)</label>
+                                <input type="url" class="form-input" placeholder="https://...">
+                                <span class="form-hint">Link a screenshot o chart del análisis</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- RESUMEN Y VALIDACIÓN -->
+                    <div class="validation-summary">
+                        ✓ Todos los campos requeridos están completos
+                    </div>
+
+                    <!-- ACCIONES -->
+                    <div class="form-actions">
+                        <button type="button" class="btn btn-secondary">Cancelar</button>
+                        <button type="reset" class="btn btn-secondary">Limpiar</button>
+                        <button type="submit" class="btn btn-primary">Guardar Operación</button>
+                    </div>
+                </form>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resumen Mensual - Inversiones</title>
+    <link rel="stylesheet" href="assets/css/paleta.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0c3a7f 0%, #1565c0 100%);
+        }
+
+        .main-wrapper {
+            display: flex;
+            flex: 1;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #0c3a7f;
+            color: white;
+            padding: 24px;
+            min-height: calc(100vh - 80px);
+        }
+
+        .sidebar-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 300ms;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .sidebar-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-weight: 600;
+        }
+
+        .content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .page-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 32px;
+        }
+
+        .page-title {
+            color: var(--color-dark);
+            margin: 0;
+        }
+
+        .year-selector {
+            display: flex;
+            gap: 12px;
+            align-items: center;
+        }
+
+        .year-selector select {
+            padding: 8px 12px;
+            border: 1px solid var(--color-gray-300);
+            border-radius: 6px;
+        }
+
+        .summary-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .monthly-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+        }
+
+        .month-card {
+            background: white;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            border-left: 4px solid var(--color-primary);
+            transition: all 300ms;
+        }
+
+        .month-card:hover {
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.15);
+            transform: translateY(-2px);
+        }
+
+        .month-card.bad {
+            border-left-color: var(--color-warning);
+        }
+
+        .month-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--color-gray-200);
+        }
+
+        .month-name {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-dark);
+        }
+
+        .month-status {
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 4px;
+            background-color: var(--color-primary-lighter);
+            color: var(--color-primary-dark);
+        }
+
+        .month-status.negative {
+            background-color: rgba(244, 67, 54, 0.2);
+            color: var(--color-danger);
+        }
+
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+            font-size: 14px;
+        }
+
+        .stat-label {
+            color: var(--color-gray-600);
+            font-weight: 500;
+        }
+
+        .stat-value {
+            font-weight: 600;
+            color: var(--color-dark);
+        }
+
+        .stat-value.positive {
+            color: var(--color-success);
+        }
+
+        .stat-value.negative {
+            color: var(--color-danger);
+        }
+
+        .chart-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-title {
+            font-size: 16px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--color-dark);
+        }
+
+        .chart-placeholder {
+            background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%);
+            border-radius: 8px;
+            padding: 60px 20px;
+            text-align: center;
+            color: var(--color-primary);
+            font-size: 14px;
+            min-height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .comparison-table {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        thead {
+            background-color: #f0f4f8;
+        }
+
+        th {
+            padding: 16px;
+            text-align: left;
+            font-weight: 600;
+            color: var(--color-primary-dark);
+            border-bottom: 2px solid var(--color-primary);
+        }
+
+        td {
+            padding: 16px;
+            border-bottom: 1px solid var(--color-gray-200);
+            font-size: 14px;
+        }
+
+        tbody tr:hover {
+            background-color: #f9fafb;
+        }
+
+        .month-label {
+            font-weight: 600;
+            color: var(--color-dark);
+        }
+
+        @media (max-width: 1024px) {
+            .chart-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+            }
+
+            .main-wrapper {
+                flex-direction: column;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .page-header {
+                flex-direction: column;
+                gap: 16px;
+                align-items: flex-start;
+            }
+
+            .year-selector {
+                width: 100%;
+            }
+
+            .monthly-cards {
+                grid-template-columns: 1fr;
+            }
+
+            .summary-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">📈 Inversiones</div>
+            <nav>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Mi Perfil</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Ayuda</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Salir</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="main-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-item">📊 Dashboard</div>
+            <div class="sidebar-item">📝 Operaciones</div>
+            <div class="sidebar-item active">📈 Análisis</div>
+            <div class="sidebar-item">⚙️ Planes</div>
+        </aside>
+
+        <main class="content">
+            <div class="page-header">
+                <h1 class="page-title">Resumen Mensual</h1>
+                <div class="year-selector">
+                    <label>Año:</label>
+                    <select>
+                        <option>2026</option>
+                        <option>2025</option>
+                        <option>2024</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="summary-grid">
+                <div class="kpi-card">
+                    <span class="kpi-value">176</span>
+                    <span class="kpi-label">Total Operaciones</span>
+                    <div class="kpi-change positive">↑ +45 vs año anterior</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #1565c0 0%, #0277bd 100%);">
+                    <span class="kpi-value">72.7%</span>
+                    <span class="kpi-label">Win Rate Promedio</span>
+                    <div class="kpi-change positive">↑ +3.2% vs año anterior</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #0277bd 0%, #01579b 100%);">
+                    <span class="kpi-value">$12,850</span>
+                    <span class="kpi-label">Ganancia Neta</span>
+                    <div class="kpi-change positive">↑ +42% vs año anterior</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #1565c0 0%, #1565c0 100%);">
+                    <span class="kpi-value">3.2</span>
+                    <span class="kpi-label">Promedio RR Ratio</span>
+                    <div class="kpi-change positive">↑ +0.3 vs año anterior</div>
+                </div>
+            </div>
+
+            <div>
+                <h2 style="margin-bottom: 24px; color: var(--color-dark);">📅 Desempeño por Mes (2026)</h2>
+                <div class="monthly-cards">
+                    <div class="month-card">
+                        <div class="month-header">
+                            <div class="month-name">Enero</div>
+                            <div class="month-status">Excelente</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">119</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value positive">115 (96.6%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value positive">+$4,250</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:3.2</div>
+                        </div>
+                    </div>
+
+                    <div class="month-card bad">
+                        <div class="month-header">
+                            <div class="month-name">Febrero</div>
+                            <div class="month-status negative">Regular</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">6</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value">3 (50%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value negative">-$125</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:1.8</div>
+                        </div>
+                    </div>
+
+                    <div class="month-card">
+                        <div class="month-header">
+                            <div class="month-name">Marzo</div>
+                            <div class="month-status">Bueno</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">7</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value positive">5 (71.4%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value positive">+$420</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:2.5</div>
+                        </div>
+                    </div>
+
+                    <div class="month-card">
+                        <div class="month-header">
+                            <div class="month-name">Abril</div>
+                            <div class="month-status">Bueno</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">8</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value positive">6 (75%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value positive">+$580</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:2.1</div>
+                        </div>
+                    </div>
+
+                    <div class="month-card">
+                        <div class="month-header">
+                            <div class="month-name">Mayo</div>
+                            <div class="month-status">Excelente</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">16</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value positive">13 (81.3%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value positive">+$2,150</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:2.8</div>
+                        </div>
+                    </div>
+
+                    <div class="month-card">
+                        <div class="month-header">
+                            <div class="month-name">Junio</div>
+                            <div class="month-status">En Proceso</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Operaciones</div>
+                            <div class="stat-value">20</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganadores</div>
+                            <div class="stat-value positive">15 (75%)</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Ganancia</div>
+                            <div class="stat-value positive">+$2,875</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Promedio RR</div>
+                            <div class="stat-value">1:2.9</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="chart-section" style="margin-top: 32px;">
+                <div class="chart-card">
+                    <div class="chart-title">📊 Evolución Win Rate 2026</div>
+                    <div class="chart-placeholder">
+                        Gráfico de línea - Win rate mensual
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-title">💰 Ganancia por Mes</div>
+                    <div class="chart-placeholder">
+                        Gráfico de barras - Ganancias mensuales
+                    </div>
+                </div>
+            </div>
+
+            <div class="comparison-table">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Mes</th>
+                            <th>Operaciones</th>
+                            <th>Win Rate</th>
+                            <th>Ganancia</th>
+                            <th>Promedio RR</th>
+                            <th>Estado</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="month-label">Enero</td>
+                            <td>119</td>
+                            <td><span class="badge badge-success">96.6%</span></td>
+                            <td><span style="color: var(--color-success); font-weight: 600;">+$4,250</span></td>
+                            <td>1:3.2</td>
+                            <td><span class="badge" style="background-color: #4caf50; color: white;">Excelente</span></td>
+                        </tr>
+                        <tr>
+                            <td class="month-label">Febrero</td>
+                            <td>6</td>
+                            <td><span class="badge" style="background-color: #ff9800; color: white;">50%</span></td>
+                            <td><span style="color: var(--color-danger); font-weight: 600;">-$125</span></td>
+                            <td>1:1.8</td>
+                            <td><span class="badge" style="background-color: #ff9800; color: white;">Regular</span></td>
+                        </tr>
+                        <tr>
+                            <td class="month-label">Marzo</td>
+                            <td>7</td>
+                            <td><span class="badge badge-success">71.4%</span></td>
+                            <td><span style="color: var(--color-success); font-weight: 600;">+$420</span></td>
+                            <td>1:2.5</td>
+                            <td><span class="badge" style="background-color: #2196f3; color: white;">Bueno</span></td>
+                        </tr>
+                        <tr>
+                            <td class="month-label">Abril</td>
+                            <td>8</td>
+                            <td><span class="badge badge-success">75%</span></td>
+                            <td><span style="color: var(--color-success); font-weight: 600;">+$580</span></td>
+                            <td>1:2.1</td>
+                            <td><span class="badge" style="background-color: #2196f3; color: white;">Bueno</span></td>
+                        </tr>
+                        <tr>
+                            <td class="month-label">Mayo</td>
+                            <td>16</td>
+                            <td><span class="badge badge-success">81.3%</span></td>
+                            <td><span style="color: var(--color-success); font-weight: 600;">+$2,150</span></td>
+                            <td>1:2.8</td>
+                            <td><span class="badge" style="background-color: #4caf50; color: white;">Excelente</span></td>
+                        </tr>
+                        <tr>
+                            <td class="month-label">Junio</td>
+                            <td>20</td>
+                            <td><span class="badge badge-success">75%</span></td>
+                            <td><span style="color: var(--color-success); font-weight: 600;">+$2,875</span></td>
+                            <td>1:2.9</td>
+                            <td><span class="badge" style="background-color: #2196f3; color: white;">En Proceso</span></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </main>
+    </div>
+</body>
+</html>

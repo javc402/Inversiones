@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Inversiones</title>
+    <link rel="stylesheet" href="assets/css/paleta.css">
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: linear-gradient(135deg, #0c3a7f 0%, #1565c0 100%);
+        }
+
+        .main-wrapper {
+            display: flex;
+            flex: 1;
+        }
+
+        .sidebar {
+            width: 250px;
+            background-color: #0c3a7f;
+            color: white;
+            padding: 24px;
+            min-height: calc(100vh - 80px);
+            overflow-y: auto;
+        }
+
+        .sidebar-section {
+            margin-bottom: 24px;
+        }
+
+        .sidebar-title {
+            font-size: 12px;
+            font-weight: bold;
+            text-transform: uppercase;
+            color: rgba(255, 255, 255, 0.6);
+            margin-bottom: 12px;
+            padding-left: 16px;
+        }
+
+        .sidebar-item {
+            padding: 12px 16px;
+            margin-bottom: 8px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 300ms;
+            color: rgba(255, 255, 255, 0.8);
+        }
+
+        .sidebar-item:hover,
+        .sidebar-item.active {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: white;
+            font-weight: 600;
+        }
+
+        .content {
+            flex: 1;
+            padding: 32px;
+            overflow-y: auto;
+        }
+
+        .welcome {
+            margin-bottom: 32px;
+        }
+
+        .welcome-title {
+            color: var(--color-dark);
+            margin-bottom: 8px;
+        }
+
+        .welcome-subtitle {
+            color: var(--color-gray-600);
+        }
+
+        .kpi-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .chart-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 24px;
+            margin-bottom: 32px;
+        }
+
+        .chart-card {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .chart-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 20px;
+            color: var(--color-dark);
+        }
+
+        .chart-placeholder {
+            background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%);
+            border-radius: 8px;
+            padding: 40px;
+            text-align: center;
+            color: var(--color-primary);
+            font-size: 14px;
+        }
+
+        .recent-trades {
+            background: white;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .recent-title {
+            font-size: 18px;
+            font-weight: 600;
+            margin-bottom: 16px;
+            color: var(--color-dark);
+        }
+
+        .trade-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px;
+            border-bottom: 1px solid var(--color-gray-200);
+        }
+
+        .trade-info {
+            flex: 1;
+        }
+
+        .trade-date {
+            font-size: 14px;
+            color: var(--color-gray-600);
+        }
+
+        .trade-type {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--color-dark);
+        }
+
+        .trade-result {
+            font-weight: 600;
+            font-size: 16px;
+        }
+
+        .trade-result.win {
+            color: var(--color-success);
+        }
+
+        .trade-result.loss {
+            color: var(--color-danger);
+        }
+
+        @media (max-width: 1024px) {
+            .chart-section {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .sidebar {
+                width: 100%;
+                min-height: auto;
+            }
+
+            .main-wrapper {
+                flex-direction: column;
+            }
+
+            .content {
+                padding: 16px;
+            }
+
+            .kpi-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .chart-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">📈 Inversiones</div>
+            <nav>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Mi Perfil</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Ayuda</a>
+                <a href="#" style="color: rgba(255,255,255,0.8);">Salir</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="main-wrapper">
+        <aside class="sidebar">
+            <div class="sidebar-section">
+                <div class="sidebar-title">Menú</div>
+                <div class="sidebar-item active">📊 Dashboard</div>
+                <div class="sidebar-item">📝 Operaciones</div>
+                <div class="sidebar-item">📈 Análisis</div>
+                <div class="sidebar-item">⚙️ Planes</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Reportes</div>
+                <div class="sidebar-item">📋 Resumen Mensual</div>
+                <div class="sidebar-item">📊 Comparativas</div>
+                <div class="sidebar-item">💾 Descargar</div>
+            </div>
+
+            <div class="sidebar-section">
+                <div class="sidebar-title">Configuración</div>
+                <div class="sidebar-item">👤 Perfil</div>
+                <div class="sidebar-item">🔐 Seguridad</div>
+                <div class="sidebar-item">⚙️ Preferencias</div>
+            </div>
+        </aside>
+
+        <main class="content">
+            <div class="welcome">
+                <h1 class="welcome-title">Bienvenido, Cristina</h1>
+                <p class="welcome-subtitle">Aquí está tu resumen de hoy</p>
+            </div>
+
+            <div class="kpi-grid">
+                <div class="kpi-card">
+                    <span class="kpi-value">12</span>
+                    <span class="kpi-label">Operaciones (Hoy)</span>
+                    <div class="kpi-change positive">↑ +3 vs ayer</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #1565c0 0%, #0277bd 100%);">
+                    <span class="kpi-value">75.5%</span>
+                    <span class="kpi-label">Win Rate</span>
+                    <div class="kpi-change positive">↑ +2.3% vs mes</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #0277bd 0%, #01579b 100%);">
+                    <span class="kpi-value">$2,450</span>
+                    <span class="kpi-label">Ganancia</span>
+                    <div class="kpi-change positive">↑ +15% vs semana</div>
+                </div>
+
+                <div class="kpi-card" style="background: linear-gradient(135deg, #1565c0 0%, #1565c0 100%);">
+                    <span class="kpi-value">$97,550</span>
+                    <span class="kpi-label">Capital</span>
+                    <div class="kpi-change positive">↑ +$2,450 hoy</div>
+                </div>
+            </div>
+
+            <div class="chart-section">
+                <div class="chart-card">
+                    <div class="chart-title">Evolución Diaria</div>
+                    <div class="chart-placeholder">
+                        📊 Gráfico de línea - Evolución del capital
+                    </div>
+                </div>
+
+                <div class="chart-card">
+                    <div class="chart-title">Win Rate por Mes</div>
+                    <div class="chart-placeholder">
+                        📊 Gráfico de barras - Comparativa mensual
+                    </div>
+                </div>
+            </div>
+
+            <div class="recent-trades">
+                <div class="recent-title">Últimas Operaciones</div>
+
+                <div class="trade-item">
+                    <div class="trade-info">
+                        <div class="trade-date">Hoy, 14:35</div>
+                        <div class="trade-type">EURUSD - Vela Envolvente</div>
+                    </div>
+                    <div class="badge badge-success">Ganancia</div>
+                    <div class="trade-result win">+$125</div>
+                </div>
+
+                <div class="trade-item">
+                    <div class="trade-info">
+                        <div class="trade-date">Hoy, 13:20</div>
+                        <div class="trade-type">GBPUSD - PRE-POST</div>
+                    </div>
+                    <div class="badge badge-danger">Pérdida</div>
+                    <div class="trade-result loss">-$85</div>
+                </div>
+
+                <div class="trade-item">
+                    <div class="trade-info">
+                        <div class="trade-date">Hoy, 11:45</div>
+                        <div class="trade-type">USDMXN - Modelo Sistem</div>
+                    </div>
+                    <div class="badge badge-success">Ganancia</div>
+                    <div class="trade-result win">+$210</div>
+                </div>
+
+                <div class="trade-item">
+                    <div class="trade-info">
+                        <div class="trade-date">Ayer, 16:30</div>
+                        <div class="trade-type">EURGBP - Vela Envolvente</div>
+                    </div>
+                    <div class="badge badge-success">Ganancia</div>
+                    <div class="trade-result win">+$340</div>
+                </div>
+            </div>
+        </main>
+    </div>
+</body>
+</html>
