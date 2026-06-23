@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Inversiones - Prototipos</title>
+    <link rel="stylesheet" href="assets/css/paleta.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: var(--font-family-base);
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: var(--spacing-2xl) var(--spacing-lg);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: var(--spacing-3xl);
+        }
+
+        .header-title {
+            font-size: var(--font-size-4xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-primary-dark);
+            margin-bottom: var(--spacing-sm);
+        }
+
+        .header-subtitle {
+            font-size: var(--font-size-lg);
+            color: var(--color-gray-600);
+        }
+
+        .prototypes-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-2xl);
+            margin-bottom: var(--spacing-3xl);
+        }
+
+        .prototype-card {
+            background: white;
+            border-radius: var(--border-radius-xl);
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+            transition: all var(--transition);
+            display: flex;
+            flex-direction: column;
+        }
+
+        .prototype-card:hover {
+            transform: translateY(-8px);
+            box-shadow: var(--shadow-2xl);
+        }
+
+        .prototype-preview {
+            height: 300px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e8edf5 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .prototype-preview.gradient-1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .prototype-preview.gradient-2 {
+            background: linear-gradient(135deg, #1e5ba8 0%, #2e7bc0 100%);
+        }
+
+        .prototype-badge {
+            position: absolute;
+            top: var(--spacing-lg);
+            right: var(--spacing-lg);
+            background: rgba(255, 255, 255, 0.9);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--border-radius-full);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-primary);
+            font-size: var(--font-size-sm);
+        }
+
+        .prototype-content {
+            padding: var(--spacing-2xl);
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .prototype-title {
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-dark);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .prototype-description {
+            color: var(--color-gray-600);
+            font-size: var(--font-size-sm);
+            margin-bottom: var(--spacing-lg);
+            line-height: var(--line-height-relaxed);
+            flex: 1;
+        }
+
+        .prototype-features {
+            list-style: none;
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .prototype-features li {
+            font-size: var(--font-size-sm);
+            color: var(--color-gray-600);
+            margin-bottom: var(--spacing-sm);
+            padding-left: var(--spacing-lg);
+            position: relative;
+        }
+
+        .prototype-features li::before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: var(--color-success);
+            font-weight: bold;
+        }
+
+        .prototype-actions {
+            display: flex;
+            gap: var(--spacing-md);
+            margin-top: auto;
+        }
+
+        .prototype-actions a {
+            flex: 1;
+            padding: var(--spacing-md);
+            text-align: center;
+            border-radius: var(--border-radius-lg);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            text-decoration: none;
+            transition: all var(--transition);
+            display: inline-block;
+        }
+
+        .view-btn {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: var(--shadow-md);
+        }
+
+        .view-btn:hover {
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
+        }
+
+        .code-btn {
+            background: var(--color-gray-100);
+            color: var(--color-dark);
+            border: 1px solid var(--color-gray-300);
+        }
+
+        .code-btn:hover {
+            background: var(--color-gray-200);
+        }
+
+        .info-section {
+            background: white;
+            border-radius: var(--border-radius-xl);
+            padding: var(--spacing-2xl);
+            box-shadow: var(--shadow);
+            margin-bottom: var(--spacing-2xl);
+        }
+
+        .info-title {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-primary);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .info-list {
+            list-style: none;
+        }
+
+        .info-list li {
+            padding: var(--spacing-sm) 0;
+            color: var(--color-gray-700);
+            font-size: var(--font-size-sm);
+        }
+
+        .info-list li::before {
+            content: "→ ";
+            color: var(--color-primary);
+            font-weight: bold;
+            margin-right: var(--spacing-md);
+        }
+
+        @media (max-width: 640px) {
+            .header-title {
+                font-size: var(--font-size-3xl);
+            }
+
+            .prototypes-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .prototype-preview {
+                font-size: 60px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="header-title"><i class="fas fa-rocket"></i> Prototipos Inversiones</h1>
+            <p class="header-subtitle">Sistema Moderno de Gestión de Operaciones de Trading</p>
+        </div>
+
+        <div class="prototypes-grid">
+            <!-- Login Prototipo -->
+            <div class="prototype-card">
+                <div class="prototype-preview gradient-1">
+                    <i class="fas fa-lock"></i>
+                    <div class="prototype-badge">1</div>
+                </div>
+                <div class="prototype-content">
+                    <h3 class="prototype-title">Iniciar Sesión</h3>
+                    <p class="prototype-description">
+                        Página de autenticación segura con Google. Diseño elegante con lado decorativo inspirado en DashSpace.
+                    </p>
+                    <ul class="prototype-features">
+                        <li>Autenticación segura con Google</li>
+                        <li>Layout de 2 columnas</li>
+                        <li>Información de seguridad</li>
+                        <li>Completamente responsive</li>
+                        <li>100% en español</li>
+                    </ul>
+                    <div class="prototype-actions">
+                        <a href="01-login.html" class="view-btn" target="_blank">Ver Prototipo</a>
+                        <a href="01-login.html" class="code-btn">Ver Código</a>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Dashboard Prototipo -->
+            <div class="prototype-card">
+                <div class="prototype-preview gradient-2">
+                    <i class="fas fa-chart-pie"></i>
+                    <div class="prototype-badge">2</div>
+                </div>
+                <div class="prototype-content">
+                    <h3 class="prototype-title">Panel de Control</h3>
+                    <p class="prototype-description">
+                        Panel principal completo con sidebar, KPI cards coloridas, gráficos interactivos (SVG) y tabla de operaciones en vivo.
+                    </p>
+                    <ul class="prototype-features">
+                        <li>Sidebar navegable con menú</li>
+                        <li>4 KPI cards con gradientes</li>
+                        <li>Gráficos SVG (línea y donut)</li>
+                        <li>Tabla con datos de operaciones</li>
+                        <li>Diseño profesional DashSpace</li>
+                    </ul>
+                    <div class="prototype-actions">
+                        <a href="02-dashboard.html" class="view-btn" target="_blank">Ver Prototipo</a>
+                        <a href="02-dashboard.html" class="code-btn">Ver Código</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Info Section -->
+        <div class="info-section">
+            <h2 class="info-title"><i class="fas fa-star"></i> Características de Diseño</h2>
+            <ul class="info-list">
+                <li><strong>Diseño Moderno:</strong> Inspirado en DashSpace con colores azules profesionales</li>
+                <li><strong>Gráficos Reales:</strong> SVG inline sin dependencias externas</li>
+                <li><strong>100% Español:</strong> Toda la interfaz en idioma español</li>
+                <li><strong>Paleta Centralizada:</strong> Colores definidos en <code style="background: #f0f0f0; padding: 2px 6px;">assets/css/paleta.css</code></li>
+                <li><strong>Completamente Responsive:</strong> Funciona en móvil, tablet y desktop</li>
+                <li><strong>Sin Dependencias:</strong> HTML, CSS y JavaScript puro</li>
+                <li><strong>Animaciones Suaves:</strong> Transiciones y hover effects profesionales</li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <h2 class="info-title"><i class="fas fa-palette"></i> Paleta de Colores</h2>
+            <ul class="info-list">
+                <li><strong>Azul Oscuro:</strong> #0a2342 (Headers, sidebar)</li>
+                <li><strong>Azul Principal:</strong> #1E5BA8 (Botones, primary)</li>
+                <li><strong>Azul Claro:</strong> #2E7BC0 (Hover states)</li>
+                <li><strong>Gradientes Vibrantes:</strong> Azul-Púrpura, Rosa-Magenta, Amarillo, Rojo</li>
+                <li><strong>Colores Secundarios:</strong> Verde éxito, Rojo peligro, Naranja alerta</li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <h2 class="info-title"><i class="fas fa-rocket"></i> Próximas Mejoras</h2>
+            <ul class="info-list">
+                <li>Integración con React para componentes dinámicos</li>
+                <li>Conexión con Supabase para datos en tiempo real</li>
+                <li>Gráficos interactivos más avanzados</li>
+                <li>Sistema de reportes y análisis</li>
+                <li>Tema dark/light automático</li>
+                <li>Despliegue en GitHub Pages</li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
