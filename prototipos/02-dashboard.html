@@ -6,206 +6,254 @@
     <title>Dashboard - Inversiones</title>
     <link rel="stylesheet" href="assets/css/paleta.css">
     <style>
-        body {
-            background-color: var(--color-gray-100);
-        }
-
-        .header {
-            background: var(--gradient-primary);
-            color: white;
-            padding: var(--spacing-lg) var(--spacing-2xl);
-            box-shadow: var(--shadow-md);
-            margin-bottom: var(--spacing-2xl);
-        }
-
-        .header-content {
-            max-width: 1400px;
-            margin: 0 auto;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .header-title {
-            font-size: var(--font-size-2xl);
-            font-weight: var(--font-weight-bold);
+        * {
             margin: 0;
+            padding: 0;
+            box-sizing: border-box;
         }
 
-        .user-info {
-            font-size: var(--font-size-sm);
-            opacity: 0.9;
-        }
-
-        .container-main {
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 0 var(--spacing-lg);
+        body {
+            background-color: #f5f7fa;
+            font-family: var(--font-family-base);
             display: flex;
-            gap: var(--spacing-lg);
         }
 
+        /* SIDEBAR */
         .sidebar {
-            width: 250px;
-            background: var(--color-white);
-            border-radius: var(--border-radius-xl);
-            box-shadow: var(--shadow);
-            padding: var(--spacing-lg);
-            height: fit-content;
+            width: 280px;
+            background: white;
+            border-right: 1px solid var(--color-gray-200);
+            padding: var(--spacing-xl);
+            min-height: 100vh;
+            overflow-y: auto;
             position: sticky;
-            top: var(--spacing-2xl);
+            top: 0;
+        }
+
+        .sidebar-brand {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-2xl);
+            cursor: pointer;
+        }
+
+        .sidebar-logo {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-primary);
+            border-radius: var(--border-radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .sidebar-brand-name {
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-dark);
+        }
+
+        .sidebar-section-title {
+            font-size: var(--font-size-xs);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-gray-500);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: var(--spacing-lg);
+            margin-bottom: var(--spacing-md);
+        }
+
+        .sidebar-nav {
+            list-style: none;
         }
 
         .sidebar-item {
-            list-style: none;
-            margin-bottom: var(--spacing-md);
+            margin-bottom: var(--spacing-sm);
         }
 
         .sidebar-link {
             display: flex;
             align-items: center;
             gap: var(--spacing-md);
-            padding: var(--spacing-md);
+            padding: var(--spacing-md) var(--spacing-lg);
             color: var(--color-gray-700);
             text-decoration: none;
             border-radius: var(--border-radius-lg);
             transition: all var(--transition);
-            border-left: 3px solid transparent;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
         }
 
         .sidebar-link:hover {
             background-color: var(--color-primary-ultra-light);
             color: var(--color-primary);
-            border-left-color: var(--color-primary);
         }
 
         .sidebar-link.active {
             background: var(--gradient-primary-soft);
             color: var(--color-primary);
-            border-left-color: var(--color-primary);
-            font-weight: var(--font-weight-semibold);
+            box-shadow: inset 0 0 0 2px var(--color-primary);
         }
 
+        /* MAIN CONTENT */
         .main-content {
+            flex: 1;
+            padding: var(--spacing-xl);
+            overflow-y: auto;
+        }
+
+        /* HEADER */
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: var(--spacing-2xl);
+            background: white;
+            padding: var(--spacing-lg) var(--spacing-xl);
+            border-radius: var(--border-radius-xl);
+            box-shadow: var(--shadow-sm);
+        }
+
+        .search-box {
+            display: flex;
+            align-items: center;
+            background-color: #f0f2f5;
+            border-radius: var(--border-radius-lg);
+            padding: var(--spacing-sm) var(--spacing-lg);
+            max-width: 400px;
+            width: 100%;
+            gap: var(--spacing-md);
+        }
+
+        .search-box input {
+            background: transparent;
+            border: none;
+            outline: none;
+            font-size: var(--font-size-sm);
             flex: 1;
         }
 
-        .welcome-section {
-            background: var(--color-white);
-            border-radius: var(--border-radius-xl);
-            padding: var(--spacing-2xl);
-            margin-bottom: var(--spacing-2xl);
-            box-shadow: var(--shadow);
+        .header-actions {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-lg);
         }
 
-        .welcome-title {
-            font-size: var(--font-size-2xl);
-            font-weight: var(--font-weight-bold);
-            color: var(--color-dark);
-            margin-bottom: var(--spacing-sm);
+        .action-button {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #f0f2f5;
+            border: none;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all var(--transition);
         }
 
-        .welcome-text {
-            color: var(--color-gray-600);
-            margin-bottom: 0;
+        .action-button:hover {
+            background-color: var(--color-gray-200);
         }
 
+        .user-avatar {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        /* KPI GRID */
         .kpi-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
             gap: var(--spacing-lg);
             margin-bottom: var(--spacing-2xl);
         }
 
         .kpi-card {
-            background: var(--color-white);
-            border: 1px solid var(--color-gray-200);
+            background: white;
             border-radius: var(--border-radius-xl);
-            padding: var(--spacing-lg);
+            padding: var(--spacing-xl);
             box-shadow: var(--shadow);
             transition: all var(--transition);
+            cursor: pointer;
         }
 
         .kpi-card:hover {
-            box-shadow: var(--shadow-lg);
-            border-color: var(--color-primary-light);
             transform: translateY(-4px);
+            box-shadow: var(--shadow-lg);
         }
 
-        .kpi-card.success {
-            background: linear-gradient(135deg, #D1FAE5 0%, #ECFDF5 100%);
-            border-color: var(--color-success-lighter);
+        .kpi-card.blue {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
         }
 
-        .kpi-card.danger {
-            background: linear-gradient(135deg, #FEE2E2 0%, #FEF2F2 100%);
-            border-color: var(--color-danger-lighter);
+        .kpi-card.pink {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            color: white;
         }
 
-        .kpi-card.info {
-            background: var(--gradient-primary-soft);
-            border-color: var(--color-primary-lighter);
+        .kpi-card.yellow {
+            background: linear-gradient(135deg, #ffa400 0%, #ffd660 100%);
+            color: white;
+        }
+
+        .kpi-card.red {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%);
+            color: white;
+        }
+
+        .kpi-icon {
+            font-size: 32px;
+            margin-bottom: var(--spacing-md);
+            opacity: 0.9;
+        }
+
+        .kpi-value {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-bold);
+            margin-bottom: var(--spacing-sm);
         }
 
         .kpi-label {
             font-size: var(--font-size-sm);
-            font-weight: var(--font-weight-semibold);
-            color: var(--color-gray-600);
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: var(--spacing-sm);
-        }
-
-        .kpi-value {
-            font-size: var(--font-size-4xl);
-            font-weight: var(--font-weight-bold);
-            color: var(--color-primary-dark);
-            margin-bottom: var(--spacing-sm);
-        }
-
-        .kpi-change {
-            font-size: var(--font-size-sm);
+            opacity: 0.9;
             font-weight: var(--font-weight-semibold);
         }
 
-        .kpi-change.positive {
-            color: var(--color-success);
-        }
-
-        .kpi-change.negative {
-            color: var(--color-danger);
-        }
-
-        .content-grid {
+        /* CHART SECTION */
+        .chart-section {
             display: grid;
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr 1fr;
             gap: var(--spacing-lg);
             margin-bottom: var(--spacing-2xl);
         }
 
-        .card {
-            background: var(--color-white);
-            border: 1px solid var(--color-gray-200);
+        .chart-card {
+            background: white;
             border-radius: var(--border-radius-xl);
+            padding: var(--spacing-xl);
             box-shadow: var(--shadow);
-            overflow: hidden;
         }
 
-        .card-header {
-            padding: var(--spacing-lg);
-            border-bottom: 1px solid var(--color-gray-200);
-            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
-        }
-
-        .card-title {
+        .chart-title {
             font-size: var(--font-size-lg);
             font-weight: var(--font-weight-bold);
             color: var(--color-dark);
-            margin: 0;
-        }
-
-        .card-body {
-            padding: var(--spacing-lg);
+            margin-bottom: var(--spacing-lg);
         }
 
         .chart-placeholder {
@@ -217,225 +265,265 @@
             align-items: center;
             justify-content: center;
             color: var(--color-gray-500);
-            font-size: var(--font-size-lg);
+            font-size: 18px;
         }
 
-        .recent-trades {
+        /* TABLE SECTION */
+        .table-card {
+            background: white;
+            border-radius: var(--border-radius-xl);
+            padding: var(--spacing-xl);
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .table-responsive {
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            background: #f5f7fa;
             padding: var(--spacing-lg);
+            text-align: left;
+            font-weight: var(--font-weight-bold);
+            color: var(--color-gray-700);
+            border-bottom: 2px solid var(--color-gray-200);
+            font-size: var(--font-size-sm);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
 
-        .trade-item {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: var(--spacing-md);
+        td {
+            padding: var(--spacing-lg);
             border-bottom: 1px solid var(--color-gray-200);
-            transition: background-color var(--transition);
+            color: var(--color-gray-700);
+            font-size: var(--font-size-sm);
         }
 
-        .trade-item:hover {
-            background-color: var(--color-gray-100);
+        tr:hover {
+            background-color: #f9fafb;
         }
 
-        .trade-item:last-child {
+        tr:last-child td {
             border-bottom: none;
         }
 
-        .trade-info {
-            display: flex;
-            gap: var(--spacing-lg);
-            align-items: center;
-            flex: 1;
-        }
-
-        .trade-date {
-            font-size: var(--font-size-sm);
-            font-weight: var(--font-weight-semibold);
-            color: var(--color-gray-700);
-            min-width: 80px;
-        }
-
-        .trade-pair {
-            font-weight: var(--font-weight-semibold);
-            color: var(--color-dark);
-        }
-
-        .trade-type {
+        .badge {
+            display: inline-block;
+            padding: 4px 12px;
+            border-radius: 20px;
             font-size: var(--font-size-xs);
-            padding: 4px 8px;
-            border-radius: var(--border-radius);
-            background-color: var(--color-info-lighter);
-            color: var(--color-info);
-            text-transform: uppercase;
-            font-weight: var(--font-weight-semibold);
-        }
-
-        .trade-result {
             font-weight: var(--font-weight-bold);
-            text-align: right;
+            text-transform: uppercase;
         }
 
-        .trade-result.win {
-            color: var(--color-success);
+        .badge-success {
+            background-color: #d4f4dd;
+            color: #10b981;
         }
 
-        .trade-result.loss {
-            color: var(--color-danger);
+        .badge-pending {
+            background-color: #fef3c7;
+            color: #f59e0b;
         }
 
+        /* RESPONSIVE */
         @media (max-width: 1024px) {
-            .container-main {
+            .chart-section {
+                grid-template-columns: 1fr;
+            }
+
+            .sidebar {
+                width: 240px;
+            }
+        }
+
+        @media (max-width: 768px) {
+            body {
                 flex-direction: column;
             }
 
             .sidebar {
                 width: 100%;
-                display: flex;
-                gap: var(--spacing-2xl);
-                position: static;
+                border-right: none;
+                border-bottom: 1px solid var(--color-gray-200);
+                min-height: auto;
+                padding: var(--spacing-lg);
+            }
+
+            .sidebar-brand {
+                margin-bottom: var(--spacing-lg);
+            }
+
+            .sidebar-section-title {
+                display: none;
             }
 
             .sidebar-item {
-                flex: 1;
+                display: inline-block;
+                margin-right: var(--spacing-lg);
             }
-        }
 
-        @media (max-width: 640px) {
-            .header-content {
-                flex-direction: column;
-                gap: var(--spacing-md);
+            .sidebar-link {
+                padding: var(--spacing-md);
             }
 
             .kpi-grid {
-                grid-template-columns: 1fr;
+                grid-template-columns: 1fr 1fr;
             }
 
-            .kpi-value {
-                font-size: var(--font-size-2xl);
-            }
-
-            .trade-info {
+            .header {
                 flex-direction: column;
-                align-items: flex-start;
+                gap: var(--spacing-lg);
+            }
+
+            .search-box {
+                max-width: 100%;
             }
         }
     </style>
 </head>
 <body>
-    <div class="header">
-        <div class="header-content">
-            <h1 class="header-title">Inversiones</h1>
-            <div class="user-info">👤 Hola, Cristina</div>
+    <!-- SIDEBAR -->
+    <aside class="sidebar">
+        <div class="sidebar-brand">
+            <div class="sidebar-logo">inv</div>
+            <div class="sidebar-brand-name">Inversiones</div>
         </div>
-    </div>
 
-    <div class="container-main">
-        <aside class="sidebar">
-            <ul>
-                <li class="sidebar-item">
-                    <a href="#dashboard" class="sidebar-link active">📊 Dashboard</a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="#operaciones" class="sidebar-link">📋 Operaciones</a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="#analisis" class="sidebar-link">📈 Análisis</a>
-                </li>
-                <li class="sidebar-item">
-                    <a href="#planes" class="sidebar-link">🎯 Planes</a>
-                </li>
-            </ul>
-        </aside>
+        <div class="sidebar-section-title">Menu</div>
+        <ul class="sidebar-nav">
+            <li class="sidebar-item">
+                <a href="#dashboard" class="sidebar-link active">📊 Dashboard</a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#operaciones" class="sidebar-link">📋 Operaciones</a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#analisis" class="sidebar-link">📈 Análisis</a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#planes" class="sidebar-link">🎯 Planes</a>
+            </li>
+        </ul>
 
-        <main class="main-content">
-            <div class="welcome-section">
-                <h2 class="welcome-title">Bienvenida de vuelta</h2>
-                <p class="welcome-text">Aquí tienes un resumen de tu desempeño en las últimas operaciones</p>
+        <div class="sidebar-section-title" style="margin-top: var(--spacing-2xl);">Apps</div>
+        <ul class="sidebar-nav">
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">📅 Calendar</a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">💬 Chat</a>
+            </li>
+            <li class="sidebar-item">
+                <a href="#" class="sidebar-link">📌 Boards</a>
+            </li>
+        </ul>
+    </aside>
+
+    <!-- MAIN CONTENT -->
+    <main class="main-content">
+        <!-- HEADER -->
+        <div class="header">
+            <div class="search-box">
+                <span>🔍</span>
+                <input type="text" placeholder="Search...">
             </div>
-
-            <div class="kpi-grid">
-                <div class="kpi-card info">
-                    <div class="kpi-label">Operaciones Hoy</div>
-                    <div class="kpi-value">12</div>
-                    <div class="kpi-change positive">↑ +3 vs ayer</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Win Rate</div>
-                    <div class="kpi-value" style="color: var(--color-primary);">75.5%</div>
-                    <div class="kpi-change positive">↑ +2.3% vs mes</div>
-                </div>
-                <div class="kpi-card success">
-                    <div class="kpi-label">Ganancia</div>
-                    <div class="kpi-value" style="color: var(--color-success);">$2,450</div>
-                    <div class="kpi-change positive">↑ +15% vs semana</div>
-                </div>
-                <div class="kpi-card">
-                    <div class="kpi-label">Capital Disponible</div>
-                    <div class="kpi-value" style="color: var(--color-primary);">$97,550</div>
-                    <div class="kpi-change positive">↑ +$2,450 hoy</div>
-                </div>
+            <div class="header-actions">
+                <button class="action-button">🌐</button>
+                <button class="action-button">🌙</button>
+                <button class="action-button">⚙️</button>
+                <button class="action-button">🔔</button>
+                <button class="action-button">💬</button>
+                <div class="user-avatar">C</div>
             </div>
+        </div>
 
-            <div class="content-grid">
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Evolución Diaria</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-placeholder">📊 Gráfico de evolución diaria</div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Win Rate por Mes</h3>
-                    </div>
-                    <div class="card-body">
-                        <div class="chart-placeholder">📈 Gráfico de win rate</div>
-                    </div>
-                </div>
-
-                <div class="card">
-                    <div class="card-header">
-                        <h3 class="card-title">Últimas Operaciones</h3>
-                    </div>
-                    <div class="recent-trades">
-                        <div class="trade-item">
-                            <div class="trade-info">
-                                <div class="trade-date">23/06 10:30</div>
-                                <div class="trade-pair">EURUSD</div>
-                                <div class="trade-type">Vela Envolvente</div>
-                            </div>
-                            <div class="trade-result win">✅ +$125.50</div>
-                        </div>
-                        <div class="trade-item">
-                            <div class="trade-info">
-                                <div class="trade-date">23/06 09:15</div>
-                                <div class="trade-pair">GBPUSD</div>
-                                <div class="trade-type">PRE-POST</div>
-                            </div>
-                            <div class="trade-result loss">❌ -$85.00</div>
-                        </div>
-                        <div class="trade-item">
-                            <div class="trade-info">
-                                <div class="trade-date">23/06 08:45</div>
-                                <div class="trade-pair">USDMXN</div>
-                                <div class="trade-type">Model Sys</div>
-                            </div>
-                            <div class="trade-result win">✅ +$210.75</div>
-                        </div>
-                        <div class="trade-item">
-                            <div class="trade-info">
-                                <div class="trade-date">22/06 15:30</div>
-                                <div class="trade-pair">EURGBP</div>
-                                <div class="trade-type">Vela Envolvente</div>
-                            </div>
-                            <div class="trade-result win">✅ +$340.00</div>
-                        </div>
-                    </div>
-                </div>
+        <!-- KPI CARDS -->
+        <div class="kpi-grid">
+            <div class="kpi-card blue">
+                <div class="kpi-icon">💰</div>
+                <div class="kpi-value">$22,550</div>
+                <div class="kpi-label">Earn of the Month</div>
             </div>
-        </main>
-    </div>
+            <div class="kpi-card pink">
+                <div class="kpi-icon">📈</div>
+                <div class="kpi-value">+33%</div>
+                <div class="kpi-label">Earn growth</div>
+            </div>
+            <div class="kpi-card yellow">
+                <div class="kpi-icon">🎯</div>
+                <div class="kpi-value">69.5%</div>
+                <div class="kpi-label">Win Rate</div>
+            </div>
+            <div class="kpi-card red">
+                <div class="kpi-icon">⚠️</div>
+                <div class="kpi-value">38.05%</div>
+                <div class="kpi-label">Risk Level</div>
+            </div>
+        </div>
+
+        <!-- CHARTS SECTION -->
+        <div class="chart-section">
+            <div class="chart-card">
+                <div class="chart-title">Performance Trend</div>
+                <div class="chart-placeholder">📊 Line Chart</div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-title">Trading Distribution</div>
+                <div class="chart-placeholder">🍕 Pie Chart</div>
+            </div>
+        </div>
+
+        <!-- TABLE SECTION -->
+        <div class="table-card">
+            <div class="chart-title">Recent Operaciones</div>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Date</th>
+                            <th>Pair</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Amount</th>
+                            <th>Result</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>23/06/2026</td>
+                            <td><strong>EURUSD</strong></td>
+                            <td>Vela Envolvente</td>
+                            <td><span class="badge badge-success">Success</span></td>
+                            <td>2.5:1</td>
+                            <td><strong style="color: var(--color-success);">+$125.50</strong></td>
+                        </tr>
+                        <tr>
+                            <td>23/06/2026</td>
+                            <td><strong>GBPUSD</strong></td>
+                            <td>PRE-POST</td>
+                            <td><span class="badge badge-pending">Pending</span></td>
+                            <td>1.2:1</td>
+                            <td><strong style="color: var(--color-danger);">-$85.00</strong></td>
+                        </tr>
+                        <tr>
+                            <td>23/06/2026</td>
+                            <td><strong>USDMXN</strong></td>
+                            <td>Modelo</td>
+                            <td><span class="badge badge-success">Success</span></td>
+                            <td>2.8:1</td>
+                            <td><strong style="color: var(--color-success);">+$210.75</strong></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
 </body>
 </html>

@@ -3,161 +3,122 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Prototipos - Inversiones</title>
+    <title>Inversiones - Prototipos</title>
     <link rel="stylesheet" href="assets/css/paleta.css">
     <style>
         body {
-            background: linear-gradient(135deg, #e3f2fd 0%, #f0f4f8 100%);
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: var(--font-family-base);
         }
 
-        .container-demo {
+        .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 48px 24px;
+            padding: var(--spacing-2xl) var(--spacing-lg);
         }
 
-        .demo-header {
+        .header {
             text-align: center;
-            margin-bottom: 48px;
+            margin-bottom: var(--spacing-3xl);
         }
 
-        .demo-title {
-            font-size: 48px;
-            font-weight: bold;
-            color: var(--color-primary);
-            margin-bottom: 16px;
+        .header-title {
+            font-size: var(--font-size-4xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-primary-dark);
+            margin-bottom: var(--spacing-sm);
         }
 
-        .demo-subtitle {
-            font-size: 18px;
+        .header-subtitle {
+            font-size: var(--font-size-lg);
             color: var(--color-gray-600);
-            margin-bottom: 24px;
-        }
-
-        .color-palette {
-            background: white;
-            border-radius: 16px;
-            padding: 32px;
-            margin-bottom: 48px;
-            box-shadow: var(--shadow-lg);
-        }
-
-        .palette-title {
-            font-size: 24px;
-            font-weight: 600;
-            margin-bottom: 24px;
-            color: var(--color-dark);
-        }
-
-        .color-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-            gap: 16px;
-        }
-
-        .color-box {
-            border-radius: 8px;
-            padding: 24px;
-            color: white;
-            text-align: center;
-            box-shadow: var(--shadow);
-            transition: transform 300ms;
-        }
-
-        .color-box:hover {
-            transform: scale(1.05);
-        }
-
-        .color-name {
-            font-weight: 600;
-            margin-bottom: 8px;
-        }
-
-        .color-code {
-            font-size: 12px;
-            opacity: 0.8;
-            font-family: monospace;
         }
 
         .prototypes-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 24px;
-            margin-bottom: 48px;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: var(--spacing-2xl);
+            margin-bottom: var(--spacing-3xl);
         }
 
         .prototype-card {
             background: white;
-            border-radius: 16px;
+            border-radius: var(--border-radius-xl);
             overflow: hidden;
-            box-shadow: var(--shadow-md);
-            transition: all 300ms;
+            box-shadow: var(--shadow-lg);
+            transition: all var(--transition);
             display: flex;
             flex-direction: column;
         }
 
         .prototype-card:hover {
-            box-shadow: var(--shadow-xl);
             transform: translateY(-8px);
+            box-shadow: var(--shadow-2xl);
         }
 
         .prototype-preview {
-            background: linear-gradient(135deg, #bbdefb 0%, #e3f2fd 100%);
-            height: 200px;
+            height: 300px;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e8edf5 100%);
             display: flex;
             align-items: center;
             justify-content: center;
-            font-size: 60px;
+            font-size: 80px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .prototype-preview.gradient-1 {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        .prototype-preview.gradient-2 {
+            background: linear-gradient(135deg, #1e5ba8 0%, #2e7bc0 100%);
+        }
+
+        .prototype-badge {
+            position: absolute;
+            top: var(--spacing-lg);
+            right: var(--spacing-lg);
+            background: rgba(255, 255, 255, 0.9);
+            padding: var(--spacing-sm) var(--spacing-md);
+            border-radius: var(--border-radius-full);
+            font-weight: var(--font-weight-bold);
             color: var(--color-primary);
+            font-size: var(--font-size-sm);
         }
 
         .prototype-content {
-            padding: 24px;
+            padding: var(--spacing-2xl);
             flex: 1;
             display: flex;
             flex-direction: column;
         }
 
-        .prototype-number {
-            display: inline-block;
-            background-color: var(--color-primary);
-            color: white;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            margin-bottom: 12px;
-            font-size: 14px;
-        }
-
         .prototype-title {
-            font-size: 20px;
-            font-weight: 600;
+            font-size: var(--font-size-xl);
+            font-weight: var(--font-weight-bold);
             color: var(--color-dark);
-            margin-bottom: 8px;
+            margin-bottom: var(--spacing-md);
         }
 
         .prototype-description {
             color: var(--color-gray-600);
-            font-size: 14px;
-            margin-bottom: 16px;
+            font-size: var(--font-size-sm);
+            margin-bottom: var(--spacing-lg);
+            line-height: var(--line-height-relaxed);
             flex: 1;
         }
 
         .prototype-features {
             list-style: none;
-            padding: 0;
-            margin-bottom: 16px;
+            margin-bottom: var(--spacing-lg);
         }
 
         .prototype-features li {
-            font-size: 12px;
+            font-size: var(--font-size-sm);
             color: var(--color-gray-600);
-            margin-bottom: 6px;
-            padding-left: 20px;
+            margin-bottom: var(--spacing-sm);
+            padding-left: var(--spacing-lg);
             position: relative;
         }
 
@@ -171,153 +132,115 @@
 
         .prototype-actions {
             display: flex;
-            gap: 12px;
+            gap: var(--spacing-md);
             margin-top: auto;
         }
 
         .prototype-actions a {
             flex: 1;
-            padding: 10px;
+            padding: var(--spacing-md);
             text-align: center;
-            border-radius: 6px;
-            font-size: 13px;
-            font-weight: 600;
+            border-radius: var(--border-radius-lg);
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
             text-decoration: none;
-            transition: all 300ms;
+            transition: all var(--transition);
             display: inline-block;
         }
 
         .view-btn {
-            background-color: var(--color-primary);
+            background: var(--gradient-primary);
             color: white;
+            box-shadow: var(--shadow-md);
         }
 
         .view-btn:hover {
-            background-color: var(--color-primary-light);
+            box-shadow: var(--shadow-lg);
+            transform: translateY(-2px);
         }
 
         .code-btn {
-            background-color: var(--color-gray-200);
+            background: var(--color-gray-100);
             color: var(--color-dark);
             border: 1px solid var(--color-gray-300);
         }
 
         .code-btn:hover {
-            background-color: var(--color-gray-300);
+            background: var(--color-gray-200);
         }
 
-        .info-box {
+        .info-section {
             background: white;
-            border-radius: 12px;
-            padding: 24px;
-            margin-bottom: 24px;
-            border-left: 4px solid var(--color-info);
+            border-radius: var(--border-radius-xl);
+            padding: var(--spacing-2xl);
             box-shadow: var(--shadow);
+            margin-bottom: var(--spacing-2xl);
         }
 
         .info-title {
-            font-size: 18px;
-            font-weight: 600;
+            font-size: var(--font-size-lg);
+            font-weight: var(--font-weight-bold);
             color: var(--color-primary);
-            margin-bottom: 12px;
+            margin-bottom: var(--spacing-lg);
         }
 
         .info-list {
             list-style: none;
-            padding: 0;
         }
 
         .info-list li {
-            padding: 8px 0;
+            padding: var(--spacing-sm) 0;
             color: var(--color-gray-700);
-            font-size: 14px;
+            font-size: var(--font-size-sm);
         }
 
         .info-list li::before {
             content: "→ ";
             color: var(--color-primary);
             font-weight: bold;
-            margin-right: 8px;
+            margin-right: var(--spacing-md);
         }
 
-        @media (max-width: 768px) {
-            .demo-title {
-                font-size: 32px;
+        @media (max-width: 640px) {
+            .header-title {
+                font-size: var(--font-size-3xl);
             }
 
             .prototypes-grid {
                 grid-template-columns: 1fr;
             }
+
+            .prototype-preview {
+                font-size: 60px;
+            }
         }
     </style>
 </head>
 <body>
-    <div class="container-demo">
-        <div class="demo-header">
-            <div class="demo-title">📈 Inversiones</div>
-            <div class="demo-subtitle">Prototipos de Interfaz - Sistema de Gestión de Trading</div>
+    <div class="container">
+        <div class="header">
+            <h1 class="header-title">🚀 Inversiones Prototipos</h1>
+            <p class="header-subtitle">Sistema Moderno de Gestión de Trading Operacional</p>
         </div>
-
-        <!-- PALETA DE COLORES -->
-        <div class="color-palette">
-            <div class="palette-title">🎨 Paleta de Colores - Azules Centralizados</div>
-            <div class="color-grid">
-                <div class="color-box" style="background-color: #0c3a7f;">
-                    <div class="color-name">Azul Oscuro</div>
-                    <div class="color-code">#0c3a7f</div>
-                </div>
-                <div class="color-box" style="background-color: #1565c0;">
-                    <div class="color-name">Azul Principal</div>
-                    <div class="color-code">#1565c0</div>
-                </div>
-                <div class="color-box" style="background-color: #2196f3;">
-                    <div class="color-name">Azul Claro</div>
-                    <div class="color-code">#2196f3</div>
-                </div>
-                <div class="color-box" style="background-color: #bbdefb;">
-                    <div class="color-name">Azul Muy Claro</div>
-                    <div class="color-code">#bbdefb</div>
-                    <div style="color: #666; margin-top: 8px;">← Para backgrounds</div>
-                </div>
-                <div class="color-box" style="background-color: #4caf50;">
-                    <div class="color-name">Verde - Éxito</div>
-                    <div class="color-code">#4caf50</div>
-                </div>
-                <div class="color-box" style="background-color: #f44336;">
-                    <div class="color-name">Rojo - Peligro</div>
-                    <div class="color-code">#f44336</div>
-                </div>
-            </div>
-            <div class="info-box" style="margin-top: 24px;">
-                <div class="info-title">💡 Cómo cambiar la paleta</div>
-                <div class="info-list">
-                    <li>Todos los colores están centralizados en <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">assets/css/paleta.css</code></li>
-                    <li>Usa variables CSS (ej: <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">var(--color-primary)</code>) en todo el código</li>
-                    <li>Para cambiar el azul: edita <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">--color-primary-dark</code> y otros colores en la sección :root</li>
-                    <li>Los cambios se aplican automáticamente en todo el sitio</li>
-                </div>
-            </div>
-        </div>
-
-        <!-- PROTOTIPOS -->
-        <h2 style="font-size: 28px; margin-bottom: 32px; color: var(--color-dark);">📱 Prototipos Disponibles</h2>
 
         <div class="prototypes-grid">
-            <!-- 1. LOGIN -->
+            <!-- Login Prototipo -->
             <div class="prototype-card">
-                <div class="prototype-preview">🔐</div>
+                <div class="prototype-preview gradient-1">
+                    🔐
+                    <div class="prototype-badge">1</div>
+                </div>
                 <div class="prototype-content">
-                    <div class="prototype-number">1</div>
-                    <div class="prototype-title">Login</div>
-                    <div class="prototype-description">
-                        Página de acceso al sistema con autenticación de usuario.
-                    </div>
+                    <h3 class="prototype-title">Login</h3>
+                    <p class="prototype-description">
+                        Página de autenticación moderna con soporte para Google y Github. Diseño elegante con lado decorativo.
+                    </p>
                     <ul class="prototype-features">
-                        <li>Email y contraseña</li>
-                        <li>Recordarme</li>
+                        <li>Autenticación por email</li>
+                        <li>Login social (Google, Github)</li>
+                        <li>Remember me</li>
                         <li>Recuperar contraseña</li>
-                        <li>Crear cuenta</li>
-                        <li>Gradiente azul</li>
+                        <li>Layout 2 columnas</li>
                     </ul>
                     <div class="prototype-actions">
                         <a href="01-login.html" class="view-btn" target="_blank">Ver Prototipo</a>
@@ -326,21 +249,23 @@
                 </div>
             </div>
 
-            <!-- 2. DASHBOARD -->
+            <!-- Dashboard Prototipo -->
             <div class="prototype-card">
-                <div class="prototype-preview">📊</div>
+                <div class="prototype-preview gradient-2">
+                    📊
+                    <div class="prototype-badge">2</div>
+                </div>
                 <div class="prototype-content">
-                    <div class="prototype-number">2</div>
-                    <div class="prototype-title">Dashboard Principal</div>
-                    <div class="prototype-description">
-                        Panel principal con KPIs, gráficos y últimas operaciones.
-                    </div>
+                    <h3 class="prototype-title">Dashboard</h3>
+                    <p class="prototype-description">
+                        Panel principal con sidebar, búsqueda, KPI cards coloridas, gráficos y tablas de datos en tiempo real.
+                    </p>
                     <ul class="prototype-features">
-                        <li>KPI cards (4 métricas)</li>
                         <li>Sidebar navegable</li>
-                        <li>Gráficos placeholder</li>
-                        <li>Últimas operaciones</li>
-                        <li>Responsive design</li>
+                        <li>Header con búsqueda</li>
+                        <li>KPI cards coloridas</li>
+                        <li>Gráficos interactivos</li>
+                        <li>Tabla de operaciones</li>
                     </ul>
                     <div class="prototype-actions">
                         <a href="02-dashboard.html" class="view-btn" target="_blank">Ver Prototipo</a>
@@ -348,100 +273,42 @@
                     </div>
                 </div>
             </div>
-
-            <!-- 3. NUEVA OPERACIÓN -->
-            <div class="prototype-card">
-                <div class="prototype-preview">📝</div>
-                <div class="prototype-content">
-                    <div class="prototype-number">3</div>
-                    <div class="prototype-title">Nueva Operación</div>
-                    <div class="prototype-description">
-                        Formulario completo para registrar operaciones de trading.
-                    </div>
-                    <ul class="prototype-features">
-                        <li>5 secciones organizadas</li>
-                        <li>Campos calculados</li>
-                        <li>Validación en tiempo real</li>
-                        <li>Feedback visual</li>
-                        <li>Responsive layout</li>
-                    </ul>
-                    <div class="prototype-actions">
-                        <a href="03-nueva-operacion.html" class="view-btn" target="_blank">Ver Prototipo</a>
-                        <a href="03-nueva-operacion.html" class="code-btn">Ver Código</a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 4. LISTADO DE OPERACIONES -->
-            <div class="prototype-card">
-                <div class="prototype-preview">📋</div>
-                <div class="prototype-content">
-                    <div class="prototype-number">4</div>
-                    <div class="prototype-title">Listado Operaciones</div>
-                    <div class="prototype-description">
-                        Tabla interactiva con filtros y búsqueda de operaciones.
-                    </div>
-                    <ul class="prototype-features">
-                        <li>Tabla con datos reales</li>
-                        <li>Filtros avanzados</li>
-                        <li>Búsqueda</li>
-                        <li>Paginación</li>
-                        <li>Acciones por fila</li>
-                    </ul>
-                    <div class="prototype-actions">
-                        <a href="04-listado-operaciones.html" class="view-btn" target="_blank">Ver Prototipo</a>
-                        <a href="04-listado-operaciones.html" class="code-btn">Ver Código</a>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 5. RESUMEN MENSUAL -->
-            <div class="prototype-card">
-                <div class="prototype-preview">📈</div>
-                <div class="prototype-content">
-                    <div class="prototype-number">5</div>
-                    <div class="prototype-title">Resumen Mensual</div>
-                    <div class="prototype-description">
-                        Análisis de desempeño por mes con gráficos y tablas.
-                    </div>
-                    <ul class="prototype-features">
-                        <li>KPI summary</li>
-                        <li>Cards por mes</li>
-                        <li>Gráficos comparativos</li>
-                        <li>Tabla de comparación</li>
-                        <li>Año selector</li>
-                    </ul>
-                    <div class="prototype-actions">
-                        <a href="05-resumen-mensual.html" class="view-btn" target="_blank">Ver Prototipo</a>
-                        <a href="05-resumen-mensual.html" class="code-btn">Ver Código</a>
-                    </div>
-                </div>
-            </div>
         </div>
 
-        <!-- INFORMACIÓN FINAL -->
-        <div class="info-box">
-            <div class="info-title">✨ Características de los Prototipos</div>
-            <div class="info-list">
-                <li><strong>Paleta de colores centralizada:</strong> Todos los colores se definen en <code style="background: #f0f0f0; padding: 2px 6px; border-radius: 3px;">assets/css/paleta.css</code></li>
-                <li><strong>Variables CSS:</strong> Fácil de cambiar colores, espaciados y tipografía</li>
-                <li><strong>Responsive:</strong> Se adapta a mobile, tablet y desktop</li>
-                <li><strong>Accesible:</strong> Contraste de colores y navegación clara</li>
-                <li><strong>Componentes reutilizables:</strong> Botones, formularios, cards, tablas</li>
-                <li><strong>Sin dependencias:</strong> Solo HTML y CSS puro</li>
-            </div>
+        <!-- Info Section -->
+        <div class="info-section">
+            <h2 class="info-title">✨ Características de Diseño</h2>
+            <ul class="info-list">
+                <li><strong>Diseño Moderno:</strong> Inspirado en DashSpace con colores azules profesionales</li>
+                <li><strong>Paleta Centralizada:</strong> Todos los colores definidos en <code style="background: #f0f0f0; padding: 2px 6px;">assets/css/paleta.css</code></li>
+                <li><strong>Completamente Responsive:</strong> Funciona en móvil, tablet y desktop</li>
+                <li><strong>Sin Dependencias:</strong> HTML, CSS y JavaScript puro</li>
+                <li><strong>Gradientes Elegantes:</strong> KPI cards con gradientes vibrantes</li>
+                <li><strong>Animaciones Suaves:</strong> Transiciones y hover effects profesionales</li>
+            </ul>
         </div>
 
-        <div class="info-box">
-            <div class="info-title">🚀 Próximos Pasos</div>
-            <div class="info-list">
+        <div class="info-section">
+            <h2 class="info-title">🎨 Paleta de Colores</h2>
+            <ul class="info-list">
+                <li><strong>Azul Oscuro:</strong> #0a2342 (Headers, footer)</li>
+                <li><strong>Azul Principal:</strong> #1E5BA8 (Botones, primary)</li>
+                <li><strong>Azul Claro:</strong> #2E7BC0 (Hover states)</li>
+                <li><strong>Gradientes:</strong> Azul a púrpura, azul a magenta para KPIs</li>
+                <li><strong>Accent Colors:</strong> Verde éxito, Rojo peligro, Naranja alerta</li>
+            </ul>
+        </div>
+
+        <div class="info-section">
+            <h2 class="info-title">🚀 Próximos Pasos</h2>
+            <ul class="info-list">
+                <li>Crear más prototipos (Operaciones, Análisis, Planes)</li>
                 <li>Integrar con React para componentes dinámicos</li>
                 <li>Conectar con Supabase para datos reales</li>
-                <li>Agregar JavaScript para interactividad</li>
-                <li>Crear gráficos reales con Chart.js o Recharts</li>
-                <li>Implementar validación de formularios</li>
-                <li>Agregar temas dark/light</li>
-            </div>
+                <li>Agregar gráficos interactivos con Recharts</li>
+                <li>Implementar temas dark/light</li>
+                <li>Desplegar en GitHub Pages</li>
+            </ul>
         </div>
     </div>
 </body>

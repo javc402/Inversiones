@@ -9,60 +9,85 @@
         body {
             margin: 0;
             padding: 0;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            font-family: var(--font-family-base);
             height: 100vh;
             display: flex;
             align-items: center;
             justify-content: center;
-            background: var(--gradient-primary);
-            font-family: var(--font-family-base);
         }
 
-        .login-container {
+        .login-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            width: 100%;
+            height: 100vh;
+            background: white;
+            box-shadow: var(--shadow-xl);
+        }
+
+        .login-image {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 120px;
+        }
+
+        .login-form-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: var(--spacing-3xl);
+        }
+
+        .login-form-container {
             width: 100%;
             max-width: 420px;
-            padding: var(--spacing-lg);
         }
 
-        .login-card {
-            background: var(--color-white);
-            border-radius: var(--border-radius-xl);
-            box-shadow: var(--shadow-2xl);
-            padding: var(--spacing-3xl) var(--spacing-2xl);
-            text-align: center;
+        .login-brand {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-xl);
         }
 
-        .login-logo {
-            font-size: var(--font-size-4xl);
+        .login-logo-icon {
+            width: 40px;
+            height: 40px;
+            background: var(--gradient-primary);
+            border-radius: var(--border-radius-lg);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+            font-size: 18px;
+        }
+
+        .login-brand-name {
+            font-size: var(--font-size-lg);
             font-weight: var(--font-weight-bold);
-            color: var(--color-primary);
+            color: var(--color-dark);
+        }
+
+        .login-title {
+            font-size: var(--font-size-2xl);
+            font-weight: var(--font-weight-bold);
+            color: var(--color-dark);
             margin-bottom: var(--spacing-sm);
-            letter-spacing: -1px;
         }
 
         .login-subtitle {
             font-size: var(--font-size-sm);
-            color: var(--color-gray-500);
-            margin-bottom: var(--spacing-2xl);
-            font-weight: var(--font-weight-normal);
-        }
-
-        .login-welcome {
-            font-size: var(--font-size-xl);
-            font-weight: var(--font-weight-bold);
-            color: var(--color-dark);
-            margin-bottom: var(--spacing-md);
-        }
-
-        .login-description {
-            font-size: var(--font-size-sm);
             color: var(--color-gray-600);
             margin-bottom: var(--spacing-2xl);
-            line-height: var(--line-height-relaxed);
         }
 
         .form-group {
             margin-bottom: var(--spacing-lg);
-            text-align: left;
         }
 
         .form-label {
@@ -76,13 +101,12 @@
         .form-input {
             width: 100%;
             padding: var(--spacing-md) var(--spacing-lg);
-            font-size: var(--font-size-base);
             border: 1px solid var(--color-gray-300);
             border-radius: var(--border-radius-lg);
-            background-color: var(--color-white);
-            color: var(--color-dark);
-            transition: all var(--transition);
+            font-size: var(--font-size-base);
             font-family: var(--font-family-base);
+            transition: all var(--transition);
+            background-color: var(--color-white);
         }
 
         .form-input:focus {
@@ -95,53 +119,51 @@
             color: var(--color-gray-400);
         }
 
-        .checkbox-group {
+        .form-options {
             display: flex;
+            justify-content: space-between;
             align-items: center;
             margin-bottom: var(--spacing-lg);
-            gap: var(--spacing-md);
+            font-size: var(--font-size-sm);
         }
 
-        .checkbox {
-            width: 18px;
-            height: 18px;
+        .checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: var(--spacing-sm);
+        }
+
+        .checkbox-wrapper input {
+            width: 16px;
+            height: 16px;
             cursor: pointer;
             accent-color: var(--color-primary);
         }
 
-        .checkbox-label {
-            font-size: var(--font-size-sm);
-            color: var(--color-gray-700);
+        .checkbox-wrapper label {
             cursor: pointer;
-            user-select: none;
+            color: var(--color-gray-700);
         }
 
-        .forgotten-link {
-            text-align: right;
-            margin-bottom: var(--spacing-lg);
-        }
-
-        .forgotten-link a {
-            font-size: var(--font-size-sm);
+        .forgot-link {
             color: var(--color-primary);
             text-decoration: none;
             font-weight: var(--font-weight-semibold);
-            transition: color var(--transition);
         }
 
-        .forgotten-link a:hover {
+        .forgot-link:hover {
             color: var(--color-primary-light);
         }
 
         .login-button {
             width: 100%;
             padding: var(--spacing-md) var(--spacing-lg);
-            font-size: var(--font-size-base);
-            font-weight: var(--font-weight-semibold);
             background: var(--gradient-primary);
             color: white;
             border: none;
             border-radius: var(--border-radius-lg);
+            font-size: var(--font-size-base);
+            font-weight: var(--font-weight-semibold);
             cursor: pointer;
             box-shadow: var(--shadow-md);
             transition: all var(--transition);
@@ -153,89 +175,134 @@
             transform: translateY(-2px);
         }
 
-        .login-button:active {
-            transform: translateY(0);
+        .divider {
+            text-align: center;
+            margin-bottom: var(--spacing-lg);
+            font-size: var(--font-size-sm);
+            color: var(--color-gray-500);
         }
 
-        .signup-section {
-            border-top: 1px solid var(--color-gray-200);
-            padding-top: var(--spacing-lg);
+        .divider::before,
+        .divider::after {
+            content: '';
+            display: inline-block;
+            width: 45%;
+            height: 1px;
+            background-color: var(--color-gray-300);
+            vertical-align: middle;
+        }
+
+        .divider::before {
+            margin-right: var(--spacing-md);
+        }
+
+        .divider::after {
+            margin-left: var(--spacing-md);
+        }
+
+        .social-login {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: var(--spacing-md);
+            margin-bottom: var(--spacing-lg);
+        }
+
+        .social-button {
+            padding: var(--spacing-md);
+            border: 1px solid var(--color-gray-300);
+            background-color: var(--color-white);
+            border-radius: var(--border-radius-lg);
+            cursor: pointer;
+            font-size: var(--font-size-sm);
+            font-weight: var(--font-weight-semibold);
+            color: var(--color-gray-700);
+            transition: all var(--transition);
+        }
+
+        .social-button:hover {
+            background-color: var(--color-gray-100);
+            border-color: var(--color-gray-400);
+        }
+
+        .signup-link {
+            text-align: center;
             font-size: var(--font-size-sm);
             color: var(--color-gray-600);
         }
 
-        .signup-link {
+        .signup-link a {
             color: var(--color-primary);
             text-decoration: none;
             font-weight: var(--font-weight-semibold);
-            transition: color var(--transition);
         }
 
-        .signup-link:hover {
+        .signup-link a:hover {
             color: var(--color-primary-light);
         }
 
-        @media (max-width: 640px) {
-            .login-card {
-                padding: var(--spacing-2xl) var(--spacing-lg);
+        @media (max-width: 768px) {
+            .login-wrapper {
+                grid-template-columns: 1fr;
             }
 
-            .login-logo {
-                font-size: var(--font-size-3xl);
+            .login-image {
+                display: none;
             }
 
-            .login-welcome {
-                font-size: var(--font-size-lg);
+            .login-form-wrapper {
+                padding: var(--spacing-lg);
             }
         }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-card">
-            <div class="login-logo">inversiones</div>
-            <div class="login-subtitle">Trading Management System</div>
+    <div class="login-wrapper">
+        <div class="login-image">
+            📈
+        </div>
 
-            <h1 class="login-welcome">¡Bienvenido!</h1>
-            <p class="login-description">
-                Ingresa a tu cuenta para gestionar tus operaciones de trading y analizar tu desempeño.
-            </p>
-
-            <form>
-                <div class="form-group">
-                    <label class="form-label">Correo Electrónico</label>
-                    <input 
-                        type="email" 
-                        class="form-input" 
-                        placeholder="tu@email.com"
-                        required
-                    >
+        <div class="login-form-wrapper">
+            <div class="login-form-container">
+                <div class="login-brand">
+                    <div class="login-logo-icon">inv</div>
+                    <div class="login-brand-name">Inversiones</div>
                 </div>
 
-                <div class="form-group">
-                    <label class="form-label">Contraseña</label>
-                    <input 
-                        type="password" 
-                        class="form-input" 
-                        placeholder="••••••••"
-                        required
-                    >
+                <h1 class="login-title">Welcome Back</h1>
+                <p class="login-subtitle">Please sign in to continue</p>
+
+                <form>
+                    <div class="form-group">
+                        <label class="form-label">Email Address</label>
+                        <input type="email" class="form-input" placeholder="cristina@example.com" required>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label">Password</label>
+                        <input type="password" class="form-input" placeholder="••••••••" required>
+                    </div>
+
+                    <div class="form-options">
+                        <div class="checkbox-wrapper">
+                            <input type="checkbox" id="remember" name="remember">
+                            <label for="remember">Remember me</label>
+                        </div>
+                        <a href="#forgot" class="forgot-link">Forgot Password?</a>
+                    </div>
+
+                    <button type="submit" class="login-button">Sign In</button>
+                </form>
+
+                <div class="divider">OR</div>
+
+                <div class="social-login">
+                    <button class="social-button">Google</button>
+                    <button class="social-button">Github</button>
                 </div>
 
-                <div class="checkbox-group">
-                    <input type="checkbox" id="remember" class="checkbox">
-                    <label for="remember" class="checkbox-label">Recuérdame en este dispositivo</label>
+                <div class="signup-link">
+                    Don't have Account? <a href="#signup">Create account</a>
                 </div>
-
-                <div class="forgotten-link">
-                    <a href="#forgot">¿Olvidaste tu contraseña?</a>
-                </div>
-
-                <button type="submit" class="login-button">Iniciar Sesión</button>
-            </form>
-
-            <div class="signup-section">
-                ¿No tienes cuenta? <a href="#signup" class="signup-link">Regístrate aquí</a>
             </div>
         </div>
     </div>
