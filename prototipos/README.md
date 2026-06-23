@@ -2,16 +2,16 @@
 
 ## 📋 Descripción
 
-Carpeta con prototipos HTML/CSS modernos de la interfaz del sistema de gestión de trading "Inversiones". Los prototipos están inspirados en el diseño de **DashSpace** y utilizan una **paleta de colores centralizada** que permite cambiar la temática completa desde un único archivo CSS.
+Carpeta con prototipos HTML/CSS modernos de la interfaz del sistema de gestión de trading "Inversiones". Los prototipos están completamente diseñados en **español**, inspirados en **DashSpace**, con **gráficos SVG reales** y una **paleta de colores centralizada**.
 
-## ✨ Características
+## ✨ Cambios Recientes (v2.1)
 
-- **Diseño Moderno:** Inspirado en DashSpace con colores azules profesionales
-- **Paleta Centralizada:** Todos los colores en `assets/css/paleta.css`
-- **Completamente Responsive:** Funciona en móvil, tablet y desktop
-- **Sin Dependencias:** HTML, CSS y JavaScript puro
-- **Gradientes Elegantes:** KPI cards con gradientes vibrantes
-- **Animaciones Suaves:** Transiciones y hover effects profesionales
+- ✅ **100% Español:** Toda la interfaz en idioma español
+- ✅ **Login Solo Google:** Autenticación simplificada, sin registro
+- ✅ **Gráficos SVG Reales:** Gráficos de línea y donut interactivos
+- ✅ **Diseño DashSpace:** Inspirado en el template profesional
+- ✅ **Mejor Visual:** Cards con bordes gradientes, sombras profesionales
+- ✅ **Tabla Mejorada:** Datos realistas con estados y colores
 
 ---
 
@@ -19,107 +19,169 @@ Carpeta con prototipos HTML/CSS modernos de la interfaz del sistema de gestión 
 
 ```
 prototipos/
-├── index.html                      # 📍 Página principal - Galería de prototipos
-├── 01-login.html                   # 🔐 Login - Split layout con gradiente
-├── 02-dashboard.html               # 📊 Dashboard - Sidebar, KPIs, gráficos y tabla
+├── index.html                      # 📍 Galería de prototipos (inicio)
+├── 01-login.html                   # 🔐 Login - Solo Google, 2 columnas
+├── 02-dashboard.html               # 📊 Panel - Gráficos SVG + tabla
 └── assets/
     └── css/
-        └── paleta.css              # ⭐ PALETA DE COLORES CENTRALIZADA
+        └── paleta.css              # ⭐ Colores centralizados
 ```
 
 ---
 
-## 🎨 Paleta de Colores
-
-### Archivo Central
-**`assets/css/paleta.css`** - Define todas las variables CSS del sistema
-
-### Colores Principales (Azul)
-
-```
-Azul Oscuro:    #0a2342  (Headers, sidebar)
-Azul Principal: #1E5BA8  (Botones, acciones)
-Azul Claro:     #2E7BC0  (Hover states)
-Ultra Claro:    #E8F2FF  (Backgrounds)
-```
-
-### Colores Secundarios (Estados)
-
-```
-Verde (Éxito):    #10B981
-Rojo (Peligro):   #EF4444
-Naranja (Alerta): #F59E0B
-Azul (Info):      #3B82F6
-```
-
-### Cómo Cambiar Todo el Tema
-
-1. Abre `assets/css/paleta.css`
-2. Busca las variables en `:root`
-3. Cambia los valores hex (ej: `#1E5BA8` → `#FF0000`)
-4. Todos los prototipos se actualizan automáticamente
-
----
-
-## 📱 Prototipos
+## 🚀 Prototipos
 
 ### 1. Login (`01-login.html`) 🔐
 
 **Características:**
-- Split layout (imagen izquierda, formulario derecha)
-- Gradiente vibrante en lado izquierdo
-- Campos: Email y Password
-- Checkbox "Remember me"
-- Link "Forgot Password?"
-- Botones de Login Social (Google, Github)
-- Completamente responsive
+- ✓ Autenticación solo con Google
+- ✓ Layout split (imagen izquierda, formulario derecha)
+- ✓ Gradiente vibrante en lado izquierdo
+- ✓ Información de seguridad
+- ✓ 100% español
+- ✓ Responsive automático
 
-**Acceso:**
-- Directo: Abre `01-login.html` en navegador
-- Desde galería: Click en "Ver Prototipo" en `index.html`
+**Elementos:**
+- Branding (logo + nombre)
+- Título "Bienvenido"
+- Subtítulo descriptivo
+- Caja de información de seguridad
+- Botón "Iniciar con Google"
+- Divider "o"
+- Caja de consejo
+- Footer copyright
 
 ---
 
 ### 2. Dashboard (`02-dashboard.html`) 📊
 
 **Características:**
-- **Sidebar:** Menú navegable con logo y opciones (Dashboard, Operaciones, Análisis, Planes)
-- **Header:** Búsqueda, botones de acción, avatar de usuario
-- **KPI Cards:** 4 cards con gradientes coloridos mostrando métricas
-  - Earn of Month (Azul-Púrpura)
-  - Earn Growth (Rosa-Magenta)
-  - Win Rate (Amarillo-Naranja)
-  - Risk Level (Rojo)
-- **Gráficos:** Placeholders para Line Chart y Pie Chart
-- **Tabla:** Recent Operaciones con datos de ejemplo
-- **Responsive:** Sidebar colapsable en móvil
+- ✓ Sidebar navegable con menú
+- ✓ Header con saludo personalizado
+- ✓ 4 KPI cards con gradientes coloridos
+- ✓ Gráficos SVG reales (línea y donut)
+- ✓ Tabla de operaciones recientes
+- ✓ Estados con badges de color
+- ✓ 100% español
+- ✓ Completamente responsive
 
-**Acceso:**
-- Directo: Abre `02-dashboard.html` en navegador
-- Desde galería: Click en "Ver Prototipo" en `index.html`
+**Elementos:**
+
+#### Sidebar
+- Logo y marca "Inversiones"
+- Menú "Panel" (Panel Principal, Operaciones, Análisis, Planes)
+- Menú "Herramientas" (Calendario, Mensajes, Reportes)
+- Link activo con gradiente azul
+
+#### Header
+- Saludo personalizado "¡Bienvenido de vuelta, Cristina! 👋"
+- Botones de acción (notificaciones, settings, tema)
+- Avatar de usuario
+
+#### KPI Cards
+1. **Ganancia del Mes** - $22,550 (Azul-Púrpura) ↑ +12.5%
+2. **Crecimiento** - +33% (Rosa-Magenta) ↑ +5.2%
+3. **Tasa de Éxito** - 69.5% (Amarillo) ↑ +3.1%
+4. **Riesgo en Abierto** - $2,450 (Rojo) ↑ +1.8%
+
+#### Gráficos SVG
+- **Evolución de Ganancias:** Gráfico de línea con área rellena (7 días)
+- **Distribución de Operaciones:** Donut chart con 127 operaciones distribuidas
+
+#### Tabla
+Columnas: Fecha | Par | Tipo | Estado | Razón R:R | Resultado
+
+**Datos de ejemplo:**
+- EURUSD - Éxito (+$125.50)
+- GBPUSD - Pendiente (-$85.00)
+- USDMXN - Éxito (+$210.75)
+- EURGBP - Cierre (-$42.30)
+- NZDUSD - Éxito (+$298.50)
 
 ---
 
-## 🚀 Cómo Usar
+## 🎨 Paleta de Colores
 
-### Opción 1: Abrir en Navegador Directamente
+### Archivo Central: `assets/css/paleta.css`
+
+#### Colores Principales (Azul)
 ```
-D:\Proyectos\Excel\prototipos\index.html
+--color-primary-dark:    #0a2342  (Headers, sidebar)
+--color-primary:         #1E5BA8  (Botones, acciones)
+--color-primary-light:   #2E7BC0  (Hover states)
+--color-primary-lighter: #E8F2FF  (Backgrounds)
+```
+
+#### Colores Secundarios (Estados)
+```
+--color-success:  #10B981  (Éxito, ganancias)
+--color-danger:   #EF4444  (Pérdidas, errores)
+--color-warning:  #F59E0B  (Alertas)
+--color-info:     #3B82F6  (Información)
+```
+
+#### Gradientes Utilizados
+```
+Azul-Púrpura:    #667eea → #764ba2
+Rosa-Magenta:    #f093fb → #f5576c
+Amarillo:        #ffa400 → #ffd660
+Rojo:            #ff6b6b → #ff4757
+```
+
+### Cómo Cambiar el Tema Completo
+
+1. Abre `assets/css/paleta.css`
+2. Busca la sección `:root { ... }`
+3. Modifica los valores hex
+4. **¡Todos los prototipos se actualizan automáticamente!**
+
+**Ejemplo: Cambiar a Verde**
+```css
+--color-primary-dark:    #0d5f3f;
+--color-primary:         #0d8b6f;
+--color-primary-light:   #10b981;
+```
+
+---
+
+## 📱 Responsive Design
+
+Los prototipos funcionan perfectamente en:
+
+- **Desktop:** 1024px+ (layout completo)
+- **Tablet:** 768px - 1023px (ajustes de columnas)
+- **Móvil:** < 768px (stack vertical, sidebar oculto)
+
+**Breakpoints:**
+```css
+640px  - Máquinas pequeñas
+768px  - Tablet
+1024px - Desktop
+1280px - Wide screen
+```
+
+---
+
+## 🚀 Cómo Acceder
+
+### Opción 1: Abrir en Navegador
+```
+file:///D:/Proyectos/Excel/prototipos/index.html
 ```
 
 ### Opción 2: Usar Live Server (VS Code)
-1. Instala extensión "Live Server"
+1. Instala "Live Server" en extensiones
 2. Click derecho en `index.html`
-3. Selecciona "Open with Live Server"
+3. "Open with Live Server"
 
-### Opción 3: Usar Python
+### Opción 3: Terminal Python
 ```bash
 cd D:\Proyectos\Excel\prototipos
 python -m http.server 8000
 # Accede a http://localhost:8000
 ```
 
-### Opción 4: Usar Node.js
+### Opción 4: Node.js
 ```bash
 cd D:\Proyectos\Excel\prototipos
 npx http-server
@@ -130,138 +192,97 @@ npx http-server
 
 ## 🔧 Personalización
 
-### Cambiar Paleta de Colores Completa
+### Cambiar Colores Globales
 
-1. **Edita `assets/css/paleta.css`**
-2. **Sección `:root { ... }`** - Modifica valores hex
+**Edita `assets/css/paleta.css`** - Todos los prototipos se actualizan instantáneamente.
 
-#### Ejemplo: Cambiar a Tema Verde
+### Agregar Nuevas Páginas
 
-```css
-:root {
-    --color-primary-dark: #0d5f3f;
-    --color-primary: #0d8b6f;
-    --color-primary-light: #10b981;
-    --color-primary-lighter: #d1fae5;
-    /* ... resto de variables ... */
-}
-```
+1. Crea `03-nueva-pagina.html`
+2. Copia estructura de `02-dashboard.html`
+3. Reemplaza contenido
+4. Vincula desde `index.html`
 
-#### Ejemplo: Cambiar a Tema Rojo
+### Componentes Disponibles
 
-```css
-:root {
-    --color-primary-dark: #7f0c0c;
-    --color-primary: #dc2626;
-    --color-primary-light: #ef4444;
-    --color-primary-lighter: #fee2e2;
-    /* ... resto de variables ... */
-}
-```
-
-### Agregar Nuevos Componentes
-
-Todos los componentes están disponibles en `paleta.css`:
-- `.btn` - Botones con variantes
-- `.card` - Tarjetas
-- `.form-group` - Grupos de formulario
-- `.alert` - Alertas
-- `.badge` - Badges
-- `.table` - Tablas
+En `paleta.css` encontrarás:
+- `.btn` y variantes (primary, secondary, success, danger, lg, sm)
+- `.card`, `.card-header`, `.card-body`, `.card-footer`
+- `.form-group`, `.form-label`, `.form-input`, `.form-select`
+- `.alert` y variantes (success, warning, danger, info)
+- `.badge` y variantes de colores
+- `.table`, `.table-responsive`
+- `.sidebar`, `.header`, `.main-content`
 
 ---
 
-## 📊 Componentes Disponibles
+## 📊 Gráficos SVG
 
-### Botones
-```html
-<button class="btn btn-primary">Primary</button>
-<button class="btn btn-secondary">Secondary</button>
-<button class="btn btn-success">Success</button>
-<button class="btn btn-danger">Danger</button>
-```
+Los gráficos están implementados con **SVG inline** sin dependencias:
 
-### Cards
-```html
-<div class="card">
-    <div class="card-header">Título</div>
-    <div class="card-body">Contenido</div>
-    <div class="card-footer">Pie</div>
-</div>
-```
+### Gráfico de Línea
+- Área rellena con gradiente
+- 9 puntos de datos (7 días)
+- Labels de días
+- Grid de fondo
 
-### Alerts
-```html
-<div class="alert alert-success">Éxito</div>
-<div class="alert alert-warning">Alerta</div>
-<div class="alert alert-danger">Error</div>
-```
+### Gráfico Donut
+- 4 segmentos de color
+- Centro con texto (cantidad + label)
+- Leyenda interactiva
+- Proporciones realistas
 
-### Badges
-```html
-<span class="badge badge-primary">Primary</span>
-<span class="badge badge-success">Success</span>
-<span class="badge badge-danger">Danger</span>
-```
+**Ventajas:**
+- Sin librerías externas
+- Escalables (responsive)
+- Editable con código
+- Rápido de cargar
 
 ---
 
-## 📐 Responsive Breakpoints
+## 🎯 Próximas Mejoras
 
-Los prototipos son responsive en múltiples resoluciones:
-
-```
-Ultra móvil:  < 640px
-Móvil:        ≥ 640px
-Tablet:       ≥ 768px
-Desktop:      ≥ 1024px
-Wide:         ≥ 1280px
-```
-
-Todos adaptan automáticamente:
-- Sidebar se oculta en móvil
-- Grid se reorganiza
-- Textos se redimensionan
-- Espaciado se ajusta
+- [ ] Crear más páginas (Operaciones, Análisis, Planes)
+- [ ] Integrar con React
+- [ ] Conectar con Supabase
+- [ ] Gráficos interactivos con D3.js o Chart.js
+- [ ] Tema dark/light
+- [ ] Despliegue en GitHub Pages
+- [ ] Formularios funcionales
+- [ ] Animations.css avanzadas
 
 ---
 
-## 🎯 Próximos Pasos
+## 📚 Documentación
 
-1. **Crear más prototipos** (Operaciones, Análisis, Planes)
-2. **Convertir a React** con componentes reutilizables
-3. **Integrar gráficos interactivos** (Recharts)
-4. **Conectar con Supabase** para datos reales
-5. **Agregar tema dark/light**
-6. **Desplegar en GitHub Pages**
+- **[README.md](../README.md)** - Proyecto general
+- **[ESTRUCTURA_EXCEL.md](../analisis/ESTRUCTURA_EXCEL.md)** - Análisis de datos
+- **[PLAN_OPTIMIZACION.md](../analisis/PLAN_OPTIMIZACION.md)** - Roadmap
+- **[GIT_WORKFLOW.md](../analisis/GIT_WORKFLOW.md)** - Estrategia Git
 
 ---
 
-## 📚 Archivos de Soporte
-
-- **Documentación General:** `README.md` (en raíz del proyecto)
-- **Plan de Optimización:** `analisis/PLAN_OPTIMIZACION.md`
-- **Estructura Excel:** `analisis/ESTRUCTURA_EXCEL.md`
-- **Git Workflow:** `analisis/GIT_WORKFLOW.md`
-
----
-
-## ✅ Validación
+## ✅ Estado
 
 Todos los prototipos han sido:
 - ✓ Validados en navegadores modernos
-- ✓ Testeados en resoluciones múltiples
-- ✓ Verificados sin errores de consola
-- ✓ Optimizados para rendimiento
+- ✓ Testeados responsive (móvil, tablet, desktop)
+- ✓ Verificados sin errores
+- ✓ Optimizados en rendimiento
 - ✓ Documentados completamente
+- ✓ 100% en español
+- ✓ Con gráficos SVG funcionales
 
 ---
 
-## 📝 Licencia
+## 📝 Información
 
-Proyecto universitario - Uso educativo
-
----
-
+**Proyecto:** Inversiones - Sistema de Gestión de Trading  
+**Versión:** 2.1 (Google OAuth + SVG Charts)  
 **Última actualización:** Junio 2026  
-**Versión:** 2.0 (DashSpace Redesign)
+**Idioma:** Español  
+**Licencia:** Proyecto Universitario
+
+---
+
+**¿Necesitas ayuda?** Revisa los archivos HTML directamente - el código está bien comentado y es fácil de entender.
