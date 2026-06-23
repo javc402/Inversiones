@@ -11,6 +11,7 @@ jobs:
   sonarqube:
     name: SonarQube
     runs-on: ubuntu-latest
+    environment: Inversiones
     steps:
       - uses: actions/checkout@v4
         with:
