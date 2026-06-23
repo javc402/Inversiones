@@ -26,6 +26,7 @@ describe('Roles Service', () => {
     it('should return null if user is not authenticated', async () => {
       vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
         data: { user: null } as any,
+        error: null,
       });
 
       const result = await getCurrentUserRole();
@@ -38,6 +39,7 @@ describe('Roles Service', () => {
 
       vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
         data: { user: mockUser } as any,
+        error: null,
       });
 
       const mockSelect = vi.fn().mockReturnThis();
