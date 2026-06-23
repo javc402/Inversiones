@@ -24,7 +24,8 @@ src/
     ├── formatters.ts      # Formateadores
     ├── constants.ts       # Constantes
     └── helpers.ts         # Helpers generales
-```
+``` 
+
 
 ## 🗄️ Base de Datos
 
