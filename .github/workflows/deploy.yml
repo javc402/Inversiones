@@ -1,4 +1,4 @@
-name: Deploy - Despliegue a Produccion
+name: Deploy - Produccion y Dev
 
 on:
   push:
@@ -29,24 +29,33 @@ jobs:
           cd frontend
           npm ci
 
-      - name: Create environment file
+      - name: Build PRODUCCION (ruta raiz)
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > frontend/.env.production
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> frontend/.env.production
           echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" >> frontend/.env.production
-
-      - name: Build
-        run: |
           cd frontend
-          npm run build
+          VITE_BASE_PATH=/Inversiones/ npm run build
+          mkdir -p ../out
+          cp -r dist/* ../out/
+
+      - name: Build DESARROLLO (ruta /dev)
+        run: |
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL_DEV }}" > frontend/.env.production
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY_DEV }}" >> frontend/.env.production
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL_DEV }}" >> frontend/.env.production
+          cd frontend
+          VITE_BASE_PATH=/Inversiones/dev/ npm run build
+          mkdir -p ../out/dev
+          cp -r dist/* ../out/dev/
 
       - name: Add .nojekyll
-        run: touch frontend/dist/.nojekyll
+        run: touch out/.nojekyll
 
       - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
-          path: ./frontend/dist
+          path: ./out
 
   deploy:
     runs-on: ubuntu-latest

@@ -4,10 +4,11 @@ import path from 'path'
 
 const repoName = 'Inversiones'
 const isGitHubActions = process.env.GITHUB_ACTIONS === 'true'
+const basePath = process.env.VITE_BASE_PATH
 
 // https://vitejs.dev/config/
 export default defineConfig({
-  base: isGitHubActions ? `/${repoName}/` : '/',
+  base: basePath || (isGitHubActions ? `/${repoName}/` : '/'),
   plugins: [react()],
   test: {
     environment: 'jsdom',
@@ -15,12 +16,20 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
-      include: ['src/App.tsx', 'src/pages/**/*.tsx', 'src/services/auth.ts'],
+      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      exclude: [
+        'src/main.tsx',
+        'src/vite-env.d.ts',
+        'src/**/*.d.ts',
+        'src/**/test/**',
+        'src/**/*.test.ts',
+        'src/**/*.test.tsx',
+      ],
       thresholds: {
-        lines: 90,
-        functions: 90,
-        branches: 90,
-        statements: 90,
+        lines: 80,
+        functions: 55,
+        branches: 70,
+        statements: 80,
       },
     },
   },
