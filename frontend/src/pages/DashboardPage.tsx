@@ -75,18 +75,9 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
   }, []);
 
   return (
-    <main className="dashboard-layout">
-      <header className="dashboard-header">
-        <div>
-          <h1>Dashboard de Inversiones</h1>
-          <p>{userEmail}</p>
-        </div>
-        <button className="secondary-btn" type="button" onClick={onSignOut}>
-          Cerrar sesion
-        </button>
-      </header>
-
-      <nav className="dashboard-menu" aria-label="Menu del dashboard">
+    <main className="dashboard-shell">
+      <aside className="dashboard-sidebar" aria-label="Menu lateral del dashboard">
+        <h2>Menu</h2>
         <button
           type="button"
           className={`menu-btn ${activeTab === 'resumen' ? 'active' : ''}`}
@@ -103,12 +94,23 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
             Gestionar usuarios
           </button>
         )}
-      </nav>
+      </aside>
 
-      {activeTab === 'usuarios' && isAdmin ? (
-        <AdminPanel />
-      ) : (
-        <>
+      <section className="dashboard-layout">
+        <header className="dashboard-header">
+          <div>
+            <h1>Dashboard de Inversiones</h1>
+            <p>{userEmail}</p>
+          </div>
+          <button className="secondary-btn" type="button" onClick={onSignOut}>
+            Cerrar sesion
+          </button>
+        </header>
+
+        {activeTab === 'usuarios' && isAdmin ? (
+          <AdminPanel />
+        ) : (
+          <>
           <section className="kpi-grid">
             <article className="kpi-card">
               <h2>Ganancia del mes</h2>
@@ -196,8 +198,9 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
               </table>
             </div>
           </section>
-        </>
-      )}
+          </>
+        )}
+      </section>
     </main>
   );
 }
