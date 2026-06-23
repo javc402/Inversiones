@@ -29,6 +29,12 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Create environment file
+        run: |
+          echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > frontend/.env.production
+          echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> frontend/.env.production
+          echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" >> frontend/.env.production
+
       - name: Build
         run: |
           cd frontend
