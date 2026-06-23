@@ -85,15 +85,13 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
         >
           Resumen
         </button>
-        {isAdmin && (
-          <button
-            type="button"
-            className={`menu-btn ${activeTab === 'usuarios' ? 'active' : ''}`}
-            onClick={() => setActiveTab('usuarios')}
-          >
-            Gestionar usuarios
-          </button>
-        )}
+        <button
+          type="button"
+          className={`menu-btn ${activeTab === 'usuarios' ? 'active' : ''}`}
+          onClick={() => setActiveTab('usuarios')}
+        >
+          Gestionar usuarios
+        </button>
       </aside>
 
       <section className="dashboard-layout">
@@ -107,8 +105,17 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
           </button>
         </header>
 
-        {activeTab === 'usuarios' && isAdmin ? (
-          <AdminPanel />
+        {activeTab === 'usuarios' ? (
+          isAdmin ? (
+            <AdminPanel />
+          ) : (
+            <section className="table-card restricted-card">
+              <h2>Gestionar usuarios</h2>
+              <p>
+                Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.
+              </p>
+            </section>
+          )
         ) : (
           <>
           <section className="kpi-grid">

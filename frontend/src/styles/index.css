@@ -211,6 +211,11 @@ body {
   color: #ffffff;
 }
 
+.restricted-card p {
+  margin: 10px 0 0;
+  color: #475569;
+}
+
 .kpi-grid {
   display: grid;
   gap: 14px;
