@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -11,11 +12,15 @@ import {
   YAxis,
   Cell,
 } from 'recharts';
+import AdminPanel from '@components/AdminPanel';
+import { getCurrentUserRole, Role } from '@services/roles';
 
 interface DashboardPageProps {
   userEmail: string;
   onSignOut: () => Promise<void>;
 }
+
+type DashboardTab = 'resumen' | 'usuarios';
 
 const monthlyProfitData = [
   { month: 'Ene', amount: 1800 },
@@ -42,6 +47,33 @@ const recentTrades = [
 ];
 
 export default function DashboardPage({ userEmail, onSignOut }: Readonly<DashboardPageProps>) {
+  const [activeTab, setActiveTab] = useState<DashboardTab>('resumen');
+  const [userRole, setUserRole] = useState<Role | null>(null);
+  const isAdmin = userRole?.name === 'admin';
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadRole() {
+      try {
+        const role = await getCurrentUserRole();
+        if (isMounted) {
+          setUserRole(role);
+        }
+      } catch {
+        if (isMounted) {
+          setUserRole(null);
+        }
+      }
+    }
+
+    loadRole();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   return (
     <main className="dashboard-layout">
       <header className="dashboard-header">
@@ -54,93 +86,118 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
         </button>
       </header>
 
-      <section className="kpi-grid">
-        <article className="kpi-card">
-          <h2>Ganancia del mes</h2>
-          <p className="kpi-value">$22,550</p>
-          <span className="kpi-trend positive">+33%</span>
-        </article>
-        <article className="kpi-card">
-          <h2>Tasa de exito</h2>
-          <p className="kpi-value">69.5%</p>
-          <span className="kpi-trend positive">+4.2%</span>
-        </article>
-        <article className="kpi-card">
-          <h2>Riesgo abierto</h2>
-          <p className="kpi-value">$2,450</p>
-          <span className="kpi-trend neutral">Controlado</span>
-        </article>
-      </section>
+      <nav className="dashboard-menu" aria-label="Menu del dashboard">
+        <button
+          type="button"
+          className={`menu-btn ${activeTab === 'resumen' ? 'active' : ''}`}
+          onClick={() => setActiveTab('resumen')}
+        >
+          Resumen
+        </button>
+        {isAdmin && (
+          <button
+            type="button"
+            className={`menu-btn ${activeTab === 'usuarios' ? 'active' : ''}`}
+            onClick={() => setActiveTab('usuarios')}
+          >
+            Gestionar usuarios
+          </button>
+        )}
+      </nav>
 
-      <section className="chart-grid">
-        <article className="chart-card">
-          <h2>Evolucion de ganancias</h2>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyProfitData}>
-                <CartesianGrid strokeDasharray="4 4" stroke="#dbeafe" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="amount" stroke="#1e5ba8" fill="#bfdbfe" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
+      {activeTab === 'usuarios' && isAdmin ? (
+        <AdminPanel />
+      ) : (
+        <>
+          <section className="kpi-grid">
+            <article className="kpi-card">
+              <h2>Ganancia del mes</h2>
+              <p className="kpi-value">$22,550</p>
+              <span className="kpi-trend positive">+33%</span>
+            </article>
+            <article className="kpi-card">
+              <h2>Tasa de exito</h2>
+              <p className="kpi-value">69.5%</p>
+              <span className="kpi-trend positive">+4.2%</span>
+            </article>
+            <article className="kpi-card">
+              <h2>Riesgo abierto</h2>
+              <p className="kpi-value">$2,450</p>
+              <span className="kpi-trend neutral">Controlado</span>
+            </article>
+          </section>
 
-        <article className="chart-card">
-          <h2>Distribucion de operaciones</h2>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distributionData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  innerRadius={56}
-                >
-                  {distributionData.map((item, index) => (
-                    <Cell key={item.name} fill={pieColors[index % pieColors.length]} />
+          <section className="chart-grid">
+            <article className="chart-card">
+              <h2>Evolucion de ganancias</h2>
+              <div className="chart-wrapper">
+                <ResponsiveContainer width="100%" height="100%">
+                  <AreaChart data={monthlyProfitData}>
+                    <CartesianGrid strokeDasharray="4 4" stroke="#dbeafe" />
+                    <XAxis dataKey="month" />
+                    <YAxis />
+                    <Tooltip />
+                    <Area type="monotone" dataKey="amount" stroke="#1e5ba8" fill="#bfdbfe" strokeWidth={2} />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+
+            <article className="chart-card">
+              <h2>Distribucion de operaciones</h2>
+              <div className="chart-wrapper">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={distributionData}
+                      dataKey="value"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      innerRadius={56}
+                    >
+                      {distributionData.map((item, index) => (
+                        <Cell key={item.name} fill={pieColors[index % pieColors.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </article>
+          </section>
+
+          <section className="table-card">
+            <h2>Operaciones recientes</h2>
+            <div className="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fecha</th>
+                    <th>Par</th>
+                    <th>Tipo</th>
+                    <th>Resultado</th>
+                    <th>Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTrades.map((trade) => (
+                    <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                      <td>{trade.date}</td>
+                      <td>{trade.pair}</td>
+                      <td>{trade.type}</td>
+                      <td className={trade.result.startsWith('+') ? 'positive' : 'negative'}>{trade.result}</td>
+                      <td>{trade.status}</td>
+                    </tr>
                   ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-        </article>
-      </section>
-
-      <section className="table-card">
-        <h2>Operaciones recientes</h2>
-        <div className="table-wrapper">
-          <table>
-            <thead>
-              <tr>
-                <th>Fecha</th>
-                <th>Par</th>
-                <th>Tipo</th>
-                <th>Resultado</th>
-                <th>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {recentTrades.map((trade) => (
-                <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
-                  <td>{trade.date}</td>
-                  <td>{trade.pair}</td>
-                  <td>{trade.type}</td>
-                  <td className={trade.result.startsWith('+') ? 'positive' : 'negative'}>{trade.result}</td>
-                  <td>{trade.status}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        </>
+      )}
     </main>
   );
 }
