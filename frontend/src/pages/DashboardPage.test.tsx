@@ -73,12 +73,39 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Panel de Administración')).toBeInTheDocument()
   })
 
+  it('permite volver a resumen desde gestionar usuarios', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-admin',
+      name: 'admin',
+      description: 'Administrador',
+    })
+
+    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Resumen' }))
+
+    expect(screen.getByText('Operaciones recientes')).toBeInTheDocument()
+  })
+
   it('muestra mensaje de acceso restringido para usuario no admin', async () => {
     getCurrentUserRoleMock.mockResolvedValueOnce({
       id: 'role-user',
       name: 'user',
       description: 'Usuario',
     })
+
+    render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
+
+    expect(
+      screen.getByText('Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.')
+    ).toBeInTheDocument()
+  })
+
+  it('mantiene vista restringida si falla la carga del rol', async () => {
+    getCurrentUserRoleMock.mockRejectedValueOnce(new Error('role fetch failed'))
 
     render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
