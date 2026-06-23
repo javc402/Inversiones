@@ -14,7 +14,7 @@ export default defineConfig({
     setupFiles: './src/test/setup.ts',
     coverage: {
       provider: 'v8',
-      reporter: ['text', 'html'],
+      reporter: ['text', 'html', 'lcov'],
       include: ['src/App.tsx', 'src/pages/**/*.tsx', 'src/services/auth.ts'],
       thresholds: {
         lines: 90,
