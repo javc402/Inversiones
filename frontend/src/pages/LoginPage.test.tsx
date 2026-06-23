@@ -71,6 +71,20 @@ describe('LoginPage', () => {
     })
   })
 
+  it('muestra mensaje generico cuando el error no es instancia de Error', async () => {
+    const user = userEvent.setup()
+    authMocks.signInWithEmail.mockRejectedValueOnce('error-desconocido')
+    render(<LoginPage />)
+
+    await user.type(screen.getByLabelText('Correo electrónico'), 'demo@correo.com')
+    await user.type(screen.getByLabelText('Contraseña'), '123456')
+    await user.click(screen.getByRole('button', { name: 'Entrar' }))
+
+    await waitFor(() => {
+      expect(screen.getByText('No fue posible autenticar en este momento.')).toBeInTheDocument()
+    })
+  })
+
   it('crea cuenta y solicita confirmacion por correo cuando no hay sesion', async () => {
     const user = userEvent.setup()
     authMocks.signUpWithEmail.mockResolvedValueOnce({ session: null })
@@ -85,6 +99,16 @@ describe('LoginPage', () => {
       expect(authMocks.signUpWithEmail).toHaveBeenCalledWith('nuevo@correo.com', '123456')
     })
     expect(screen.getByText('Cuenta creada. Revisa tu correo para confirmar tu cuenta.')).toBeInTheDocument()
+  })
+
+  it('permite alternar de crear cuenta a iniciar sesion', async () => {
+    const user = userEvent.setup()
+    render(<LoginPage />)
+
+    await user.click(screen.getByRole('button', { name: 'Crear cuenta' }))
+    await user.click(screen.getByRole('button', { name: 'Iniciar sesión' }))
+
+    expect(screen.getByRole('button', { name: 'Entrar' })).toBeInTheDocument()
   })
 
   it('crea cuenta con inicio de sesion inmediato cuando Supabase retorna session', async () => {

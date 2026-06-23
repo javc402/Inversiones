@@ -3,7 +3,19 @@ import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import AdminPanel from '@components/AdminPanel';
 import * as rolesService from '@services/roles';
 
-vi.mock('@services/roles');
+const rolesMocks = vi.hoisted(() => ({
+  listAllUsers: vi.fn(),
+  updateUserStatus: vi.fn(),
+  assignAdminRole: vi.fn(),
+  removeAdminRole: vi.fn(),
+}));
+
+vi.mock('@services/roles', () => ({
+  listAllUsers: rolesMocks.listAllUsers,
+  updateUserStatus: rolesMocks.updateUserStatus,
+  assignAdminRole: rolesMocks.assignAdminRole,
+  removeAdminRole: rolesMocks.removeAdminRole,
+}));
 
 describe('AdminPanel Component', () => {
   beforeEach(() => {
