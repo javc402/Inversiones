@@ -1,0 +1,44 @@
+name: CI - Integración Continua
+
+on:
+  push:
+    branches: [dev, release, main]
+  pull_request:
+    branches: [dev, release, main]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [18.x, 22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Install dependencies (Frontend)
+        run: |
+          cd frontend
+          npm ci
+
+      - name: Lint
+        run: |
+          cd frontend
+          npm run lint
+
+      - name: Build
+        run: |
+          cd frontend
+          npm run build
+
+      - name: Run tests (cuando estén disponibles)
+        run: |
+          cd frontend
+          npm run test -- --run 2>/dev/null || true
+        continue-on-error: true
