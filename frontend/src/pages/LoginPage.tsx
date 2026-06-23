@@ -15,7 +15,12 @@ export default function LoginPage() {
 
   const isSignIn = mode === 'signin';
   const isSignUp = mode === 'signup';
-  const submitLabel = loading ? 'Procesando...' : isSignIn ? 'Entrar' : 'Crear cuenta';
+  let submitLabel = 'Crear cuenta';
+  if (loading) {
+    submitLabel = 'Procesando...';
+  } else if (isSignIn) {
+    submitLabel = 'Entrar';
+  }
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
