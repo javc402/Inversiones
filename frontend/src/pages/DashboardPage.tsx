@@ -13,6 +13,7 @@ import {
   Cell,
 } from 'recharts';
 import AdminPanel from '@components/AdminPanel';
+import AccountsModule from '@components/AccountsModule';
 import { getCurrentUserRole, Role } from '@services/roles';
 
 interface DashboardPageProps {
@@ -20,7 +21,7 @@ interface DashboardPageProps {
   onSignOut: () => Promise<void>;
 }
 
-type DashboardTab = 'resumen' | 'usuarios';
+type DashboardTab = 'resumen' | 'cuentas' | 'usuarios';
 
 const monthlyProfitData = [
   { month: 'Ene', amount: 1800 },
@@ -181,6 +182,10 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
     }
   }
 
+  if (activeTab === 'cuentas') {
+    mainContent = <AccountsModule />;
+  }
+
   return (
     <main className="dashboard-shell">
       <aside className="dashboard-sidebar" aria-label="Menu lateral del dashboard">
@@ -191,6 +196,13 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
           onClick={() => setActiveTab('resumen')}
         >
           Resumen
+        </button>
+        <button
+          type="button"
+          className={`menu-btn ${activeTab === 'cuentas' ? 'active' : ''}`}
+          onClick={() => setActiveTab('cuentas')}
+        >
+          Gestionar cuentas
         </button>
         <button
           type="button"

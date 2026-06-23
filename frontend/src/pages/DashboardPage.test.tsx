@@ -9,6 +9,10 @@ vi.mock('@components/AdminPanel', () => ({
   default: () => React.createElement('div', null, 'Panel de Administración'),
 }))
 
+vi.mock('@components/AccountsModule', () => ({
+  default: () => React.createElement('div', null, 'Modulo de Cuentas'),
+}))
+
 vi.mock('@services/roles', () => ({
   getCurrentUserRole: getCurrentUserRoleMock,
 }))
@@ -41,6 +45,32 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
+  })
+
+  it('muestra menu de gestionar cuentas para cualquier rol', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
+  })
+
+  it('muestra modulo de cuentas al seleccionar Gestionar cuentas', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar cuentas' }))
+
+    expect(screen.getByText('Modulo de Cuentas')).toBeInTheDocument()
   })
 
   it('muestra informacion principal y email del usuario', () => {

@@ -1,0 +1,145 @@
+.accounts-module {
+  display: grid;
+  gap: 14px;
+}
+
+.accounts-toolbar {
+  background-color: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  gap: 10px;
+  align-items: center;
+}
+
+.accounts-new-btn {
+  margin-top: 0;
+  width: auto;
+}
+
+.accounts-search,
+.accounts-filter {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.accounts-error,
+.accounts-loading,
+.accounts-empty {
+  background-color: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 14px;
+  margin: 0;
+}
+
+.accounts-error {
+  border-color: #fecaca;
+  color: #991b1b;
+  background-color: #fef2f2;
+}
+
+.accounts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 14px;
+}
+
+.account-card {
+  background-color: #ffffff;
+  border: 1px solid #dbeafe;
+  border-radius: 14px;
+  padding: 14px;
+  display: grid;
+  gap: 6px;
+}
+
+.account-card h3 {
+  margin: 0 0 4px;
+  color: #0a2342;
+}
+
+.account-card p {
+  margin: 0;
+  color: #334155;
+  font-size: 14px;
+}
+
+.account-card-actions {
+  margin-top: 8px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.accounts-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.45);
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  z-index: 60;
+}
+
+.accounts-modal {
+  width: min(920px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  background-color: #ffffff;
+  border-radius: 14px;
+  border: 1px solid #bfdbfe;
+  padding: 18px;
+}
+
+.accounts-modal h2 {
+  margin: 0 0 14px;
+  color: #0a2342;
+}
+
+.accounts-form {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(2, minmax(220px, 1fr));
+}
+
+.accounts-form label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  color: #1e293b;
+}
+
+.accounts-form input,
+.accounts-form select,
+.accounts-form textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 10px;
+  padding: 10px 12px;
+  font-size: 14px;
+}
+
+.accounts-notes-field {
+  grid-column: 1 / -1;
+}
+
+.accounts-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+@media (max-width: 900px) {
+  .accounts-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .accounts-form {
+    grid-template-columns: 1fr;
+  }
+}
