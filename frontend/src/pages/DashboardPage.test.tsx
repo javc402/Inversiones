@@ -1,5 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage from './DashboardPage'
 
@@ -39,6 +39,11 @@ vi.mock('recharts', () => {
 })
 
 describe('DashboardPage', () => {
+  beforeEach(() => {
+    localStorage.clear()
+    vi.clearAllMocks()
+  })
+
   it('muestra menu de gestionar usuarios solo para admin', async () => {
     getCurrentUserRoleMock.mockResolvedValueOnce({
       id: 'role-admin',
@@ -99,7 +104,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(screen.getByText('Dashboard de Inversiones')).toBeInTheDocument()
+    expect(screen.getByText('Inversiones')).toBeInTheDocument()
     expect(screen.getByText('usuario@demo.com')).toBeInTheDocument()
     expect(screen.getByText('Ganancia del mes')).toBeInTheDocument()
     expect(screen.getByText('Operaciones recientes')).toBeInTheDocument()

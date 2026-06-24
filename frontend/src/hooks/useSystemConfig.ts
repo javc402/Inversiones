@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@lib/supabase';
+import { assertCurrentUserIsAdmin } from '@services/roles';
 
 export interface ConfigItem {
   id: string;
@@ -35,6 +36,30 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 
 const STORAGE_KEY = 'inversiones_system_config_cache';
 const STORAGE_TS_KEY = 'inversiones_system_config_cache_ts';
+
+async function logSystemConfigActivity(
+  action: 'system_config.update',
+  metadata: Record<string, unknown>
+): Promise<void> {
+  if (import.meta.env.MODE === 'test') return;
+
+  try {
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
+    if (!user) return;
+
+    await supabase.from('activity_logs').insert({
+      user_id: user.id,
+      action,
+      target_user_id: user.id,
+      metadata,
+    });
+  } catch (error) {
+    console.error('Error writing system config activity log:', error);
+  }
+}
 
 function loadLocalCache(): SystemConfig | null {
   try {
@@ -135,56 +160,69 @@ export function useSystemConfig() {
     void fetchConfig();
   }, []);
 
-  const updateConfig = useCallback((next: SystemConfig) => {
+  const updateConfig = useCallback(async (next: SystemConfig) => {
+    if (import.meta.env.MODE !== 'test') {
+      await assertCurrentUserIsAdmin();
+    }
+
     setConfigState(next);
 
     saveLocalCache(next, Date.now());
 
     if (import.meta.env.MODE === 'test') return;
 
-    void (async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const db = supabase as any;
+    const changedKeys = (['accountTypes', 'platforms', 'currencies'] as const).filter((key) => {
+      return JSON.stringify(config[key]) !== JSON.stringify(next[key]);
+    });
 
-      let persisted = false;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const db = supabase as any;
 
+    let persisted = false;
+
+    try {
+      const rpcResult = await db.rpc('save_system_config', {
+        config: {
+          accountTypes: next.accountTypes,
+          platforms: next.platforms,
+          currencies: next.currencies,
+        },
+      });
+
+      persisted = !rpcResult?.error;
+    } catch {
+      persisted = false;
+    }
+
+    if (!persisted) {
       try {
-        const rpcResult = await db.rpc('save_system_config', {
-          config: {
-            accountTypes: next.accountTypes,
-            platforms: next.platforms,
-            currencies: next.currencies,
-          },
-        });
+        const payload = [
+          { key: 'accountTypes', value: next.accountTypes, updated_at: new Date().toISOString() },
+          { key: 'platforms', value: next.platforms, updated_at: new Date().toISOString() },
+          { key: 'currencies', value: next.currencies, updated_at: new Date().toISOString() },
+        ];
 
-        persisted = !rpcResult?.error;
+        const fallback = await db
+          .from('system_config')
+          .upsert(payload, { onConflict: 'key' });
+
+        persisted = !fallback?.error;
       } catch {
         persisted = false;
       }
+    }
 
-      if (!persisted) {
-        try {
-          const payload = [
-            { key: 'accountTypes', value: next.accountTypes, updated_at: new Date().toISOString() },
-            { key: 'platforms', value: next.platforms, updated_at: new Date().toISOString() },
-            { key: 'currencies', value: next.currencies, updated_at: new Date().toISOString() },
-          ];
+    if (!persisted) {
+      throw new Error('No se pudo guardar la configuración en este momento. Intenta de nuevo.');
+    }
 
-          const fallback = await db
-            .from('system_config')
-            .upsert(payload, { onConflict: 'key' });
-
-          persisted = !fallback?.error;
-        } catch {
-          persisted = false;
-        }
-      }
-
-      if (!persisted) {
-        console.error('No se pudo persistir system_config en Supabase. Se conserva cache local.');
-      }
-    })();
-  }, []);
+    await logSystemConfigActivity('system_config.update', {
+      changedKeys,
+      accountTypesCount: next.accountTypes.length,
+      platformsCount: next.platforms.length,
+      currenciesCount: next.currencies.length,
+    });
+  }, [config]);
 
   return { config, updateConfig };
 }

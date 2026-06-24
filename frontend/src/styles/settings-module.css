@@ -34,7 +34,9 @@
 }
 
 .settings-nav-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   width: 100%;
   text-align: left;
   background: transparent;
@@ -46,6 +48,12 @@
   color: #3a5a7c;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
+}
+
+.settings-nav-icon {
+  font-size: 18px;
+  line-height: 1;
+  flex: 0 0 auto;
 }
 
 .settings-nav-item:hover:not(.active) {

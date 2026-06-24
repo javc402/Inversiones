@@ -2,24 +2,39 @@ import { Suspense, lazy, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@lib/supabase';
 import { signOut } from '@services/auth';
+import { getCurrentUserRole, Role } from '@services/roles';
 
 const DashboardPage = lazy(() => import('@pages/DashboardPage'));
 const LoginPage = lazy(() => import('@pages/LoginPage'));
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
+  const [userRole, setUserRole] = useState<Role | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
+
+    async function resolveRole(activeSession: Session | null): Promise<Role | null> {
+      if (!activeSession) return null;
+
+      try {
+        return await getCurrentUserRole();
+      } catch {
+        return null;
+      }
+    }
 
     async function loadSession() {
       const {
         data: { session: activeSession },
       } = await supabase.auth.getSession();
 
+      const resolvedRole = await resolveRole(activeSession);
+
       if (isMounted) {
         setSession(activeSession);
+        setUserRole(resolvedRole);
         setIsLoading(false);
       }
     }
@@ -29,8 +44,17 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      setSession(nextSession);
-      setIsLoading(false);
+      setIsLoading(true);
+
+      void (async () => {
+        const resolvedRole = await resolveRole(nextSession);
+
+        if (isMounted) {
+          setSession(nextSession);
+          setUserRole(resolvedRole);
+          setIsLoading(false);
+        }
+      })();
     });
 
     return () => {
@@ -75,7 +99,11 @@ function App() {
         </main>
       }
     >
-      <DashboardPage userEmail={session.user.email ?? 'Usuario'} onSignOut={signOut} />
+      <DashboardPage
+        userEmail={session.user.email ?? 'Usuario'}
+        initialRole={userRole}
+        onSignOut={signOut}
+      />
     </Suspense>
   );
 }
