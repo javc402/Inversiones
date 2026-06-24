@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppIcon } from './AppIcon';
 import {
@@ -55,6 +55,104 @@ function splitTags(value: string): string[] {
     .filter(Boolean);
 }
 
+function NewsFieldLabel({ text, help }: Readonly<{ text: string; help: string }>) {
+  const [open, setOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  function updatePosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 260;
+    const viewportPadding = 12;
+
+    let left = rect.left + rect.width / 2 - popoverWidth / 2;
+    left = Math.max(viewportPadding, Math.min(left, window.innerWidth - popoverWidth - viewportPadding));
+
+    setPopoverPos({
+      top: rect.bottom + 10,
+      left,
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    updatePosition();
+
+    const handleViewportChange = () => updatePosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <span className="news-field-label">
+      {text}
+      <button
+        type="button"
+        className="news-help-trigger"
+        aria-label={`Ayuda: ${text}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        ref={triggerRef}
+      >
+        ?
+      </button>
+      {open &&
+        createPortal(
+          <div
+            className="news-help-popover is-open"
+            role="tooltip"
+            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
+            ref={popoverRef}
+          >
+            {help}
+          </div>,
+          document.body
+        )}
+    </span>
+  );
+}
+
 function NewsCard({ article, onEdit, onDelete, onTogglePublish, onPublishNow }: Readonly<{
   article: NewsArticle;
   onEdit: (article: NewsArticle) => void;
@@ -92,21 +190,41 @@ function NewsCard({ article, onEdit, onDelete, onTogglePublish, onPublishNow }: 
           ))}
         </div>
         <div className="news-card-actions">
-          <button type="button" className="news-action-btn" onClick={() => onEdit(article)}>
+          <button
+            type="button"
+            className="news-action-btn news-action-btn-icon"
+            onClick={() => onEdit(article)}
+            aria-label="Editar noticia"
+            title="Editar noticia"
+          >
             <AppIcon name="edit" />
-            Editar
           </button>
-          <button type="button" className="news-action-btn" onClick={() => onTogglePublish(article)}>
+          <button
+            type="button"
+            className="news-action-btn news-action-btn-icon"
+            onClick={() => onTogglePublish(article)}
+            aria-label={article.status === 'published' ? 'Despublicar noticia' : 'Publicar noticia'}
+            title={article.status === 'published' ? 'Despublicar noticia' : 'Publicar noticia'}
+          >
             <AppIcon name={article.status === 'published' ? 'power' : 'play'} />
-            {article.status === 'published' ? 'Despublicar' : 'Publicar'}
           </button>
-          <button type="button" className="news-action-btn news-action-btn-soft" onClick={() => onPublishNow(article)}>
+          <button
+            type="button"
+            className="news-action-btn news-action-btn-soft news-action-btn-icon"
+            onClick={() => onPublishNow(article)}
+            aria-label="Publicar ahora"
+            title="Publicar ahora"
+          >
             <AppIcon name="check" />
-            Publicar ahora
           </button>
-          <button type="button" className="news-action-btn news-action-btn-danger" onClick={() => onDelete(article)}>
+          <button
+            type="button"
+            className="news-action-btn news-action-btn-danger news-action-btn-icon"
+            onClick={() => onDelete(article)}
+            aria-label="Eliminar noticia"
+            title="Eliminar noticia"
+          >
             <AppIcon name="delete" />
-            Eliminar
           </button>
         </div>
       </div>
@@ -259,7 +377,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
 
             <form className="news-form" onSubmit={handleSubmit}>
               <label>
-                <span>Título</span>
+                <NewsFieldLabel text="Titulo" help="Encabezado principal que identifica la noticia en listados y reportes." />
                 <input
                   value={form.title}
                   onChange={(event) =>
@@ -275,12 +393,12 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label>
-                <span>Slug</span>
+                <NewsFieldLabel text="Slug" help="Identificador corto único para URLs y referencias históricas." />
                 <input value={form.slug} onChange={(event) => setForm((prev) => ({ ...prev, slug: event.target.value }))} placeholder="mi-noticia" required />
               </label>
 
               <label className="news-form-span-2">
-                <span>URL de la fuente</span>
+                <NewsFieldLabel text="URL de la fuente" help="Enlace de origen de la información para trazabilidad." />
                 <input
                   value={form.sourceUrl}
                   onChange={(event) => setForm((prev) => ({ ...prev, sourceUrl: event.target.value }))}
@@ -290,7 +408,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label className="news-form-span-2">
-                <span>Resumen</span>
+                <NewsFieldLabel text="Resumen" help="Descripción breve para vista rápida de la noticia." />
                 <textarea
                   value={form.summary}
                   onChange={(event) => setForm((prev) => ({ ...prev, summary: event.target.value }))}
@@ -300,7 +418,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label className="news-form-span-2">
-                <span>Contenido</span>
+                <NewsFieldLabel text="Contenido" help="Desarrollo completo de la noticia para consulta histórica." />
                 <textarea
                   value={form.content}
                   onChange={(event) => setForm((prev) => ({ ...prev, content: event.target.value }))}
@@ -310,7 +428,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label>
-                <span>Imagen destacada</span>
+                <NewsFieldLabel text="Imagen destacada" help="URL de imagen principal para la card de la noticia." />
                 <input
                   value={form.coverImageUrl}
                   onChange={(event) => setForm((prev) => ({ ...prev, coverImageUrl: event.target.value }))}
@@ -319,12 +437,12 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label>
-                <span>Categoría</span>
+                <NewsFieldLabel text="Categoria" help="Clasificación temática para filtros y reportes." />
                 <input value={form.category} onChange={(event) => setForm((prev) => ({ ...prev, category: event.target.value }))} />
               </label>
 
               <label>
-                <span>Etiquetas</span>
+                <NewsFieldLabel text="Etiquetas" help="Palabras clave separadas por coma para agrupar noticias." />
                 <input
                   value={form.tagsText}
                   onChange={(event) => setForm((prev) => ({ ...prev, tagsText: event.target.value }))}
@@ -333,7 +451,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label>
-                <span>Estado</span>
+                <NewsFieldLabel text="Estado" help="Situación editorial de la noticia: borrador, programada o publicada." />
                 <select value={form.status} onChange={(event) => setForm((prev) => ({ ...prev, status: event.target.value as NewsStatus }))}>
                   <option value="draft">Borrador</option>
                   <option value="scheduled">Programada</option>
@@ -342,7 +460,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               </label>
 
               <label>
-                <span>Programar publicación</span>
+                <NewsFieldLabel text="Programar publicacion" help="Fecha y hora para publicación automática si aplica." />
                 <input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm((prev) => ({ ...prev, scheduledAt: event.target.value }))} />
               </label>
 

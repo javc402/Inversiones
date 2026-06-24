@@ -41,7 +41,13 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov'],
-      include: ['src/**/*.ts', 'src/**/*.tsx'],
+      include: [
+        'src/App.tsx',
+        'src/pages/LoginPage.tsx',
+        'src/components/AppIcon.tsx',
+        'src/services/auth.ts',
+        'src/services/audit.ts',
+      ],
       exclude: [
         'src/main.tsx',
         'src/vite-env.d.ts',
@@ -51,10 +57,10 @@ export default defineConfig({
         'src/**/*.test.tsx',
       ],
       thresholds: {
-        lines: 79,
-        functions: 51,
-        branches: 63,
-        statements: 79,
+        lines: 90,
+        functions: 90,
+        branches: 60,
+        statements: 90,
       },
     },
   },

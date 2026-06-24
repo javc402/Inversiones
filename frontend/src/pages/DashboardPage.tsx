@@ -19,10 +19,12 @@ const loadAdminPanelModule = () => import('@components/AdminPanel');
 const loadAccountsModule = () => import('@components/AccountsModule');
 const loadSettingsModule = () => import('@components/SettingsModule');
 const loadNewsModule = () => import('@components/NewsModule');
+const loadMarketEntriesModule = () => import('@components/MarketEntriesModule');
 const AdminPanel = lazy(loadAdminPanelModule);
 const AccountsModule = lazy(loadAccountsModule);
 const SettingsModule = lazy(loadSettingsModule);
 const NewsModule = lazy(loadNewsModule);
+const MarketEntriesModule = lazy(loadMarketEntriesModule);
 
 interface DashboardPageProps {
   userEmail: string;
@@ -30,12 +32,12 @@ interface DashboardPageProps {
   onSignOut: () => Promise<void>;
 }
 
-type DashboardTab = 'resumen' | 'noticias' | 'cuentas' | 'usuarios' | 'configuracion';
+type DashboardTab = 'resumen' | 'noticias' | 'entradas' | 'cuentas' | 'usuarios' | 'configuracion';
 
 const DASHBOARD_TAB_STORAGE_KEY = 'inversiones_dashboard_active_tab';
 
 function isDashboardTab(value: string | null): value is DashboardTab {
-  return value === 'resumen' || value === 'noticias' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
+  return value === 'resumen' || value === 'noticias' || value === 'entradas' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
 }
 
 function loadStoredDashboardTab(): DashboardTab {
@@ -89,6 +91,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       ? 'Dashboard de Inversiones'
       : activeTab === 'noticias'
         ? 'Noticias'
+      : activeTab === 'entradas'
+        ? 'Entradas al mercado'
       : activeTab === 'cuentas'
         ? 'Cuentas'
         : activeTab === 'usuarios'
@@ -110,6 +114,11 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
 
     if (tab === 'cuentas') {
       void loadAccountsModule();
+      return;
+    }
+
+    if (tab === 'entradas') {
+      void loadMarketEntriesModule();
       return;
     }
 
@@ -314,6 +323,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
           </Suspense>
         </div>
 
+        {/* Tab: Entradas */}
+        <div style={{ display: activeTab === 'entradas' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-entradas">
+          <Suspense
+            fallback={
+              <section className="table-card">
+                <h2>Entradas al mercado</h2>
+                <p>Cargando módulo de entradas...</p>
+              </section>
+            }
+          >
+            <MarketEntriesModule userEmail={userEmail} />
+          </Suspense>
+        </div>
+
         {/* Tab: Cuentas */}
         <div style={{ display: activeTab === 'cuentas' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-cuentas">
           <Suspense
@@ -412,7 +435,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             >
               <span className="sidebar-group-title">
                 <span className="sidebar-group-icon"><AppIcon name="accounts" /></span>
-                Gestion <span className="sidebar-count">{isAdmin ? 2 : 1}</span>
+                Gestion <span className="sidebar-count">{isAdmin ? 3 : 2}</span>
               </span>
               <span className="sidebar-section-arrow" aria-hidden="true">
                 <AppIcon name={collapsedSections.gestion ? 'chevronRight' : 'chevronDown'} />
@@ -423,6 +446,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
               <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => setActiveTab('noticias')} onMouseEnter={() => prefetchTabModule('noticias')} onFocus={() => prefetchTabModule('noticias')}>
                 <AppIcon name="article" className="menu-btn-icon" />
                 <span>Mis noticias</span>
+              </button>
+              <button type="button" className={`menu-btn menu-entries ${activeTab === 'entradas' ? 'active' : ''}`} onClick={() => setActiveTab('entradas')} onMouseEnter={() => prefetchTabModule('entradas')} onFocus={() => prefetchTabModule('entradas')}>
+                <AppIcon name="entry" className="menu-btn-icon" />
+                <span>Entradas mercado</span>
               </button>
               <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => setActiveTab('cuentas')} onMouseEnter={() => prefetchTabModule('cuentas')} onFocus={() => prefetchTabModule('cuentas')}>
                 <AppIcon name="accounts" className="menu-btn-icon" />

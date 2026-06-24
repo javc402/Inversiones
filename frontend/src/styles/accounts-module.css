@@ -549,6 +549,7 @@
   grid-column: 1 / -1;
   display: flex;
   justify-content: center;
+  align-items: center;
   gap: 10px;
   margin-top: 10px;
   padding-top: 12px;
