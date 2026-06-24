@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -12,9 +12,12 @@ import {
   YAxis,
   Cell,
 } from 'recharts';
-import AdminPanel from '@components/AdminPanel';
-import AccountsModule from '@components/AccountsModule';
 import { getCurrentUserRole, Role } from '@services/roles';
+
+const loadAdminPanelModule = () => import('@components/AdminPanel');
+const loadAccountsModule = () => import('@components/AccountsModule');
+const AdminPanel = lazy(loadAdminPanelModule);
+const AccountsModule = lazy(loadAccountsModule);
 
 interface DashboardPageProps {
   userEmail: string;
@@ -50,7 +53,37 @@ const recentTrades = [
 export default function DashboardPage({ userEmail, onSignOut }: Readonly<DashboardPageProps>) {
   const [activeTab, setActiveTab] = useState<DashboardTab>('resumen');
   const [userRole, setUserRole] = useState<Role | null>(null);
+  const [collapsedSections, setCollapsedSections] = useState({
+    principal: false,
+    gestion: false,
+  });
   const isAdmin = userRole?.name === 'admin';
+  const roleLabel = userRole?.name === 'admin' ? 'Administrador' : userRole?.name === 'user' ? 'Usuario' : 'Sin rol';
+  const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
+
+  function toggleSidebarSection(section: 'principal' | 'gestion') {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  }
+
+  function prefetchTabModule(tab: DashboardTab) {
+    if (tab === 'cuentas') {
+      void loadAccountsModule();
+      return;
+    }
+
+    if (tab === 'usuarios' && isAdmin) {
+      void loadAdminPanelModule();
+    }
+  }
+
+  useEffect(() => {
+    if (activeTab === 'usuarios' && !isAdmin) {
+      setActiveTab('resumen');
+    }
+  }, [activeTab, isAdmin]);
 
   useEffect(() => {
     let isMounted = true;
@@ -74,6 +107,39 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
       isMounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout> | null = null;
+
+    const idleCallback =
+      'requestIdleCallback' in window
+        ? window.requestIdleCallback(() => {
+            void loadAccountsModule();
+            if (isAdmin) {
+              void loadAdminPanelModule();
+            }
+          })
+        : null;
+
+    if (idleCallback === null) {
+      timeoutId = setTimeout(() => {
+        void loadAccountsModule();
+        if (isAdmin) {
+          void loadAdminPanelModule();
+        }
+      }, 800);
+    }
+
+    return () => {
+      if (idleCallback !== null && 'cancelIdleCallback' in window) {
+        window.cancelIdleCallback(idleCallback);
+      }
+
+      if (timeoutId !== null) {
+        clearTimeout(timeoutId);
+      }
+    };
+  }, [isAdmin]);
 
   let mainContent = (
     <>
@@ -169,7 +235,18 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
 
   if (activeTab === 'usuarios') {
     if (isAdmin) {
-      mainContent = <AdminPanel />;
+      mainContent = (
+        <Suspense
+          fallback={
+            <section className="table-card">
+              <h2>Gestionar usuarios</h2>
+              <p>Cargando panel...</p>
+            </section>
+          }
+        >
+          <AdminPanel />
+        </Suspense>
+      );
     } else {
       mainContent = (
         <section className="table-card restricted-card">
@@ -183,34 +260,102 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
   }
 
   if (activeTab === 'cuentas') {
-    mainContent = <AccountsModule />;
+    mainContent = (
+      <Suspense
+        fallback={
+          <section className="table-card">
+            <h2>Gestionar cuentas</h2>
+            <p>Cargando modulo de cuentas...</p>
+          </section>
+        }
+      >
+        <AccountsModule />
+      </Suspense>
+    );
   }
 
   return (
     <main className="dashboard-shell">
       <aside className="dashboard-sidebar" aria-label="Menu lateral del dashboard">
-        <h2>Menu</h2>
-        <button
-          type="button"
-          className={`menu-btn ${activeTab === 'resumen' ? 'active' : ''}`}
-          onClick={() => setActiveTab('resumen')}
-        >
-          Resumen
-        </button>
-        <button
-          type="button"
-          className={`menu-btn ${activeTab === 'cuentas' ? 'active' : ''}`}
-          onClick={() => setActiveTab('cuentas')}
-        >
-          Gestionar cuentas
-        </button>
-        <button
-          type="button"
-          className={`menu-btn ${activeTab === 'usuarios' ? 'active' : ''}`}
-          onClick={() => setActiveTab('usuarios')}
-        >
-          Gestionar usuarios
-        </button>
+        <div className="sidebar-brand">SOCIO.CO</div>
+
+        <div className="sidebar-section">
+          <button
+            type="button"
+            className="sidebar-nav-section"
+            onClick={() => toggleSidebarSection('principal')}
+            aria-expanded={!collapsedSections.principal}
+            aria-controls="sidebar-principal"
+          >
+            <span className="sidebar-group-title">
+              Principal <span className="sidebar-count">1</span>
+            </span>
+            <span className="sidebar-section-arrow" aria-hidden="true">
+              {collapsedSections.principal ? '▸' : '▾'}
+            </span>
+          </button>
+
+          <div
+            id="sidebar-principal"
+            className={`sidebar-section-content ${collapsedSections.principal ? 'collapsed' : ''}`}
+          >
+            <button
+              type="button"
+              className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`}
+              onClick={() => setActiveTab('resumen')}
+            >
+              Resumen
+            </button>
+          </div>
+        </div>
+
+        <div className="sidebar-section">
+          <button
+            type="button"
+            className="sidebar-nav-section"
+            onClick={() => toggleSidebarSection('gestion')}
+            aria-expanded={!collapsedSections.gestion}
+            aria-controls="sidebar-gestion"
+          >
+            <span className="sidebar-group-title">
+              Gestion <span className="sidebar-count">{isAdmin ? 2 : 1}</span>
+            </span>
+            <span className="sidebar-section-arrow" aria-hidden="true">
+              {collapsedSections.gestion ? '▸' : '▾'}
+            </span>
+          </button>
+
+          <div
+            id="sidebar-gestion"
+            className={`sidebar-section-content ${collapsedSections.gestion ? 'collapsed' : ''}`}
+          >
+            <button
+              type="button"
+              className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`}
+              onClick={() => setActiveTab('cuentas')}
+              onMouseEnter={() => prefetchTabModule('cuentas')}
+              onFocus={() => prefetchTabModule('cuentas')}
+            >
+              Gestionar cuentas
+            </button>
+            {isAdmin && (
+              <button
+                type="button"
+                className={`menu-btn menu-users ${activeTab === 'usuarios' ? 'active' : ''}`}
+                onClick={() => setActiveTab('usuarios')}
+                onMouseEnter={() => prefetchTabModule('usuarios')}
+                onFocus={() => prefetchTabModule('usuarios')}
+              >
+                Gestionar usuarios
+              </button>
+            )}
+          </div>
+        </div>
+
+        <div className="sidebar-footer">
+          <p className="sidebar-user-email">{sidebarUserName}</p>
+          <p className="sidebar-user-role">{roleLabel.toUpperCase()}</p>
+        </div>
       </aside>
 
       <section className="dashboard-layout">
@@ -218,10 +363,14 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
           <div>
             <h1>Dashboard de Inversiones</h1>
             <p>{userEmail}</p>
+            <p className="dashboard-role">Rol: {roleLabel}</p>
           </div>
-          <button className="secondary-btn" type="button" onClick={onSignOut}>
-            Cerrar sesion
-          </button>
+          <div className="header-right">
+            <span className="system-status">Sistema online</span>
+            <button className="secondary-btn" type="button" onClick={onSignOut}>
+              Cerrar sesion
+            </button>
+          </div>
         </header>
 
         {mainContent}

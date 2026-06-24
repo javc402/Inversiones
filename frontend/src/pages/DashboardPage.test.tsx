@@ -35,7 +35,19 @@ vi.mock('recharts', () => {
 })
 
 describe('DashboardPage', () => {
-  it('muestra menu de gestionar usuarios para cualquier rol', async () => {
+  it('muestra menu de gestionar usuarios solo para admin', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-admin',
+      name: 'admin',
+      description: 'Administrador',
+    })
+
+    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
+  })
+
+  it('oculta menu de gestionar usuarios para usuario no admin', async () => {
     getCurrentUserRoleMock.mockResolvedValueOnce({
       id: 'role-user',
       name: 'user',
@@ -44,7 +56,8 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
   })
 
   it('muestra menu de gestionar cuentas para cualquier rol', async () => {
@@ -70,7 +83,7 @@ describe('DashboardPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Gestionar cuentas' }))
 
-    expect(screen.getByText('Modulo de Cuentas')).toBeInTheDocument()
+    expect(await screen.findByText('Modulo de Cuentas')).toBeInTheDocument()
   })
 
   it('muestra informacion principal y email del usuario', () => {
@@ -100,7 +113,7 @@ describe('DashboardPage', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
 
-    expect(screen.getByText('Panel de Administración')).toBeInTheDocument()
+    expect(await screen.findByText('Panel de Administración')).toBeInTheDocument()
   })
 
   it('permite volver a resumen desde gestionar usuarios', async () => {
@@ -118,7 +131,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Operaciones recientes')).toBeInTheDocument()
   })
 
-  it('muestra mensaje de acceso restringido para usuario no admin', async () => {
+  it('oculta menu de usuarios cuando el rol no es admin', async () => {
     getCurrentUserRoleMock.mockResolvedValueOnce({
       id: 'role-user',
       name: 'user',
@@ -127,23 +140,17 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
-
-    expect(
-      screen.getByText('Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.')
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
   })
 
-  it('mantiene vista restringida si falla la carga del rol', async () => {
+  it('oculta menu de usuarios si falla la carga del rol', async () => {
     getCurrentUserRoleMock.mockRejectedValueOnce(new Error('role fetch failed'))
 
     render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
-
-    expect(
-      screen.getByText('Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.')
-    ).toBeInTheDocument()
+    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
   })
 
   it('ejecuta onSignOut al pulsar cerrar sesion', () => {

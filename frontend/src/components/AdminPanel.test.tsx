@@ -4,6 +4,7 @@ import AdminPanel from '@components/AdminPanel';
 import * as rolesService from '@services/roles';
 
 const rolesMocks = vi.hoisted(() => ({
+  getCurrentUserProfile: vi.fn(),
   listAllUsers: vi.fn(),
   updateUserStatus: vi.fn(),
   assignAdminRole: vi.fn(),
@@ -11,6 +12,7 @@ const rolesMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@services/roles', () => ({
+  getCurrentUserProfile: rolesMocks.getCurrentUserProfile,
   listAllUsers: rolesMocks.listAllUsers,
   updateUserStatus: rolesMocks.updateUserStatus,
   assignAdminRole: rolesMocks.assignAdminRole,
@@ -20,6 +22,14 @@ vi.mock('@services/roles', () => ({
 describe('AdminPanel Component', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(rolesService.getCurrentUserProfile).mockResolvedValue({
+      id: 'self-id',
+      user_id: 'self-user-id',
+      role_id: 'role-1',
+      status: 'active',
+      created_at: '2026-06-23',
+      updated_at: '2026-06-23',
+    } as any);
   });
 
   it('should render admin panel with title', async () => {
@@ -76,7 +86,7 @@ describe('AdminPanel Component', () => {
     });
 
     const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[0], { target: { value: 'active' } });
+    fireEvent.change(selects[1], { target: { value: 'active' } });
 
     await waitFor(() => {
       expect(rolesService.updateUserStatus).toHaveBeenCalledWith('user-1', 'active');
@@ -106,16 +116,11 @@ describe('AdminPanel Component', () => {
       expect(screen.getByText('user1@example.com')).toBeInTheDocument();
     });
 
-    const buttons = screen.getAllByRole('button');
-    const assignButton = buttons.find((btn) => btn.textContent?.includes('Hacer Admin'));
+    fireEvent.click(screen.getByRole('button', { name: 'Hacer admin' }));
 
-    if (assignButton) {
-      fireEvent.click(assignButton);
-
-      await waitFor(() => {
-        expect(rolesService.assignAdminRole).toHaveBeenCalledWith('user-1');
-      });
-    }
+    await waitFor(() => {
+      expect(rolesService.assignAdminRole).toHaveBeenCalledWith('user-1');
+    });
   });
 
   it('should show error when loading fails', async () => {
