@@ -281,61 +281,69 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     </>
   );
 
-  if (activeTab === 'usuarios') {
-    if (isAdmin) {
-      mainContent = (
-        <Suspense
-          fallback={
-            <section className="table-card">
+  // Renderizar todos los módulos siempre en el árbol, solo ocultarlos con display:none
+  // Esto preserva su estado interno cuando cambias de tab
+  const renderModuleContent = () => {
+    return (
+      <>
+        {/* Tab: Resumen */}
+        <div style={{ display: activeTab === 'resumen' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-resumen">
+          {mainContent}
+        </div>
+
+        {/* Tab: Cuentas */}
+        <div style={{ display: activeTab === 'cuentas' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-cuentas">
+          <Suspense
+            fallback={
+              <section className="table-card">
+                <h2>Gestionar cuentas</h2>
+                <p>Cargando modulo de cuentas...</p>
+              </section>
+            }
+          >
+            <AccountsModule />
+          </Suspense>
+        </div>
+
+        {/* Tab: Usuarios */}
+        <div style={{ display: activeTab === 'usuarios' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-usuarios">
+          {isAdmin ? (
+            <Suspense
+              fallback={
+                <section className="table-card">
+                  <h2>Gestionar usuarios</h2>
+                  <p>Cargando panel...</p>
+                </section>
+              }
+            >
+              <AdminPanel />
+            </Suspense>
+          ) : (
+            <section className="table-card restricted-card">
               <h2>Gestionar usuarios</h2>
-              <p>Cargando panel...</p>
+              <p>
+                Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.
+              </p>
             </section>
-          }
-        >
-          <AdminPanel />
-        </Suspense>
-      );
-    } else {
-      mainContent = (
-        <section className="table-card restricted-card">
-          <h2>Gestionar usuarios</h2>
-          <p>
-            Esta seccion es solo para administradores. Solicita permisos de admin para gestionar usuarios.
-          </p>
-        </section>
-      );
-    }
-  }
+          )}
+        </div>
 
-  if (activeTab === 'cuentas') {
-    mainContent = (
-      <Suspense
-        fallback={
-          <section className="table-card">
-            <h2>Gestionar cuentas</h2>
-            <p>Cargando modulo de cuentas...</p>
-          </section>
-        }
-      >
-        <AccountsModule />
-      </Suspense>
+        {/* Tab: Configuración */}
+        <div style={{ display: activeTab === 'configuracion' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-configuracion">
+          <Suspense
+            fallback={
+              <section className="table-card">
+                <h2>Configuración</h2>
+                <p>Cargando configuración...</p>
+              </section>
+            }
+          >
+            <SettingsModule userEmail={userEmail} isAdmin={isAdmin} />
+          </Suspense>
+        </div>
+      </>
     );
-  }
-
-  if (activeTab === 'configuracion') {
-    mainContent = (
-      <Suspense
-        fallback={
-          <section className="table-card">
-            <h2>Configuración</h2>
-            <p>Cargando configuración...</p>
-          </section>
-        }
-      >
-        <SettingsModule userEmail={userEmail} isAdmin={isAdmin} />
-      </Suspense>
-    );
-  }
+  };
 
   return (
     <main className="dashboard-shell">
@@ -454,7 +462,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
           </div>
         </header>
 
-        {mainContent}
+        {renderModuleContent()}
       </section>
     </main>
   );
