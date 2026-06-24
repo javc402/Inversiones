@@ -1,4 +1,6 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { AppIcon } from './AppIcon';
 import {
   TradingAccount,
   TradingAccountStatus,
@@ -9,9 +11,200 @@ import {
   updateTradingAccount,
   UpsertTradingAccountInput,
 } from '@services/accounts';
+import { useSystemConfig } from '@hooks/useSystemConfig';
 import '../styles/accounts-module.css';
 
 type ModalMode = 'create' | 'edit';
+
+function FieldLabel({ text, help }: Readonly<{ text: string; help: string }>) {
+  const [open, setOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  function updatePosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 260;
+    const viewportPadding = 12;
+
+    let left = rect.left + rect.width / 2 - popoverWidth / 2;
+    left = Math.max(viewportPadding, Math.min(left, window.innerWidth - popoverWidth - viewportPadding));
+
+    setPopoverPos({
+      top: rect.bottom + 10,
+      left,
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    updatePosition();
+
+    const handleViewportChange = () => updatePosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <span className="accounts-field-label">
+      {text}
+      <button
+        type="button"
+        className="accounts-help-trigger"
+        aria-label={`Ayuda: ${text}`}
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          setOpen((prev) => !prev);
+        }}
+        ref={triggerRef}
+      >
+        ?
+      </button>
+      {open &&
+        createPortal(
+          <div
+            className="accounts-help-popover is-open"
+            role="tooltip"
+            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
+            ref={popoverRef}
+          >
+            {help}
+          </div>,
+          document.body
+        )}
+    </span>
+  );
+}
+
+function TableHeaderWithPopover({ children, description }: Readonly<{ children: string; description: string }>) {
+  const [open, setOpen] = useState(false);
+  const [popoverPos, setPopoverPos] = useState({ top: 0, left: 0 });
+  const triggerRef = useRef<HTMLTableCellElement | null>(null);
+  const popoverRef = useRef<HTMLDivElement | null>(null);
+
+  function updatePosition() {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const rect = trigger.getBoundingClientRect();
+    const popoverWidth = 220;
+    const viewportPadding = 12;
+
+    let left = rect.left + rect.width / 2 - popoverWidth / 2;
+    left = Math.max(viewportPadding, Math.min(left, window.innerWidth - popoverWidth - viewportPadding));
+
+    setPopoverPos({
+      top: rect.top - 50,
+      left,
+    });
+  }
+
+  useEffect(() => {
+    if (!open) return;
+
+    updatePosition();
+
+    const handleViewportChange = () => updatePosition();
+    window.addEventListener('resize', handleViewportChange);
+    window.addEventListener('scroll', handleViewportChange, true);
+
+    return () => {
+      window.removeEventListener('resize', handleViewportChange);
+      window.removeEventListener('scroll', handleViewportChange, true);
+    };
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open]);
+
+  return (
+    <>
+      <th
+        scope="col"
+        ref={triggerRef}
+        className="account-summary-header"
+        onMouseEnter={() => setOpen(true)}
+        onMouseLeave={() => setOpen(false)}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {children}
+      </th>
+      {open &&
+        createPortal(
+          <div
+            className="account-summary-popover is-open"
+            role="tooltip"
+            style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
+            ref={popoverRef}
+          >
+            {description}
+          </div>,
+          document.body
+        )}
+    </>
+  );
+}
 
 interface AccountFormState {
   name: string;
@@ -127,13 +320,56 @@ function mapFormToPayload(form: AccountFormState): UpsertTradingAccountInput {
   };
 }
 
+interface AccountSummaryRow {
+  label: string;
+  operations: number;
+  sl: number;
+  tpNoProfit: number;
+  tpProfit: number;
+}
+
+function getSummaryRows(): AccountSummaryRow[] {
+  return [
+    {
+      label: 'Total',
+      operations: 0,
+      sl: 0,
+      tpNoProfit: 0,
+      tpProfit: 0,
+    },
+    {
+      label: 'Año',
+      operations: 0,
+      sl: 0,
+      tpNoProfit: 0,
+      tpProfit: 0,
+    },
+    {
+      label: 'Mes',
+      operations: 0,
+      sl: 0,
+      tpNoProfit: 0,
+      tpProfit: 0,
+    },
+    {
+      label: 'Semana',
+      operations: 0,
+      sl: 0,
+      tpNoProfit: 0,
+      tpProfit: 0,
+    },
+  ];
+}
+
 export default function AccountsModule() {
+  const { config } = useSystemConfig();
   const [accounts, setAccounts] = useState<TradingAccount[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | TradingAccountType>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | TradingAccountStatus>('all');
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('create');
@@ -141,8 +377,28 @@ export default function AccountsModule() {
   const [form, setForm] = useState<AccountFormState>(DEFAULT_FORM);
 
   useEffect(() => {
+    const saved = localStorage.getItem('account_favorites');
+    if (saved) {
+      setFavorites(new Set(JSON.parse(saved)));
+    }
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem('account_favorites', JSON.stringify(Array.from(favorites)));
+  }, [favorites]);
+
+  useEffect(() => {
     void loadAccounts();
   }, []);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+    function handleEscape(e: KeyboardEvent) {
+      if (e.key === 'Escape') closeModal();
+    }
+    document.addEventListener('keydown', handleEscape);
+    return () => document.removeEventListener('keydown', handleEscape);
+  }, [modalOpen]);
 
   async function loadAccounts() {
     setLoading(true);
@@ -160,7 +416,7 @@ export default function AccountsModule() {
   }
 
   const filteredAccounts = useMemo(() => {
-    return accounts.filter((account) => {
+    let filtered = accounts.filter((account) => {
       const matchesQuery =
         !query ||
         account.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -172,7 +428,14 @@ export default function AccountsModule() {
 
       return matchesQuery && matchesType && matchesStatus;
     });
-  }, [accounts, query, typeFilter, statusFilter]);
+
+    return filtered.sort((a, b) => {
+      const aIsFav = favorites.has(a.id);
+      const bIsFav = favorites.has(b.id);
+      if (aIsFav === bIsFav) return 0;
+      return aIsFav ? -1 : 1;
+    });
+  }, [accounts, query, typeFilter, statusFilter, favorites]);
 
   const accountsContent = useMemo(() => {
     if (loading) {
@@ -183,40 +446,113 @@ export default function AccountsModule() {
       return <p className="accounts-empty">Aun no tienes cuentas registradas.</p>;
     }
 
+    const summaryRows = getSummaryRows();
+
     return (
       <div className="accounts-grid">
         {filteredAccounts.map((account) => (
-          <article key={account.id} className="account-card">
-            <h3>{account.name}</h3>
-            <p>
-              <strong>Alias:</strong> {account.alias || '-'}
-            </p>
-            <p>
-              <strong>Broker/Firma:</strong> {account.broker_name}
-            </p>
-            <p>
-              <strong>Tipo:</strong> {account.account_type.toUpperCase()}
-            </p>
-            <p>
-              <strong>Plataforma:</strong> {account.platform.toUpperCase()}
-            </p>
-            <p>
-              <strong>Estado:</strong> {account.status === 'active' ? 'ACTIVA' : 'INACTIVA'}
-            </p>
-            <p>
-              <strong>Balance:</strong> {account.initial_balance.toLocaleString()} {account.base_currency}
-            </p>
-            <p>
-              <strong>Riesgo/Trade:</strong> {account.risk_per_trade_pct ?? '-'}%
-            </p>
+          <article
+            key={account.id}
+            className={`account-card account-card-${account.status === 'active' ? 'active' : 'inactive'}`}
+          >
+            <button
+              type="button"
+              className={`account-favorite-btn ${favorites.has(account.id) ? 'is-favorite' : ''}`}
+              title={favorites.has(account.id) ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+              aria-label={favorites.has(account.id) ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+              onClick={() => handleToggleFavorite(account.id)}
+            >
+              <AppIcon name={favorites.has(account.id) ? 'star' : 'starOutline'} />
+            </button>
 
-            <div className="account-card-actions">
-              <button type="button" className="secondary-btn" onClick={() => openEditModal(account)}>
-                Editar
-              </button>
-              <button type="button" className="secondary-btn" onClick={() => void handleToggleStatus(account)}>
-                {account.status === 'active' ? 'Inactivar' : 'Activar'}
-              </button>
+            <div className="account-card-head">
+              <div className="account-avatar" aria-hidden="true">
+                {account.name.charAt(0).toUpperCase()}
+              </div>
+              <div className="account-head-copy">
+                <h3>{account.name}</h3>
+                <p className="account-id">Balance actual: ${account.initial_balance.toLocaleString()}</p>
+              </div>
+            </div>
+
+            <div className="account-chip-row">
+              <span className={`account-status-chip account-status-chip-${account.status}`}>
+                {account.status === 'active' ? 'ACTIVA' : 'INACTIVA'}
+              </span>
+            </div>
+
+            <div className="account-chip-row">
+              <span className="account-type-pill">{account.account_type.toUpperCase()}</span>
+            </div>
+
+            <div className="account-contact-lines">
+              <p>
+                <strong>Alias:</strong> {account.alias || '-'}
+              </p>
+              <p>
+                <strong>Broker/Firma:</strong> {account.broker_name}
+              </p>
+              <p>
+                <strong>Plataforma:</strong> {account.platform.toUpperCase()}
+              </p>
+              <p>
+                <strong>Balance inicial:</strong> {account.initial_balance.toLocaleString()} {account.base_currency}
+              </p>
+              <p>
+                <strong>Riesgo/Trade:</strong> {account.risk_per_trade_pct ?? '-'}%
+              </p>
+            </div>
+
+            <div className="account-summary-wrap">
+              <p className="account-summary-title">Resumen operativo</p>
+              <div className="account-summary-table-scroll">
+                <table className="account-summary-table" aria-label="Resumen de operaciones por periodo">
+                  <thead>
+                    <tr>
+                      <th scope="col" className="account-summary-header">Tiempo</th>
+                      <TableHeaderWithPopover description="Número total de operaciones">Ops</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones cerradas con Stop Loss">SL</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones en Take Profit sin ganancia">TP (-)</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones en Take Profit con ganancia">TP (+)</TableHeaderWithPopover>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {summaryRows.map((row) => (
+                      <tr key={row.label}>
+                        <th scope="row">{row.label}</th>
+                        <td>{row.operations}</td>
+                        <td>{row.sl}</td>
+                        <td>{row.tpNoProfit}</td>
+                        <td>{row.tpProfit}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div className="account-card-footer">
+              <p className="account-footer-date">Apertura: {account.opened_at.slice(0, 10)}</p>
+              <div className="account-card-actions">
+                <button
+                  type="button"
+                  className="account-icon-btn account-icon-edit"
+                  title="Editar cuenta"
+                  aria-label="Editar cuenta"
+                  onClick={() => openEditModal(account)}
+                >
+                  ✎
+                </button>
+                <button
+                  type="button"
+                  className="account-icon-btn account-icon-toggle"
+                  title={account.status === 'active' ? 'Inactivar cuenta' : 'Activar cuenta'}
+                  aria-label={account.status === 'active' ? 'Inactivar cuenta' : 'Activar cuenta'}
+                  onClick={() => void handleToggleStatus(account)}
+                >
+                  {account.status === 'active' ? '⏻' : '▶'}
+                </button>
+              </div>
             </div>
           </article>
         ))}
@@ -281,6 +617,18 @@ export default function AccountsModule() {
     }
   }
 
+  function handleToggleFavorite(accountId: string) {
+    setFavorites((prev) => {
+      const next = new Set(prev);
+      if (next.has(accountId)) {
+        next.delete(accountId);
+      } else {
+        next.add(accountId);
+      }
+      return next;
+    });
+  }
+
   return (
     <section className="accounts-module" aria-label="Gestion de cuentas">
       <header className="accounts-toolbar">
@@ -300,13 +648,13 @@ export default function AccountsModule() {
         <select
           className="accounts-filter"
           value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value as 'all' | TradingAccountType)}
+          onChange={(event) => setTypeFilter(event.target.value)}
           aria-label="Filtrar por tipo"
         >
           <option value="all">Tipo: Todos</option>
-          <option value="real">Real</option>
-          <option value="demo">Demo</option>
-          <option value="funded">Fondeo</option>
+          {config.accountTypes.map((item) => (
+            <option key={item.id} value={item.value}>{item.label}</option>
+          ))}
         </select>
 
         <select
@@ -329,10 +677,17 @@ export default function AccountsModule() {
         <dialog className="accounts-modal-overlay" open aria-label="Formulario cuenta">
           <div className="accounts-modal">
             <h2>{modalMode === 'create' ? 'Crear cuenta' : 'Editar cuenta'}</h2>
+            <p className="accounts-modal-description">
+              {modalMode === 'create'
+                ? 'Define la estructura de la cuenta, su capital inicial y los límites de riesgo para incorporarla a tu portafolio con trazabilidad operativa.'
+                : 'Actualiza la estructura de la cuenta, su capital y sus límites de riesgo para mantenerla alineada con tu plan de trading.'}
+            </p>
 
             <form className="accounts-form" onSubmit={handleSaveAccount}>
+              <div className="accounts-section-title">Datos de la cuenta</div>
+
               <label>
-                <span>Nombre de la cuenta *</span>
+                <FieldLabel text="Nombre de la cuenta *" help="Nombre principal para identificar la cuenta dentro del sistema y en los reportes." />
                 <input
                   value={form.name}
                   onChange={(event) => handleFormChange('name', event.target.value)}
@@ -341,7 +696,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Alias</span>
+                <FieldLabel text="Alias" help="Nombre corto opcional para mostrar la cuenta en tarjetas o listados compactos." />
                 <input
                   value={form.alias}
                   onChange={(event) => handleFormChange('alias', event.target.value)}
@@ -349,7 +704,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Broker/Firma *</span>
+                <FieldLabel text="Broker/Firma *" help="Entidad donde opera la cuenta: broker tradicional o firma de fondeo." />
                 <input
                   value={form.broker_name}
                   onChange={(event) => handleFormChange('broker_name', event.target.value)}
@@ -358,43 +713,49 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Tipo de cuenta *</span>
+                <FieldLabel text="Tipo de cuenta *" help="Clasificación operativa de la cuenta (real, demo o fondeo)." />
                 <select
                   value={form.account_type}
                   onChange={(event) => handleFormChange('account_type', event.target.value as TradingAccountType)}
                 >
-                  <option value="real">Real</option>
-                  <option value="demo">Demo</option>
-                  <option value="funded">Fondeo</option>
+                  {config.accountTypes.map((item) => (
+                    <option key={item.id} value={item.value}>{item.label}</option>
+                  ))}
                 </select>
               </label>
 
               <label>
-                <span>Plataforma *</span>
+                <FieldLabel text="Plataforma *" help="Plataforma de ejecución donde está configurada esta cuenta." />
                 <select
                   value={form.platform}
                   onChange={(event) =>
                     handleFormChange('platform', event.target.value as 'mt4' | 'mt5' | 'ctrader' | 'other')
                   }
                 >
-                  <option value="mt4">MT4</option>
-                  <option value="mt5">MT5</option>
-                  <option value="ctrader">cTrader</option>
-                  <option value="other">Otro</option>
+                  {config.platforms.map((item) => (
+                    <option key={item.id} value={item.value}>{item.label}</option>
+                  ))}
                 </select>
               </label>
 
               <label>
-                <span>Moneda base *</span>
-                <input
+                <FieldLabel text="Moneda base *" help="Divisa principal en la que se expresan balance, equity y métricas." />
+                <select
                   value={form.base_currency}
                   onChange={(event) => handleFormChange('base_currency', event.target.value)}
                   required
-                />
+                  aria-label="Moneda base *"
+                >
+                  {config.currencies.map((item) => (
+                    <option key={item.id} value={item.value}>{item.label}</option>
+                  ))}
+                </select>
               </label>
 
+              <div className="accounts-section-title">Capital inicial y operativa</div>
+
               <label>
-                <span>Apalancamiento</span>
+                <FieldLabel text="Apalancamiento" help="Relación de apalancamiento asignada por el broker o firma para esta cuenta." />
                 <input
                   value={form.leverage}
                   onChange={(event) => handleFormChange('leverage', event.target.value)}
@@ -402,7 +763,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Balance inicial *</span>
+                <FieldLabel text="Balance inicial *" help="Capital con el que inicia la cuenta al momento del registro." />
                 <input
                   type="number"
                   min="0"
@@ -414,7 +775,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Equity inicial</span>
+                <FieldLabel text="Equity inicial" help="Equity de referencia al inicio, útil para comparar desempeño y variación." />
                 <input
                   type="number"
                   min="0"
@@ -425,7 +786,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Fecha apertura *</span>
+                <FieldLabel text="Fecha apertura *" help="Fecha en la que la cuenta comenzó a operar o fue habilitada." />
                 <input
                   type="date"
                   value={form.opened_at}
@@ -435,7 +796,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Estado *</span>
+                <FieldLabel text="Estado *" help="Define si la cuenta está activa para seguimiento o inactiva temporalmente." />
                 <select
                   value={form.status}
                   onChange={(event) => handleFormChange('status', event.target.value as TradingAccountStatus)}
@@ -445,8 +806,10 @@ export default function AccountsModule() {
                 </select>
               </label>
 
+              <div className="accounts-section-title">Gestion de riesgo</div>
+
               <label>
-                <span>Riesgo max por operación %</span>
+                <FieldLabel text="Riesgo max por operación %" help="Porcentaje máximo del capital que arriesgas en cada entrada." />
                 <input
                   type="number"
                   min="0"
@@ -457,7 +820,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Riesgo diario max %</span>
+                <FieldLabel text="Riesgo diario max %" help="Límite de pérdida permitida acumulada durante una jornada de trading." />
                 <input
                   type="number"
                   min="0"
@@ -468,7 +831,7 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <span>Drawdown max permitido %</span>
+                <FieldLabel text="Drawdown max permitido %" help="Máxima caída de capital aceptada antes de detener operativa o revisar estrategia." />
                 <input
                   type="number"
                   min="0"
@@ -480,8 +843,10 @@ export default function AccountsModule() {
 
               {form.account_type === 'funded' && (
                 <>
+                  <div className="accounts-section-title">Reglas de fondeo</div>
+
                   <label>
-                    <span>Firma de fondeo</span>
+                    <FieldLabel text="Firma de fondeo" help="Nombre de la empresa que provee el capital para esta cuenta." />
                     <input
                       value={form.funding_firm}
                       onChange={(event) => handleFormChange('funding_firm', event.target.value)}
@@ -489,7 +854,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <span>Fase desafío</span>
+                    <FieldLabel text="Fase desafío" help="Etapa actual del proceso de evaluación o fondeo de la cuenta." />
                     <select
                       value={form.challenge_phase}
                       onChange={(event) => handleFormChange('challenge_phase', event.target.value)}
@@ -501,7 +866,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <span>Target beneficio %</span>
+                    <FieldLabel text="Target beneficio %" help="Objetivo porcentual de ganancia requerido por la firma de fondeo." />
                     <input
                       type="number"
                       min="0"
@@ -512,7 +877,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <span>Límite pérdida diaria %</span>
+                    <FieldLabel text="Límite pérdida diaria %" help="Pérdida diaria máxima permitida según reglas de la firma." />
                     <input
                       type="number"
                       min="0"
@@ -523,7 +888,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <span>Límite pérdida total %</span>
+                    <FieldLabel text="Límite pérdida total %" help="Drawdown total máximo permitido por la firma durante todo el proceso." />
                     <input
                       type="number"
                       min="0"
@@ -534,7 +899,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <span>Ciclo de pago</span>
+                    <FieldLabel text="Ciclo de pago" help="Frecuencia en la que la firma liquida beneficios de la cuenta." />
                     <select
                       value={form.payout_cycle}
                       onChange={(event) => handleFormChange('payout_cycle', event.target.value)}
@@ -548,7 +913,7 @@ export default function AccountsModule() {
               )}
 
               <label className="accounts-notes-field">
-                <span>Observaciones</span>
+                <FieldLabel text="Observaciones" help="Notas internas relevantes sobre operativa, condiciones o seguimiento de la cuenta." />
                 <textarea
                   value={form.notes}
                   onChange={(event) => handleFormChange('notes', event.target.value)}

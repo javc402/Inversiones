@@ -13,6 +13,10 @@ vi.mock('@components/AccountsModule', () => ({
   default: () => React.createElement('div', null, 'Modulo de Cuentas'),
 }))
 
+vi.mock('@components/SettingsModule', () => ({
+  default: () => React.createElement('div', null, 'Modulo de Configuracion'),
+}))
+
 vi.mock('@services/roles', () => ({
   getCurrentUserRole: getCurrentUserRoleMock,
 }))

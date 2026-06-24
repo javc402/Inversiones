@@ -1,7 +1,33 @@
+@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL@24,400,0');
+
 :root {
   font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
   color: #1d3557;
   background: #eef3f9;
+  --material-symbols-rounded: 'Material Symbols Rounded';
+}
+
+.app-icon,
+.material-symbols-rounded {
+  font-family: var(--material-symbols-rounded);
+  font-weight: normal;
+  font-style: normal;
+  font-size: 20px;
+  line-height: 1;
+  letter-spacing: normal;
+  text-transform: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  direction: ltr;
+  -webkit-font-feature-settings: 'liga';
+  -webkit-font-smoothing: antialiased;
+  font-variation-settings: 'FILL' 0, 'wght' 400, 'GRAD' 0, 'opsz' 24;
+}
+
+.app-icon {
+  flex: 0 0 auto;
 }
 
 * {
@@ -135,6 +161,7 @@ body {
   display: grid;
   gap: 16px;
   align-content: start;
+  min-width: 0;
 }
 
 .dashboard-shell {
@@ -146,7 +173,7 @@ body {
 }
 
 .dashboard-sidebar {
-  background: linear-gradient(180deg, #f8fbff 0%, #f2f7fe 100%);
+  background: #ffffff;
   border: 1px solid #dbe2ee;
   border-radius: 18px;
   padding: 16px 14px;
@@ -156,14 +183,31 @@ body {
   min-height: calc(100vh - 28px);
   position: sticky;
   top: 14px;
+  overflow: hidden;
 }
 
 .sidebar-brand {
-  margin: 2px 0 4px;
-  font-size: 32px;
+  margin: 0;
+  min-height: 58px;
+  padding: 10px 22px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: px;
+  font-size: 28px;
   font-weight: 800;
-  letter-spacing: 0.03em;
+  letter-spacing: 0.01em;
   color: #0e4f8a;
+  flex: 0 0 auto;
+}
+
+.sidebar-brand-icon {
+  font-size: 28px;
+  color: #0f4f93;
+}
+
+.sidebar-brand-text {
+  font-size: 24px;
 }
 
 .sidebar-group-title {
@@ -173,11 +217,32 @@ body {
   letter-spacing: 0.11em;
   text-transform: uppercase;
   color: #8a9eb7;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-group-icon {
+  display: inline-flex;
+  color: #5f7998;
+}
+
+.sidebar-group-icon .app-icon {
+  font-size: 18px;
 }
 
 .sidebar-section {
   display: grid;
   gap: 8px;
+}
+
+.sidebar-scroll {
+  display: grid;
+  gap: 12px;
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 2px;
+  align-content: start;
 }
 
 .sidebar-nav-section {
@@ -193,17 +258,21 @@ body {
 
 .sidebar-section-arrow {
   color: #6c85a5;
-  font-size: 14px;
   line-height: 1;
+}
+
+.sidebar-section-arrow .app-icon {
+  font-size: 18px;
 }
 
 .sidebar-section-content {
   display: grid;
-  gap: 8px;
+  gap: 6px;
   overflow: hidden;
   padding-top: 2px;
   max-height: 220px;
   opacity: 1;
+  align-content: start;
   transition: max-height 0.24s ease, opacity 0.2s ease, padding-top 0.2s ease;
 }
 
@@ -235,7 +304,11 @@ body {
   border: 1px solid #d8e2ef;
   border-radius: 18px;
   padding: 18px 22px;
+  min-height: 86px;
   box-shadow: 0 14px 30px rgba(16, 43, 80, 0.08);
+  position: sticky;
+  top: 14px;
+  z-index: 20;
 }
 
 .header-right {
@@ -244,9 +317,21 @@ body {
   gap: 10px;
 }
 
+.system-status,
+.secondary-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.system-status .app-icon,
+.secondary-btn .app-icon {
+  font-size: 18px;
+}
+
 .dashboard-header h1 {
   margin: 0;
-  font-size: 34px;
+  font-size: 25px;
   color: #0f3157;
   letter-spacing: -0.02em;
 }
@@ -338,26 +423,21 @@ body {
   background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
   color: #355b84;
   border-radius: 12px;
-  padding: 12px 14px;
+  padding: 8px 12px;
   cursor: pointer;
   font-weight: 600;
   text-align: left;
-  position: relative;
-  padding-left: 36px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 36px;
+  line-height: 1.1;
   transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
-.menu-btn::before {
-  content: '';
-  width: 12px;
-  height: 12px;
-  border-radius: 4px;
-  border: 1.5px solid currentColor;
-  position: absolute;
-  left: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0.65;
+.menu-btn-icon {
+  font-size: 16px;
+  opacity: 0.82;
 }
 
 .menu-btn.active {
@@ -373,39 +453,69 @@ body {
   box-shadow: 0 10px 20px rgba(30, 91, 168, 0.1);
 }
 
-.menu-dashboard::before {
-  border-radius: 50%;
-}
-
-.menu-accounts::before {
-  border-radius: 3px;
-}
-
-.menu-users::before {
-  border-radius: 2px;
-  transform: translateY(-50%) rotate(45deg);
-}
-
 .sidebar-footer {
   margin-top: auto;
   border-top: 1px solid #dde6f1;
   padding-top: 12px;
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sidebar-user-avatar {
+  width: 46px;
+  height: 46px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffffff 0%, #edf4fb 100%);
+  border: 1px solid #d5e0ed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #5e7c9f;
+  flex: 0 0 auto;
+}
+
+.sidebar-user-avatar .app-icon {
+  font-size: 22px;
+}
+
+.sidebar-user-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.sidebar-user-name {
+  margin: 0;
+  color: #152f4d;
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.2;
 }
 
 .sidebar-user-email {
   margin: 0;
-  color: #214a76;
+  color: #6a7f99;
   font-size: 12px;
-  font-weight: 700;
-  word-break: break-word;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 170px;
 }
 
 .sidebar-user-role {
-  margin: 4px 0 0;
-  color: #4f7397;
-  font-size: 11px;
-  font-weight: 700;
+  margin: 0;
+  width: fit-content;
+  color: #0f4f93;
+  background: #eaf2ff;
+  border: 1px solid #c6d9f2;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
   letter-spacing: 0.08em;
+  padding: 4px 8px;
 }
 
 .restricted-card p {

@@ -88,9 +88,17 @@ describe('AccountsModule', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
 
-    fireEvent.change(screen.getByLabelText('Nombre de la cuenta *'), { target: { value: 'Cuenta Nueva' } });
-    fireEvent.change(screen.getByLabelText('Broker/Firma *'), { target: { value: 'Broker X' } });
-    fireEvent.change(screen.getByLabelText('Balance inicial *'), { target: { value: '1200' } });
+    const textboxes = screen.getAllByRole('textbox');
+    const nameInput = textboxes[0];
+    const aliasInput = textboxes[1];
+    const brokerInput = textboxes[2];
+    const numericInputs = screen.getAllByRole('spinbutton') as HTMLInputElement[];
+    const balanceInput = numericInputs[0];
+
+    fireEvent.change(nameInput, { target: { value: 'Cuenta Nueva' } });
+    fireEvent.change(aliasInput, { target: { value: 'CN' } });
+    fireEvent.change(brokerInput, { target: { value: 'Broker X' } });
+    fireEvent.change(balanceInput, { target: { value: '1200' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cuenta' }));
 

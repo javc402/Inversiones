@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { AppIcon } from './AppIcon';
 import {
   listAllUsers,
   updateUserStatus,
@@ -182,13 +183,13 @@ export default function AdminPanel() {
               </div>
 
               <div className="chip-row">
-                <span className={`role-pill role-${roleName}`}>{roleName === 'admin' ? 'ADMIN' : 'PERSONA'}</span>
+                <span className={`role-pill role-${roleName}`}>{roleName === 'admin' ? 'ADMIN' : 'USUARIO'}</span>
               </div>
 
               <div className="contact-lines">
-                <p>✉ {user.email || 'Sin correo'}</p>
-                <p>☎ Sin telefono</p>
-                <p>⌖ Sin ciudad</p>
+                <p><AppIcon name="mail" /> {user.email || 'Sin correo'}</p>
+                <p><AppIcon name="phone" /> Sin telefono</p>
+                <p><AppIcon name="location" /> Sin ciudad</p>
               </div>
 
               {isSelf && <p className="self-note">Tu usuario no se puede editar.</p>}
@@ -223,7 +224,7 @@ export default function AdminPanel() {
                     disabled={!canActivate}
                     onClick={() => void handleStatusChange(user.user_id, 'active')}
                   >
-                    ✓
+                      <AppIcon name="check" />
                   </button>
                   <button
                     type="button"
@@ -233,7 +234,7 @@ export default function AdminPanel() {
                     disabled={!canMakeAdmin}
                     onClick={() => void handleAssignAdmin(user.user_id)}
                   >
-                    🛡
+                      <AppIcon name="shield" />
                   </button>
                   <button
                     type="button"
@@ -243,7 +244,7 @@ export default function AdminPanel() {
                     disabled={!canRemoveAdmin}
                     onClick={() => void handleRemoveAdmin(user.user_id)}
                   >
-                    -
+                      <AppIcon name="delete" />
                   </button>
                 </div>
 
