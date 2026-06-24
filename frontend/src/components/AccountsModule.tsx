@@ -8,6 +8,7 @@ import {
   createTradingAccount,
   listTradingAccounts,
   toggleTradingAccountStatus,
+  toggleTradingAccountFavorite,
   updateTradingAccount,
   UpsertTradingAccountInput,
 } from '@services/accounts';
@@ -369,23 +370,11 @@ export default function AccountsModule() {
   const [query, setQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | TradingAccountStatus>('all');
-  const [favorites, setFavorites] = useState<Set<string>>(new Set());
 
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('create');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_FORM);
-
-  useEffect(() => {
-    const saved = localStorage.getItem('account_favorites');
-    if (saved) {
-      setFavorites(new Set(JSON.parse(saved)));
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem('account_favorites', JSON.stringify(Array.from(favorites)));
-  }, [favorites]);
 
   useEffect(() => {
     void loadAccounts();
@@ -430,12 +419,10 @@ export default function AccountsModule() {
     });
 
     return filtered.sort((a, b) => {
-      const aIsFav = favorites.has(a.id);
-      const bIsFav = favorites.has(b.id);
-      if (aIsFav === bIsFav) return 0;
-      return aIsFav ? -1 : 1;
+      if (a.is_favorite === b.is_favorite) return 0;
+      return a.is_favorite ? -1 : 1;
     });
-  }, [accounts, query, typeFilter, statusFilter, favorites]);
+  }, [accounts, query, typeFilter, statusFilter]);
 
   const accountsContent = useMemo(() => {
     if (loading) {
@@ -457,12 +444,12 @@ export default function AccountsModule() {
           >
             <button
               type="button"
-              className={`account-favorite-btn ${favorites.has(account.id) ? 'is-favorite' : ''}`}
-              title={favorites.has(account.id) ? 'Quitar de favoritos' : 'Agregar a favoritos'}
-              aria-label={favorites.has(account.id) ? 'Quitar de favoritos' : 'Agregar a favoritos'}
-              onClick={() => handleToggleFavorite(account.id)}
+              className={`account-favorite-btn ${account.is_favorite ? 'is-favorite' : ''}`}
+              title={account.is_favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+              aria-label={account.is_favorite ? 'Quitar de favoritos' : 'Agregar a favoritos'}
+              onClick={() => void handleToggleFavorite(account)}
             >
-              <AppIcon name={favorites.has(account.id) ? 'star' : 'starOutline'} />
+              <AppIcon name={account.is_favorite ? 'star' : 'starOutline'} />
             </button>
 
             <div className="account-card-head">
@@ -617,16 +604,16 @@ export default function AccountsModule() {
     }
   }
 
-  function handleToggleFavorite(accountId: string) {
-    setFavorites((prev) => {
-      const next = new Set(prev);
-      if (next.has(accountId)) {
-        next.delete(accountId);
-      } else {
-        next.add(accountId);
-      }
-      return next;
-    });
+  async function handleToggleFavorite(account: TradingAccount) {
+    try {
+      const nextIsFavorite = await toggleTradingAccountFavorite(account.id, account.is_favorite);
+      setAccounts((prev) =>
+        prev.map((item) => (item.id === account.id ? { ...item, is_favorite: nextIsFavorite } : item))
+      );
+    } catch (requestError) {
+      setError('No fue posible actualizar el estado de favorito de la cuenta.');
+      console.error(requestError);
+    }
   }
 
   return (

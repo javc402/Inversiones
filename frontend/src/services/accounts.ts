@@ -28,6 +28,7 @@ export interface TradingAccount {
   max_loss_limit_pct: number | null;
   payout_cycle: string | null;
   notes: string | null;
+  is_favorite: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -60,7 +61,8 @@ type AccountActivityAction =
   | 'accounts.list'
   | 'accounts.create'
   | 'accounts.update'
-  | 'accounts.toggle_status';
+  | 'accounts.toggle_status'
+  | 'accounts.toggle_favorite';
 
 async function logAccountActivity(
   action: AccountActivityAction,
@@ -76,9 +78,24 @@ async function logAccountActivity(
 
     if (!user) return;
 
-    const logMetadata: Record<string, unknown> = { targetAccountId };
+    const logMetadata: Record<string, unknown> = {
+      source: 'frontend',
+      module: 'accounts',
+    };
+
+    if (targetAccountId) {
+      logMetadata.targetAccountId = targetAccountId;
+    }
+
     if (metadata) {
       Object.assign(logMetadata, metadata);
+    }
+
+    // Evita persistir llaves undefined en jsonb y mantiene metadata legible.
+    for (const [key, value] of Object.entries(logMetadata)) {
+      if (value === undefined) {
+        delete logMetadata[key];
+      }
     }
 
     await supabase.from('activity_logs').insert({
@@ -107,7 +124,9 @@ export async function listTradingAccounts(): Promise<TradingAccount[]> {
 
   if (error) throw error;
 
-  void logAccountActivity('accounts.list');
+  void logAccountActivity('accounts.list', undefined, {
+    resultCount: data?.length ?? 0,
+  });
 
   return (data ?? []) as TradingAccount[];
 }
@@ -150,6 +169,13 @@ export async function createTradingAccount(input: UpsertTradingAccountInput): Pr
 }
 
 export async function updateTradingAccount(accountId: string, input: UpsertTradingAccountInput): Promise<void> {
+  // Cargar valores anteriores para auditoría before/after
+  const { data: beforeData } = await supabase
+    .from('trading_accounts')
+    .select('account_type')
+    .eq('id', accountId)
+    .single();
+
   const payload = {
     ...input,
     alias: input.alias ?? null,
@@ -176,7 +202,9 @@ export async function updateTradingAccount(accountId: string, input: UpsertTradi
   if (error) throw error;
 
   void logAccountActivity('accounts.update', accountId, {
-    account_type: input.account_type,
+    fieldChanged: 'account_type',
+    before: beforeData?.account_type ?? 'unknown',
+    after: input.account_type,
   });
 }
 
@@ -197,9 +225,32 @@ export async function toggleTradingAccountStatus(
   if (error) throw error;
 
   void logAccountActivity('accounts.toggle_status', accountId, {
-    from: currentStatus,
-    to: nextStatus,
+    fieldChanged: 'status',
+    before: currentStatus,
+    after: nextStatus,
   });
 
   return nextStatus;
+}
+
+export async function toggleTradingAccountFavorite(accountId: string, currentIsFavorite: boolean): Promise<boolean> {
+  const nextIsFavorite = !currentIsFavorite;
+
+  const { error } = await supabase
+    .from('trading_accounts')
+    .update({
+      is_favorite: nextIsFavorite,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', accountId);
+
+  if (error) throw error;
+
+  void logAccountActivity('accounts.toggle_favorite', accountId, {
+    fieldChanged: 'is_favorite',
+    before: currentIsFavorite,
+    after: nextIsFavorite,
+  });
+
+  return nextIsFavorite;
 }
