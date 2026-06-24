@@ -1,6 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { supabase } from '@lib/supabase';
 import { assertCurrentUserIsAdmin } from '@services/roles';
+import { logAuditActivity } from '@services/audit';
 
 export interface ConfigItem {
   id: string;
@@ -37,28 +38,37 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 const STORAGE_KEY = 'inversiones_system_config_cache';
 const STORAGE_TS_KEY = 'inversiones_system_config_cache_ts';
 
-async function logSystemConfigActivity(
-  action: 'system_config.update',
-  metadata: Record<string, unknown>
-): Promise<void> {
-  if (import.meta.env.MODE === 'test') return;
-
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    await supabase.from('activity_logs').insert({
-      user_id: user.id,
-      action,
-      target_user_id: user.id,
-      metadata,
+async function detectConfigChanges(
+  current: SystemConfig,
+  next: SystemConfig
+): Promise<Array<{ field: string; before: any; after: any }>> {
+  const changes = [];
+  
+  if (JSON.stringify(current.accountTypes) !== JSON.stringify(next.accountTypes)) {
+    changes.push({
+      field: 'accountTypes',
+      before: current.accountTypes,
+      after: next.accountTypes,
     });
-  } catch (error) {
-    console.error('Error writing system config activity log:', error);
   }
+  
+  if (JSON.stringify(current.platforms) !== JSON.stringify(next.platforms)) {
+    changes.push({
+      field: 'platforms',
+      before: current.platforms,
+      after: next.platforms,
+    });
+  }
+  
+  if (JSON.stringify(current.currencies) !== JSON.stringify(next.currencies)) {
+    changes.push({
+      field: 'currencies',
+      before: current.currencies,
+      after: next.currencies,
+    });
+  }
+  
+  return changes;
 }
 
 function loadLocalCache(): SystemConfig | null {
@@ -171,9 +181,7 @@ export function useSystemConfig() {
 
     if (import.meta.env.MODE === 'test') return;
 
-    const changedKeys = (['accountTypes', 'platforms', 'currencies'] as const).filter((key) => {
-      return JSON.stringify(config[key]) !== JSON.stringify(next[key]);
-    });
+
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const db = supabase as any;
@@ -216,11 +224,14 @@ export function useSystemConfig() {
       throw new Error('No se pudo guardar la configuración en este momento. Intenta de nuevo.');
     }
 
-    await logSystemConfigActivity('system_config.update', {
-      changedKeys,
-      accountTypesCount: next.accountTypes.length,
-      platformsCount: next.platforms.length,
-      currenciesCount: next.currencies.length,
+    const changes = await detectConfigChanges(config, next);
+
+    void logAuditActivity('system_config.update', {
+      module: 'config',
+      targetType: 'config',
+      targetId: 'system',
+      fieldsChanged: changes.map(c => c.field),
+      changeDetails: changes.length > 0 ? changes : undefined,
     });
   }, [config]);
 

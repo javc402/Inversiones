@@ -1,4 +1,5 @@
 import { supabase } from '@lib/supabase';
+import { detectChanges, logAuditActivity, logChangesWithStandardFormat } from './audit';
 
 export type TradingAccountType = 'real' | 'demo' | 'funded';
 export type TradingAccountStatus = 'active' | 'inactive';
@@ -57,57 +58,9 @@ export interface UpsertTradingAccountInput {
   notes?: string;
 }
 
-type AccountActivityAction =
-  | 'accounts.list'
-  | 'accounts.create'
-  | 'accounts.update'
-  | 'accounts.toggle_status'
-  | 'accounts.toggle_favorite';
 
-async function logAccountActivity(
-  action: AccountActivityAction,
-  targetAccountId?: string,
-  metadata?: Record<string, unknown>
-): Promise<void> {
-  if (import.meta.env.MODE === 'test') return;
 
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
 
-    if (!user) return;
-
-    const logMetadata: Record<string, unknown> = {
-      source: 'frontend',
-      module: 'accounts',
-    };
-
-    if (targetAccountId) {
-      logMetadata.targetAccountId = targetAccountId;
-    }
-
-    if (metadata) {
-      Object.assign(logMetadata, metadata);
-    }
-
-    // Evita persistir llaves undefined en jsonb y mantiene metadata legible.
-    for (const [key, value] of Object.entries(logMetadata)) {
-      if (value === undefined) {
-        delete logMetadata[key];
-      }
-    }
-
-    await supabase.from('activity_logs').insert({
-      user_id: user.id,
-      action,
-      target_user_id: user.id,
-      metadata: logMetadata,
-    });
-  } catch (error) {
-    console.error('Error writing account activity log:', error);
-  }
-}
 
 export async function listTradingAccounts(): Promise<TradingAccount[]> {
   const {
@@ -124,7 +77,9 @@ export async function listTradingAccounts(): Promise<TradingAccount[]> {
 
   if (error) throw error;
 
-  void logAccountActivity('accounts.list', undefined, {
+  void logAuditActivity('accounts.list', {
+    module: 'accounts',
+    targetType: 'account',
     resultCount: data?.length ?? 0,
   });
 
@@ -162,7 +117,9 @@ export async function createTradingAccount(input: UpsertTradingAccountInput): Pr
 
   if (error) throw error;
 
-  void logAccountActivity('accounts.create', undefined, {
+  void logAuditActivity('accounts.create', {
+    module: 'accounts',
+    targetType: 'account',
     account_type: input.account_type,
     broker_name: input.broker_name,
   });
@@ -212,23 +169,16 @@ export async function updateTradingAccount(accountId: string, input: UpsertTradi
     'payout_cycle', 'notes'
   ];
 
-  const changes: Array<{ field: string; before: any; after: any }> = [];
-
-  fieldsToCheck.forEach(field => {
-    if (field in input) {
-      const before = (beforeData as Record<string, any>)[field];
-      const after = (input as Record<string, any>)[field] ?? null;
-      if (before !== after) {
-        changes.push({ field, before, after });
-      }
-    }
-  });
+  const changes = detectChanges(beforeData, input, fieldsToCheck);
 
   // Log con todos los cambios capturados
-  void logAccountActivity('accounts.update', accountId, {
-    fieldsChanged: changes.map(c => c.field),
-    changeDetails: changes.length > 0 ? changes : undefined,
-  });
+  void logChangesWithStandardFormat(
+    'accounts.update',
+    'accounts',
+    'account',
+    accountId,
+    changes
+  );
 }
 
 export async function toggleTradingAccountStatus(
@@ -247,11 +197,17 @@ export async function toggleTradingAccountStatus(
 
   if (error) throw error;
 
-  void logAccountActivity('accounts.toggle_status', accountId, {
-    fieldChanged: 'status',
-    before: currentStatus,
-    after: nextStatus,
-  });
+  const changes = [
+    { field: 'status', before: currentStatus, after: nextStatus }
+  ];
+
+  void logChangesWithStandardFormat(
+    'accounts.toggle_status',
+    'accounts',
+    'account',
+    accountId,
+    changes
+  );
 
   return nextStatus;
 }
@@ -269,11 +225,17 @@ export async function toggleTradingAccountFavorite(accountId: string, currentIsF
 
   if (error) throw error;
 
-  void logAccountActivity('accounts.toggle_favorite', accountId, {
-    fieldChanged: 'is_favorite',
-    before: currentIsFavorite,
-    after: nextIsFavorite,
-  });
+  const changes = [
+    { field: 'is_favorite', before: currentIsFavorite, after: nextIsFavorite }
+  ];
+
+  void logChangesWithStandardFormat(
+    'accounts.toggle_favorite',
+    'accounts',
+    'account',
+    accountId,
+    changes
+  );
 
   return nextIsFavorite;
 }

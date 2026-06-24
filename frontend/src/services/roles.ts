@@ -1,19 +1,5 @@
 import { supabase } from '@lib/supabase';
-
-type ActivityAction =
-  | 'roles.get_current_user_role'
-  | 'roles.list_all_users'
-  | 'roles.update_user_status'
-  | 'roles.assign_admin_role'
-  | 'roles.remove_admin_role'
-  | 'roles.approve_user_registration'
-  | 'roles.reject_user_registration';
-
-interface ActivityLogInput {
-  action: ActivityAction;
-  targetUserId?: string;
-  metadata?: Record<string, unknown>;
-}
+import { logAuditActivity } from './audit';
 
 interface RpcResponse<T = unknown> {
   data: T | null;
@@ -23,41 +9,6 @@ interface RpcResponse<T = unknown> {
 type RpcClient = {
   rpc?: (fn: string, args?: Record<string, unknown>) => Promise<RpcResponse>;
 };
-
-async function logActivity({ action, targetUserId, metadata }: ActivityLogInput): Promise<void> {
-  // Evita ruido en tests unitarios donde los mocks de supabase.from son limitados.
-  if (import.meta.env.MODE === 'test') return;
-
-  try {
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) return;
-
-    const logMetadata: Record<string, unknown> = {
-      source: 'frontend',
-      module: 'roles',
-      ...metadata,
-    };
-
-    // Evita persistir llaves undefined en jsonb y mantiene metadata legible.
-    for (const [key, value] of Object.entries(logMetadata)) {
-      if (value === undefined) {
-        delete logMetadata[key];
-      }
-    }
-
-    await supabase.from('activity_logs').insert({
-      user_id: user.id,
-      action,
-      target_user_id: targetUserId ?? null,
-      metadata: logMetadata,
-    });
-  } catch (error) {
-    console.error('Error writing activity log:', error);
-  }
-}
 
 export interface UserProfile {
   id: string;
@@ -135,12 +86,11 @@ export async function getCurrentUserRole(): Promise<Role | null> {
       if (typeof rpcRoleName === 'string') {
         const normalizedRole = roleFromName(rpcRoleName.trim().toLowerCase());
         if (normalizedRole) {
-          void logActivity({
-            action: 'roles.get_current_user_role',
-            metadata: {
-              strategy: 'rpc.get_my_role',
-              resolvedRole: normalizedRole.name,
-            },
+          void logAuditActivity('roles.get_current_user_role', {
+            module: 'roles',
+            targetType: 'user',
+            strategy: 'rpc.get_my_role',
+            resolvedRole: normalizedRole.name,
           });
           return normalizedRole;
         }
@@ -186,12 +136,11 @@ export async function getCurrentUserRole(): Promise<Role | null> {
 
     if (roleError || !role) return null;
 
-    void logActivity({
-      action: 'roles.get_current_user_role',
-      metadata: {
-        strategy: 'tables.user_profiles+roles',
-        resolvedRole: (role as Role).name,
-      },
+    void logAuditActivity('roles.get_current_user_role', {
+      module: 'roles',
+      targetType: 'user',
+      strategy: 'tables.user_profiles+roles',
+      resolvedRole: (role as Role).name,
     });
 
     return role as Role;
@@ -255,12 +204,11 @@ export async function listAllUsers(): Promise<UserProfile[]> {
     if (typeof rpcClient.rpc === 'function') {
       const rpcResponse = await rpcClient.rpc('list_users_admin');
       if (!rpcResponse.error && rpcResponse.data) {
-        void logActivity({
-          action: 'roles.list_all_users',
-          metadata: {
-            strategy: 'rpc.list_users_admin',
-            resultCount: rpcResponse.data.length,
-          },
+        void logAuditActivity('roles.list_all_users', {
+          module: 'roles',
+          targetType: 'user',
+          strategy: 'rpc.list_users_admin',
+          resultCount: rpcResponse.data.length,
         });
 
         return rpcResponse.data.map((item) => ({
@@ -283,12 +231,11 @@ export async function listAllUsers(): Promise<UserProfile[]> {
 
     if (error) throw error;
 
-    void logActivity({
-      action: 'roles.list_all_users',
-      metadata: {
-        strategy: 'tables.user_profiles+roles',
-        resultCount: data?.length ?? 0,
-      },
+    void logAuditActivity('roles.list_all_users', {
+      module: 'roles',
+      targetType: 'user',
+      strategy: 'tables.user_profiles+roles',
+      resultCount: data?.length ?? 0,
     });
 
     return (data || []) as unknown as UserProfile[];
@@ -316,10 +263,11 @@ export async function updateUserStatus(
       });
 
       if (!rpcResponse.error) {
-        void logActivity({
-          action: 'roles.update_user_status',
+        void logAuditActivity('roles.update_user_status', {
+          module: 'roles',
+          targetType: 'user',
           targetUserId: userId,
-          metadata: { status },
+          newStatus: status,
         });
         return;
       }
@@ -332,10 +280,11 @@ export async function updateUserStatus(
 
     if (error) throw error;
 
-    void logActivity({
-      action: 'roles.update_user_status',
+    void logAuditActivity('roles.update_user_status', {
+      module: 'roles',
+      targetType: 'user',
       targetUserId: userId,
-      metadata: { status },
+      newStatus: status,
     });
   } catch (error) {
     console.error('Error updating user status:', error);
@@ -358,8 +307,9 @@ export async function assignAdminRole(userId: string): Promise<void> {
       });
 
       if (!rpcResponse.error) {
-        void logActivity({
-          action: 'roles.assign_admin_role',
+        void logAuditActivity('roles.assign_admin_role', {
+          module: 'roles',
+          targetType: 'user',
           targetUserId: userId,
         });
         return;
@@ -384,8 +334,9 @@ export async function assignAdminRole(userId: string): Promise<void> {
 
     if (error) throw error;
 
-    void logActivity({
-      action: 'roles.assign_admin_role',
+    void logAuditActivity('roles.assign_admin_role', {
+      module: 'roles',
+      targetType: 'user',
       targetUserId: userId,
     });
   } catch (error) {
@@ -409,8 +360,9 @@ export async function removeAdminRole(userId: string): Promise<void> {
       });
 
       if (!rpcResponse.error) {
-        void logActivity({
-          action: 'roles.remove_admin_role',
+        void logAuditActivity('roles.remove_admin_role', {
+          module: 'roles',
+          targetType: 'user',
           targetUserId: userId,
         });
         return;
@@ -435,8 +387,9 @@ export async function removeAdminRole(userId: string): Promise<void> {
 
     if (error) throw error;
 
-    void logActivity({
-      action: 'roles.remove_admin_role',
+    void logAuditActivity('roles.remove_admin_role', {
+      module: 'roles',
+      targetType: 'user',
       targetUserId: userId,
     });
   } catch (error) {
@@ -452,8 +405,9 @@ export async function approveUserRegistration(userId: string): Promise<void> {
   try {
     await updateUserStatus(userId, 'active');
 
-    void logActivity({
-      action: 'roles.approve_user_registration',
+    void logAuditActivity('roles.approve_user_registration', {
+      module: 'roles',
+      targetType: 'user',
       targetUserId: userId,
     });
   } catch (error) {
@@ -469,8 +423,9 @@ export async function rejectUserRegistration(userId: string): Promise<void> {
   try {
     await updateUserStatus(userId, 'inactive');
 
-    void logActivity({
-      action: 'roles.reject_user_registration',
+    void logAuditActivity('roles.reject_user_registration', {
+      module: 'roles',
+      targetType: 'user',
       targetUserId: userId,
     });
   } catch (error) {
