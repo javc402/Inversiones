@@ -1,10 +1,14 @@
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { AppIcon } from './AppIcon';
 import { useSystemConfig, ConfigItem, SystemConfig } from '@hooks/useSystemConfig';
 import '../styles/settings-module.css';
 
 type SettingsSection = 'perfil' | 'tipos-cuenta' | 'plataformas' | 'monedas';
 type ConfigKey = 'accountTypes' | 'platforms' | 'currencies';
+
+function isSettingsSection(value: string | null): value is SettingsSection {
+  return value === 'perfil' || value === 'tipos-cuenta' || value === 'plataformas' || value === 'monedas';
+}
 
 interface UserProfileData {
   fullName: string;
@@ -38,7 +42,7 @@ interface ConfigListProps {
   items: ConfigItem[];
   configKey: ConfigKey;
   config: SystemConfig;
-  onUpdate: (next: SystemConfig) => void;
+  onUpdate: (next: SystemConfig) => Promise<void>;
 }
 
 function ConfigList({ title, description, items, configKey, config, onUpdate }: ConfigListProps) {
@@ -59,19 +63,31 @@ function ConfigList({ title, description, items, configKey, config, onUpdate }: 
     setEditForm(null);
   }
 
-  function saveEdit() {
+  async function saveEdit() {
     if (!editForm) return;
     const updated = items.map((i) => (i.id === editingId ? editForm : i));
-    onUpdate({ ...config, [configKey]: updated });
-    cancelEdit();
+    try {
+      await onUpdate({ ...config, [configKey]: updated });
+      setAddError('');
+      cancelEdit();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo guardar el cambio.';
+      setAddError(message);
+    }
   }
 
-  function deleteItem(id: string) {
+  async function deleteItem(id: string) {
     const updated = items.filter((i) => i.id !== id);
-    onUpdate({ ...config, [configKey]: updated });
+    try {
+      await onUpdate({ ...config, [configKey]: updated });
+      setAddError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo eliminar el ítem.';
+      setAddError(message);
+    }
   }
 
-  function handleAdd(e: FormEvent) {
+  async function handleAdd(e: FormEvent) {
     e.preventDefault();
     setAddError('');
     const labelTrimmed = newLabel.trim();
@@ -93,10 +109,16 @@ function ConfigList({ title, description, items, configKey, config, onUpdate }: 
       description: newDesc.trim() || undefined,
     };
 
-    onUpdate({ ...config, [configKey]: [...items, newItem] });
-    setNewLabel('');
-    setNewValue('');
-    setNewDesc('');
+    try {
+      await onUpdate({ ...config, [configKey]: [...items, newItem] });
+      setNewLabel('');
+      setNewValue('');
+      setNewDesc('');
+      setAddError('');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'No se pudo agregar el ítem.';
+      setAddError(message);
+    }
   }
 
   return (
@@ -131,7 +153,7 @@ function ConfigList({ title, description, items, configKey, config, onUpdate }: 
                   aria-label="Editar descripción"
                 />
                 <div className="settings-config-item-actions">
-                  <button type="button" className="settings-btn-save" onClick={saveEdit}>
+                  <button type="button" className="settings-btn-save" onClick={() => void saveEdit()}>
                     Guardar
                   </button>
                   <button type="button" className="settings-btn-cancel" onClick={cancelEdit}>
@@ -159,7 +181,7 @@ function ConfigList({ title, description, items, configKey, config, onUpdate }: 
                   <button
                     type="button"
                     className="settings-btn-delete"
-                    onClick={() => deleteItem(item.id)}
+                    onClick={() => void deleteItem(item.id)}
                     aria-label={`Eliminar ${item.label}`}
                   >
                     ✕
@@ -206,11 +228,49 @@ function ConfigList({ title, description, items, configKey, config, onUpdate }: 
 }
 
 export default function SettingsModule({ userEmail, isAdmin }: Readonly<SettingsModuleProps>) {
-  const [activeSection, setActiveSection] = useState<SettingsSection>('perfil');
+  const settingsSectionStorageKey = `inversiones_settings_active_section_${userEmail}`;
+  const [activeSection, setActiveSection] = useState<SettingsSection>(() => {
+    if (typeof window === 'undefined') return 'perfil';
+    try {
+      const stored = localStorage.getItem(settingsSectionStorageKey);
+      if (isSettingsSection(stored)) return stored;
+    } catch {
+      // ignore
+    }
+    return 'perfil';
+  });
   const { config, updateConfig } = useSystemConfig();
 
   const [profile, setProfile] = useState<UserProfileData>(() => loadProfile(userEmail));
   const [profileSaved, setProfileSaved] = useState(false);
+  const [adminActionError, setAdminActionError] = useState('');
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(settingsSectionStorageKey);
+      if (isSettingsSection(stored)) {
+        setActiveSection(stored);
+        return;
+      }
+    } catch {
+      // ignore
+    }
+    setActiveSection('perfil');
+  }, [settingsSectionStorageKey]);
+
+  useEffect(() => {
+    if (!isAdmin && activeSection !== 'perfil') {
+      setActiveSection('perfil');
+    }
+  }, [isAdmin, activeSection]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(settingsSectionStorageKey, activeSection);
+    } catch {
+      // ignore
+    }
+  }, [activeSection, settingsSectionStorageKey]);
 
   function handleProfileChange(field: keyof UserProfileData, value: string) {
     setProfile((prev) => ({ ...prev, [field]: value }));
@@ -236,6 +296,20 @@ export default function SettingsModule({ userEmail, isAdmin }: Readonly<Settings
 
   const visibleNav = sectionNav.filter((s) => !s.adminOnly || isAdmin);
   const groups = [...new Set(visibleNav.map((s) => s.group))];
+
+  async function handleConfigUpdate(next: SystemConfig): Promise<void> {
+    setAdminActionError('');
+    try {
+      await updateConfig(next);
+    } catch (error) {
+      const message =
+        error instanceof Error
+          ? error.message
+          : 'No se pudo guardar. Contacta a un administrador del sistema.';
+      setAdminActionError(message);
+      throw error;
+    }
+  }
 
   function renderContent() {
     if (activeSection === 'perfil') {
@@ -325,7 +399,7 @@ export default function SettingsModule({ userEmail, isAdmin }: Readonly<Settings
           items={config.accountTypes}
           configKey="accountTypes"
           config={config}
-          onUpdate={updateConfig}
+          onUpdate={handleConfigUpdate}
         />
       );
     }
@@ -338,7 +412,7 @@ export default function SettingsModule({ userEmail, isAdmin }: Readonly<Settings
           items={config.platforms}
           configKey="platforms"
           config={config}
-          onUpdate={updateConfig}
+          onUpdate={handleConfigUpdate}
         />
       );
     }
@@ -351,7 +425,7 @@ export default function SettingsModule({ userEmail, isAdmin }: Readonly<Settings
           items={config.currencies}
           configKey="currencies"
           config={config}
-          onUpdate={updateConfig}
+          onUpdate={handleConfigUpdate}
         />
       );
     }
@@ -384,6 +458,7 @@ export default function SettingsModule({ userEmail, isAdmin }: Readonly<Settings
       </nav>
 
       <main className="settings-content" aria-label="Contenido de configuración">
+        {adminActionError && <p className="settings-add-error">{adminActionError}</p>}
         {renderContent()}
       </main>
     </div>

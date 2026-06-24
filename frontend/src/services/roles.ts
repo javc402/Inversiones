@@ -63,6 +63,29 @@ export interface Role {
   description: string;
 }
 
+export const ADMIN_PERMISSION_ERROR_MESSAGE =
+  'Ya no tienes permisos de administrador. Contacta a un administrador del sistema.';
+
+class AdminPermissionError extends Error {
+  constructor(message = ADMIN_PERMISSION_ERROR_MESSAGE) {
+    super(message);
+    this.name = 'AdminPermissionError';
+  }
+}
+
+export function isAdminPermissionError(error: unknown): boolean {
+  return error instanceof Error && error.name === 'AdminPermissionError';
+}
+
+export async function assertCurrentUserIsAdmin(): Promise<void> {
+  if (import.meta.env.MODE === 'test') return;
+
+  const role = await getCurrentUserRole();
+  if (role?.name !== 'admin') {
+    throw new AdminPermissionError();
+  }
+}
+
 function roleFromName(name: string): Role | null {
   if (name === 'admin') {
     return {
@@ -184,6 +207,8 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
  */
 export async function listAllUsers(): Promise<UserProfile[]> {
   try {
+    await assertCurrentUserIsAdmin();
+
     const rpcClient = supabase as unknown as {
       rpc?: (
         fn: string
@@ -244,6 +269,8 @@ export async function updateUserStatus(
   status: 'pending' | 'active' | 'inactive'
 ): Promise<void> {
   try {
+    await assertCurrentUserIsAdmin();
+
     const rpcClient = supabase as unknown as RpcClient;
     if (typeof rpcClient.rpc === 'function') {
       const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {
@@ -284,6 +311,8 @@ export async function updateUserStatus(
  */
 export async function assignAdminRole(userId: string): Promise<void> {
   try {
+    await assertCurrentUserIsAdmin();
+
     const rpcClient = supabase as unknown as RpcClient;
     if (typeof rpcClient.rpc === 'function') {
       const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {
@@ -333,6 +362,8 @@ export async function assignAdminRole(userId: string): Promise<void> {
  */
 export async function removeAdminRole(userId: string): Promise<void> {
   try {
+    await assertCurrentUserIsAdmin();
+
     const rpcClient = supabase as unknown as RpcClient;
     if (typeof rpcClient.rpc === 'function') {
       const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {

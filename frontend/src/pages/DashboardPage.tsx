@@ -24,10 +24,28 @@ const SettingsModule = lazy(loadSettingsModule);
 
 interface DashboardPageProps {
   userEmail: string;
+  initialRole?: Role | null;
   onSignOut: () => Promise<void>;
 }
 
 type DashboardTab = 'resumen' | 'cuentas' | 'usuarios' | 'configuracion';
+
+const DASHBOARD_TAB_STORAGE_KEY = 'inversiones_dashboard_active_tab';
+
+function isDashboardTab(value: string | null): value is DashboardTab {
+  return value === 'resumen' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
+}
+
+function loadStoredDashboardTab(): DashboardTab {
+  if (typeof window === 'undefined') return 'resumen';
+  try {
+    const stored = localStorage.getItem(DASHBOARD_TAB_STORAGE_KEY);
+    if (isDashboardTab(stored)) return stored;
+  } catch {
+    // ignore
+  }
+  return 'resumen';
+}
 
 const monthlyProfitData = [
   { month: 'Ene', amount: 1800 },
@@ -53,9 +71,9 @@ const recentTrades = [
   { date: '22/06/2026', pair: 'EURGBP', type: 'SELL', result: '+$140', status: 'Exito' },
 ];
 
-export default function DashboardPage({ userEmail, onSignOut }: Readonly<DashboardPageProps>) {
-  const [activeTab, setActiveTab] = useState<DashboardTab>('resumen');
-  const [userRole, setUserRole] = useState<Role | null>(null);
+export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) {
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
+  const [userRole, setUserRole] = useState<Role | null>(initialRole ?? null);
   const [collapsedSections, setCollapsedSections] = useState({
     principal: false,
     gestion: false,
@@ -103,6 +121,19 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
   }, [activeTab, isAdmin]);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+
+  useEffect(() => {
+    if (initialRole !== undefined) {
+      setUserRole(initialRole);
+      return;
+    }
+
     let isMounted = true;
 
     async function loadRole() {
@@ -118,12 +149,12 @@ export default function DashboardPage({ userEmail, onSignOut }: Readonly<Dashboa
       }
     }
 
-    loadRole();
+    void loadRole();
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [initialRole]);
 
   useEffect(() => {
     let timeoutId: ReturnType<typeof setTimeout> | null = null;

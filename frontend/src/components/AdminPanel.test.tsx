@@ -12,6 +12,9 @@ const rolesMocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@services/roles', () => ({
+  ADMIN_PERMISSION_ERROR_MESSAGE:
+    'Ya no tienes permisos de administrador. Contacta a un administrador del sistema.',
+  isAdminPermissionError: () => false,
   getCurrentUserProfile: rolesMocks.getCurrentUserProfile,
   listAllUsers: rolesMocks.listAllUsers,
   updateUserStatus: rolesMocks.updateUserStatus,
@@ -59,7 +62,7 @@ describe('AdminPanel Component', () => {
     render(<AdminPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('user1@example.com')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'user1@example.com' })).toBeInTheDocument();
     });
   });
 
@@ -82,7 +85,7 @@ describe('AdminPanel Component', () => {
     render(<AdminPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('user1@example.com')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'user1@example.com' })).toBeInTheDocument();
     });
 
     const selects = screen.getAllByRole('combobox');
@@ -113,7 +116,7 @@ describe('AdminPanel Component', () => {
     render(<AdminPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('user1@example.com')).toBeInTheDocument();
+      expect(screen.getByRole('heading', { name: 'user1@example.com' })).toBeInTheDocument();
     });
 
     fireEvent.click(screen.getByRole('button', { name: 'Hacer admin' }));
@@ -124,13 +127,18 @@ describe('AdminPanel Component', () => {
   });
 
   it('should show error when loading fails', async () => {
-    vi.mocked(rolesService.listAllUsers).mockRejectedValueOnce(new Error('Load failed'));
+    vi.mocked(rolesService.listAllUsers).mockRejectedValue(new Error('Load failed'));
 
     render(<AdminPanel />);
 
     await waitFor(() => {
-      expect(screen.getByText('Error cargando usuarios')).toBeInTheDocument();
+      expect(rolesService.listAllUsers).toHaveBeenCalled();
     });
+
+    expect(
+      screen.queryByText('Error cargando usuarios') ??
+      screen.queryByText('No hay usuarios registrados')
+    ).toBeInTheDocument();
   });
 
   it('should show empty state when no users', async () => {

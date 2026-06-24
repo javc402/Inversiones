@@ -6,6 +6,7 @@ const appMocks = vi.hoisted(() => ({
   onAuthStateChangeMock: vi.fn(),
   unsubscribeMock: vi.fn(),
   signOutMock: vi.fn().mockResolvedValue(undefined),
+  getCurrentUserRoleMock: vi.fn(),
 }))
 let authStateCallback: ((event: string, session: any) => void) | undefined
 
@@ -20,6 +21,10 @@ vi.mock('@lib/supabase', () => ({
 
 vi.mock('@services/auth', () => ({
   signOut: appMocks.signOutMock,
+}))
+
+vi.mock('@services/roles', () => ({
+  getCurrentUserRole: appMocks.getCurrentUserRoleMock,
 }))
 
 vi.mock('@pages/LoginPage', () => ({
@@ -43,6 +48,7 @@ describe('App', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     authStateCallback = undefined
+    appMocks.getCurrentUserRoleMock.mockResolvedValue(null)
     appMocks.onAuthStateChangeMock.mockImplementation((callback: (event: string, session: any) => void) => {
       authStateCallback = callback
       return { data: { subscription: { unsubscribe: appMocks.unsubscribeMock } } }

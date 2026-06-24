@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { AppIcon } from './AppIcon';
 import {
+  ADMIN_PERMISSION_ERROR_MESSAGE,
+  isAdminPermissionError,
   listAllUsers,
   updateUserStatus,
   assignAdminRole,
@@ -9,6 +11,13 @@ import {
 } from '@services/roles';
 import { supabase } from '@lib/supabase';
 import '../styles/admin-panel.css';
+
+function toAdminActionErrorMessage(error: unknown, fallback: string): string {
+  if (isAdminPermissionError(error)) {
+    return ADMIN_PERMISSION_ERROR_MESSAGE;
+  }
+  return fallback;
+}
 
 export default function AdminPanel() {
   const [users, setUsers] = useState<UserProfile[]>([]);
@@ -44,7 +53,7 @@ export default function AdminPanel() {
       const data = await listAllUsers();
       setUsers(data);
     } catch (err) {
-      setError('Error cargando usuarios');
+      setError(toAdminActionErrorMessage(err, 'Error cargando usuarios'));
       console.error(err);
     } finally {
       setLoading(false);
@@ -86,7 +95,7 @@ export default function AdminPanel() {
         users.map((u) => (u.user_id === userId ? { ...u, status: newStatus } : u))
       );
     } catch (err) {
-      setError('Error actualizando estado del usuario');
+      setError(toAdminActionErrorMessage(err, 'Error actualizando estado del usuario'));
       console.error(err);
     }
   }
@@ -102,7 +111,7 @@ export default function AdminPanel() {
         )
       );
     } catch (err) {
-      setError('Error asignando rol admin');
+      setError(toAdminActionErrorMessage(err, 'Error asignando rol admin'));
       console.error(err);
     }
   }
@@ -118,7 +127,7 @@ export default function AdminPanel() {
         )
       );
     } catch (err) {
-      setError('Error quitando rol admin');
+      setError(toAdminActionErrorMessage(err, 'Error quitando rol admin'));
       console.error(err);
     }
   }
