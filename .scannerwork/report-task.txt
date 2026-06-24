@@ -1,0 +1,7 @@
+organization=javc402
+projectKey=javc402_Inversiones
+serverUrl=https://sonarcloud.io
+serverVersion=8.0.0.93065
+dashboardUrl=https://sonarcloud.io/dashboard?id=javc402_Inversiones
+ceTaskId=AZ715AUwyRo6yKEZadsM
+ceTaskUrl=https://sonarcloud.io/api/ce/task?id=AZ715AUwyRo6yKEZadsM
