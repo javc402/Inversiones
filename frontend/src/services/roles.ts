@@ -35,11 +35,24 @@ async function logActivity({ action, targetUserId, metadata }: ActivityLogInput)
 
     if (!user) return;
 
+    const logMetadata: Record<string, unknown> = {
+      source: 'frontend',
+      module: 'roles',
+      ...metadata,
+    };
+
+    // Evita persistir llaves undefined en jsonb y mantiene metadata legible.
+    for (const [key, value] of Object.entries(logMetadata)) {
+      if (value === undefined) {
+        delete logMetadata[key];
+      }
+    }
+
     await supabase.from('activity_logs').insert({
       user_id: user.id,
       action,
       target_user_id: targetUserId ?? null,
-      metadata: metadata ?? {},
+      metadata: logMetadata,
     });
   } catch (error) {
     console.error('Error writing activity log:', error);
@@ -122,7 +135,13 @@ export async function getCurrentUserRole(): Promise<Role | null> {
       if (typeof rpcRoleName === 'string') {
         const normalizedRole = roleFromName(rpcRoleName.trim().toLowerCase());
         if (normalizedRole) {
-          void logActivity({ action: 'roles.get_current_user_role' });
+          void logActivity({
+            action: 'roles.get_current_user_role',
+            metadata: {
+              strategy: 'rpc.get_my_role',
+              resolvedRole: normalizedRole.name,
+            },
+          });
           return normalizedRole;
         }
       }
@@ -167,7 +186,13 @@ export async function getCurrentUserRole(): Promise<Role | null> {
 
     if (roleError || !role) return null;
 
-    void logActivity({ action: 'roles.get_current_user_role' });
+    void logActivity({
+      action: 'roles.get_current_user_role',
+      metadata: {
+        strategy: 'tables.user_profiles+roles',
+        resolvedRole: (role as Role).name,
+      },
+    });
 
     return role as Role;
   } catch (error) {
@@ -230,7 +255,13 @@ export async function listAllUsers(): Promise<UserProfile[]> {
     if (typeof rpcClient.rpc === 'function') {
       const rpcResponse = await rpcClient.rpc('list_users_admin');
       if (!rpcResponse.error && rpcResponse.data) {
-        void logActivity({ action: 'roles.list_all_users' });
+        void logActivity({
+          action: 'roles.list_all_users',
+          metadata: {
+            strategy: 'rpc.list_users_admin',
+            resultCount: rpcResponse.data.length,
+          },
+        });
 
         return rpcResponse.data.map((item) => ({
           id: item.id,
@@ -252,7 +283,13 @@ export async function listAllUsers(): Promise<UserProfile[]> {
 
     if (error) throw error;
 
-    void logActivity({ action: 'roles.list_all_users' });
+    void logActivity({
+      action: 'roles.list_all_users',
+      metadata: {
+        strategy: 'tables.user_profiles+roles',
+        resultCount: data?.length ?? 0,
+      },
+    });
 
     return (data || []) as unknown as UserProfile[];
   } catch (error) {

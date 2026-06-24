@@ -80,17 +80,23 @@ describe('accounts service', () => {
   });
 
   it('updateTradingAccount actualiza por id', async () => {
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: { account_type: 'real' }, error: null });
+    const mockEqSelect = vi.fn().mockReturnValueOnce({ single: mockSingle });
+    const mockSelect = vi.fn().mockReturnValueOnce({ eq: mockEqSelect });
     const mockUpdate = vi.fn().mockReturnThis();
-    const mockEq = vi.fn().mockResolvedValueOnce({ error: null });
+    const mockEqUpdate = vi.fn().mockResolvedValueOnce({ error: null });
 
     supabaseMocks.from.mockImplementation((table: string) => {
       if (table === 'trading_accounts') {
-        return { update: mockUpdate };
+        return {
+          select: mockSelect,
+          update: mockUpdate,
+        };
       }
       return { insert: vi.fn().mockResolvedValue({ error: null }) };
     });
 
-    mockUpdate.mockReturnValueOnce({ eq: mockEq });
+    mockUpdate.mockReturnValueOnce({ eq: mockEqUpdate });
 
     await updateTradingAccount('acc-1', {
       name: 'Cuenta A',
@@ -103,7 +109,7 @@ describe('accounts service', () => {
       status: 'inactive',
     });
 
-    expect(mockEq).toHaveBeenCalledWith('id', 'acc-1');
+    expect(mockEqUpdate).toHaveBeenCalledWith('id', 'acc-1');
   });
 
   it('toggleTradingAccountStatus cambia estado', async () => {

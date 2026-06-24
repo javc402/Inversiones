@@ -56,6 +56,7 @@ describe('AccountsModule', () => {
         max_loss_limit_pct: null,
         payout_cycle: null,
         notes: null,
+        is_favorite: false,
         created_at: '2026-06-23T00:00:00.000Z',
         updated_at: '2026-06-23T00:00:00.000Z',
       },
