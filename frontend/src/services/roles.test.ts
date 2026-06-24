@@ -33,7 +33,7 @@ describe('Roles Service', () => {
       vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
         data: { user: null } as any,
         error: null,
-      });
+      } as any);
 
       const result = await getCurrentUserRole();
       expect(result).toBeNull();
@@ -44,9 +44,9 @@ describe('Roles Service', () => {
       const mockRole = { id: 'role-123', name: 'admin', description: 'Admin' };
 
       vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
-        data: { user: mockUser } as any,
+        data: { user: mockUser as any } as any,
         error: null,
-      });
+      } as any);
 
       // Primera query: obtener role_id del perfil
       const mockSelectProfile = vi.fn().mockReturnThis();
@@ -213,9 +213,9 @@ describe('Roles Service coverage', () => {
     vi.clearAllMocks();
     vi.stubEnv('MODE', 'production');
     vi.mocked(supabase.auth.getUser).mockResolvedValue({
-      data: { user: { id: 'audit-user-1' } },
+      data: { user: { id: 'audit-user-1' } as any },
       error: null,
-    });
+    } as any);
 
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'activity_logs') {
@@ -237,7 +237,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('getCurrentUserRole usa la ruta RPC cuando está disponible', async () => {
-    vi.mocked(supabase.rpc).mockResolvedValueOnce({
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({
       data: [{ role_name: 'admin' }],
       error: null,
     });
@@ -253,9 +253,9 @@ describe('Roles Service coverage', () => {
 
   it('getCurrentUserProfile devuelve el perfil actual', async () => {
     vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
-      data: { user: { id: 'user-123' } },
+      data: { user: { id: 'user-123' } as any },
       error: null,
-    });
+    } as any);
 
     vi.mocked(supabase.from).mockReturnValueOnce(
       {
@@ -283,7 +283,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('listAllUsers usa RPC cuando existe y el usuario es admin', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -316,7 +316,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('updateUserStatus usa RPC cuando existe', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -340,7 +340,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('assignAdminRole usa RPC cuando existe', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -364,7 +364,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('removeAdminRole usa RPC cuando existe', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -388,7 +388,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('approveUserRegistration delega en updateUserStatus', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -412,7 +412,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('rejectUserRegistration delega en updateUserStatus', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }

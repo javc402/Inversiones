@@ -36,9 +36,9 @@ describe('audit service', () => {
 
   it('logAuditActivity inserta metadata limpia con source por defecto', async () => {
     vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
-      data: { user: { id: 'user-1' } },
+      data: { user: { id: 'user-1' } as any },
       error: null,
-    });
+    } as any);
 
     const insert = vi.fn().mockResolvedValueOnce({ error: null });
     vi.mocked(supabase.from).mockReturnValueOnce({ insert } as never);

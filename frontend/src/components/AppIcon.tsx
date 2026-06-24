@@ -25,7 +25,8 @@ export type AppIconName =
   | 'phone'
   | 'location'
   | 'check'
-  | 'shield';
+  | 'shield'
+  | 'article';
 
 interface AppIconProps extends HTMLAttributes<HTMLSpanElement> {
   name: AppIconName;
@@ -57,6 +58,7 @@ const iconNames: Record<AppIconName, string> = {
   location: 'location_on',
   check: 'check',
   shield: 'shield',
+  article: 'article',
 };
 
 export function AppIcon({ name, className, ...props }: Readonly<AppIconProps>) {

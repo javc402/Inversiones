@@ -18,9 +18,11 @@ import { getCurrentUserRole, Role } from '@services/roles';
 const loadAdminPanelModule = () => import('@components/AdminPanel');
 const loadAccountsModule = () => import('@components/AccountsModule');
 const loadSettingsModule = () => import('@components/SettingsModule');
+const loadNewsModule = () => import('@components/NewsModule');
 const AdminPanel = lazy(loadAdminPanelModule);
 const AccountsModule = lazy(loadAccountsModule);
 const SettingsModule = lazy(loadSettingsModule);
+const NewsModule = lazy(loadNewsModule);
 
 interface DashboardPageProps {
   userEmail: string;
@@ -28,12 +30,12 @@ interface DashboardPageProps {
   onSignOut: () => Promise<void>;
 }
 
-type DashboardTab = 'resumen' | 'cuentas' | 'usuarios' | 'configuracion';
+type DashboardTab = 'resumen' | 'noticias' | 'cuentas' | 'usuarios' | 'configuracion';
 
 const DASHBOARD_TAB_STORAGE_KEY = 'inversiones_dashboard_active_tab';
 
 function isDashboardTab(value: string | null): value is DashboardTab {
-  return value === 'resumen' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
+  return value === 'resumen' || value === 'noticias' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
 }
 
 function loadStoredDashboardTab(): DashboardTab {
@@ -85,6 +87,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const pageTitle =
     activeTab === 'resumen'
       ? 'Dashboard de Inversiones'
+      : activeTab === 'noticias'
+        ? 'Noticias'
       : activeTab === 'cuentas'
         ? 'Cuentas'
         : activeTab === 'usuarios'
@@ -99,6 +103,11 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }
 
   function prefetchTabModule(tab: DashboardTab) {
+    if (tab === 'noticias') {
+      void loadNewsModule();
+      return;
+    }
+
     if (tab === 'cuentas') {
       void loadAccountsModule();
       return;
@@ -292,6 +301,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         </div>
 
         {/* Tab: Cuentas */}
+        <div style={{ display: activeTab === 'noticias' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-noticias">
+          <Suspense
+            fallback={
+              <section className="table-card">
+                <h2>Mis noticias</h2>
+                <p>Cargando módulo de noticias...</p>
+              </section>
+            }
+          >
+            <NewsModule userEmail={userEmail} />
+          </Suspense>
+        </div>
+
+        {/* Tab: Cuentas */}
         <div style={{ display: activeTab === 'cuentas' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-cuentas">
           <Suspense
             fallback={
@@ -397,6 +420,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-gestion" className={`sidebar-section-content ${collapsedSections.gestion ? 'collapsed' : ''}`}>
+              <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => setActiveTab('noticias')} onMouseEnter={() => prefetchTabModule('noticias')} onFocus={() => prefetchTabModule('noticias')}>
+                <AppIcon name="article" className="menu-btn-icon" />
+                <span>Mis noticias</span>
+              </button>
               <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => setActiveTab('cuentas')} onMouseEnter={() => prefetchTabModule('cuentas')} onFocus={() => prefetchTabModule('cuentas')}>
                 <AppIcon name="accounts" className="menu-btn-icon" />
                 <span>Gestionar cuentas</span>
