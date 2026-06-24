@@ -189,7 +189,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     };
   }, [isAdmin]);
 
-  let mainContent = (
+  const mainContent = (
     <>
       <section className="kpi-grid">
         <article className="kpi-card">

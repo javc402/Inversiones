@@ -8,11 +8,17 @@ import { supabase } from '@lib/supabase';
 
 export interface AuditChange {
   field: string;
-  before: any;
-  after: any;
+  before: unknown;
+  after: unknown;
 }
 
 export type AuditTargetType = 'account' | 'user' | 'config' | 'system';
+
+type AuditMetadataValue = string | number | boolean | null | AuditMetadataObject | AuditMetadataValue[];
+
+interface AuditMetadataObject {
+  [key: string]: AuditMetadataValue;
+}
 
 interface AuditLogMetadata {
   source: 'frontend' | 'backend';
@@ -31,8 +37,8 @@ interface AuditLogMetadata {
  * @returns Array de cambios detectados
  */
 export function detectChanges(
-  beforeData: any,
-  afterInput: any,
+  beforeData: Record<string, unknown> | null | undefined,
+  afterInput: Record<string, unknown>,
   fieldsToCheck: string[]
 ): AuditChange[] {
   const changes: AuditChange[] = [];
@@ -58,7 +64,7 @@ export function detectChanges(
  */
 export async function logAuditActivity(
   action: string,
-  metadata: Partial<AuditLogMetadata> & { [key: string]: any }
+  metadata: Partial<AuditLogMetadata> & Record<string, unknown>
 ): Promise<void> {
   // Evita ruido en tests unitarios donde los mocks de supabase.from son limitados
   if (import.meta.env.MODE === 'test') return;
@@ -78,7 +84,7 @@ export async function logAuditActivity(
       }
       return acc;
     },
-    {} as Record<string, any>
+    {} as Record<string, unknown>
   );
 
   // Agregar contexto de fronted si no está especificado
@@ -116,7 +122,7 @@ export async function logChangesWithStandardFormat(
   targetType: AuditTargetType,
   targetId: string,
   changes: AuditChange[],
-  additionalMetadata?: Record<string, any>
+  additionalMetadata?: Record<string, unknown>
 ): Promise<void> {
   if (changes.length === 0) return;
 

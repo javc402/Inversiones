@@ -405,7 +405,7 @@ export default function AccountsModule() {
   }
 
   const filteredAccounts = useMemo(() => {
-    let filtered = accounts.filter((account) => {
+    const filtered = accounts.filter((account) => {
       const matchesQuery =
         !query ||
         account.name.toLowerCase().includes(query.toLowerCase()) ||
@@ -418,7 +418,7 @@ export default function AccountsModule() {
       return matchesQuery && matchesType && matchesStatus;
     });
 
-    return filtered.sort((a, b) => {
+    return [...filtered].sort((a, b) => {
       if (a.is_favorite === b.is_favorite) return 0;
       return a.is_favorite ? -1 : 1;
     });

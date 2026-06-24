@@ -38,12 +38,29 @@ export const DEFAULT_SYSTEM_CONFIG: SystemConfig = {
 const STORAGE_KEY = 'inversiones_system_config_cache';
 const STORAGE_TS_KEY = 'inversiones_system_config_cache_ts';
 
+type SystemConfigDbClient = {
+  from: (table: string) => {
+    select: (columns: string) => Promise<{
+      data: Array<{ key: string; value: unknown; updated_at?: string | null }> | null;
+      error: unknown;
+    }>;
+    upsert: (
+      values: Array<{ key: string; value: unknown; updated_at: string }>,
+      options?: { onConflict: string }
+    ) => Promise<{ error: unknown }>;
+  };
+  rpc: (
+    fn: string,
+    args: { config: SystemConfig }
+  ) => Promise<{ error: unknown }>;
+};
+
 async function detectConfigChanges(
   current: SystemConfig,
   next: SystemConfig
-): Promise<Array<{ field: string; before: any; after: any }>> {
-  const changes = [];
-  
+): Promise<Array<{ field: string; before: unknown; after: unknown }>> {
+  const changes: Array<{ field: string; before: unknown; after: unknown }> = [];
+
   if (JSON.stringify(current.accountTypes) !== JSON.stringify(next.accountTypes)) {
     changes.push({
       field: 'accountTypes',
@@ -51,7 +68,7 @@ async function detectConfigChanges(
       after: next.accountTypes,
     });
   }
-  
+
   if (JSON.stringify(current.platforms) !== JSON.stringify(next.platforms)) {
     changes.push({
       field: 'platforms',
@@ -59,7 +76,7 @@ async function detectConfigChanges(
       after: next.platforms,
     });
   }
-  
+
   if (JSON.stringify(current.currencies) !== JSON.stringify(next.currencies)) {
     changes.push({
       field: 'currencies',
@@ -67,7 +84,7 @@ async function detectConfigChanges(
       after: next.currencies,
     });
   }
-  
+
   return changes;
 }
 
@@ -141,8 +158,7 @@ export function useSystemConfig() {
 
     async function fetchConfig() {
       try {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const db = supabase as any;
+        const db = supabase as unknown as SystemConfigDbClient;
         const { data, error } = await db.from('system_config').select('key, value, updated_at');
         if (error || !Array.isArray(data) || data.length === 0) return;
 
@@ -181,10 +197,7 @@ export function useSystemConfig() {
 
     if (import.meta.env.MODE === 'test') return;
 
-
-
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const db = supabase as any;
+    const db = supabase as unknown as SystemConfigDbClient;
 
     let persisted = false;
 

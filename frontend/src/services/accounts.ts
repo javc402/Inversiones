@@ -169,7 +169,7 @@ export async function updateTradingAccount(accountId: string, input: UpsertTradi
     'payout_cycle', 'notes'
   ];
 
-  const changes = detectChanges(beforeData, input, fieldsToCheck);
+  const changes = detectChanges(beforeData, input as unknown as Record<string, unknown>, fieldsToCheck);
 
   // Log con todos los cambios capturados
   void logChangesWithStandardFormat(
