@@ -308,7 +308,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
   useEffect(() => {
     void loadData();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [userEmail]);
 
   const filteredEntries = useMemo(() => {
