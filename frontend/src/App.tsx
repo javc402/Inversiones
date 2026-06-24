@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useRef, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@lib/supabase';
 import { signOut } from '@services/auth';
@@ -11,6 +11,7 @@ function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const currentUserIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -33,6 +34,7 @@ function App() {
       const resolvedRole = await resolveRole(activeSession);
 
       if (isMounted) {
+        currentUserIdRef.current = activeSession?.user?.id ?? null;
         setSession(activeSession);
         setUserRole(resolvedRole);
         setIsLoading(false);
@@ -44,6 +46,15 @@ function App() {
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
+      const nextUserId = nextSession?.user?.id ?? null;
+      const hasUserChanged = nextUserId !== currentUserIdRef.current;
+
+      // Solo actualizar si cambió el usuario realmente (evita re-renders por reconnects)
+      if (!hasUserChanged) {
+        return;
+      }
+
+      currentUserIdRef.current = nextUserId;
       setIsLoading(true);
 
       void (async () => {

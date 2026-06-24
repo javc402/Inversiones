@@ -111,7 +111,7 @@ describe('App', () => {
       expect(screen.getByText('LOGIN_VIEW')).toBeInTheDocument()
     })
 
-    authStateCallback?.('SIGNED_IN', { user: { email: 'live@correo.com' } })
+    authStateCallback?.('SIGNED_IN', { user: { id: 'user-123', email: 'live@correo.com' } })
 
     await waitFor(() => {
       expect(screen.getByText('DASHBOARD_VIEW:live@correo.com')).toBeInTheDocument()
