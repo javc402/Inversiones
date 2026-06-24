@@ -1,9 +1,10 @@
-import { useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useState } from 'react';
 import { Session } from '@supabase/supabase-js';
 import { supabase } from '@lib/supabase';
 import { signOut } from '@services/auth';
-import DashboardPage from '@pages/DashboardPage';
-import LoginPage from '@pages/LoginPage';
+
+const DashboardPage = lazy(() => import('@pages/DashboardPage'));
+const LoginPage = lazy(() => import('@pages/LoginPage'));
 
 function App() {
   const [session, setSession] = useState<Session | null>(null);
@@ -49,10 +50,34 @@ function App() {
   }
 
   if (!session) {
-    return <LoginPage />;
+    return (
+      <Suspense
+        fallback={
+          <main className="auth-layout">
+            <section className="auth-panel">
+              <p className="auth-subtitle">Cargando pagina...</p>
+            </section>
+          </main>
+        }
+      >
+        <LoginPage />
+      </Suspense>
+    );
   }
 
-  return <DashboardPage userEmail={session.user.email ?? 'Usuario'} onSignOut={signOut} />;
+  return (
+    <Suspense
+      fallback={
+        <main className="auth-layout">
+          <section className="auth-panel">
+            <p className="auth-subtitle">Cargando dashboard...</p>
+          </section>
+        </main>
+      }
+    >
+      <DashboardPage userEmail={session.user.email ?? 'Usuario'} onSignOut={signOut} />
+    </Suspense>
+  );
 }
 
 export default App;

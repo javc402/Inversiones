@@ -10,6 +10,31 @@ const basePath = process.env.VITE_BASE_PATH
 export default defineConfig({
   base: basePath || (isGitHubActions ? `/${repoName}/` : '/'),
   plugins: [react()],
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (!id.includes('node_modules')) {
+            return undefined
+          }
+
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'charts-vendor'
+          }
+
+          if (id.includes('@supabase')) {
+            return 'supabase-vendor'
+          }
+
+          if (id.includes('react') || id.includes('scheduler')) {
+            return 'react-vendor'
+          }
+
+          return 'vendor'
+        },
+      },
+    },
+  },
   test: {
     environment: 'jsdom',
     setupFiles: './src/test/setup.ts',

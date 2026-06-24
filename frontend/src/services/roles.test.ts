@@ -44,9 +44,8 @@ describe('Roles Service', () => {
 
       // Primera query: obtener role_id del perfil
       const mockSelectProfile = vi.fn().mockReturnThis();
-      const mockEqProfile = vi.fn().mockReturnThis();
-      const mockSingleProfile = vi.fn().mockResolvedValueOnce({
-        data: { role_id: 'role-123' },
+      const mockEqProfile = vi.fn().mockResolvedValueOnce({
+        data: [{ role_id: 'role-123', status: 'active', updated_at: '2026-06-23T00:00:00.000Z' }],
         error: null,
       });
 
@@ -67,7 +66,6 @@ describe('Roles Service', () => {
         } as any);
 
       mockSelectProfile.mockReturnValueOnce({ eq: mockEqProfile });
-      mockEqProfile.mockReturnValueOnce({ single: mockSingleProfile });
 
       mockSelectRole.mockReturnValueOnce({ eq: mockEqRole });
       mockEqRole.mockReturnValueOnce({ single: mockSingleRole });

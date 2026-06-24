@@ -15,6 +15,15 @@ interface ActivityLogInput {
   metadata?: Record<string, unknown>;
 }
 
+interface RpcResponse<T = unknown> {
+  data: T | null;
+  error: unknown;
+}
+
+type RpcClient = {
+  rpc?: (fn: string, args?: Record<string, unknown>) => Promise<RpcResponse>;
+};
+
 async function logActivity({ action, targetUserId, metadata }: ActivityLogInput): Promise<void> {
   // Evita ruido en tests unitarios donde los mocks de supabase.from son limitados.
   if (import.meta.env.MODE === 'test') return;
@@ -54,22 +63,76 @@ export interface Role {
   description: string;
 }
 
+function roleFromName(name: string): Role | null {
+  if (name === 'admin') {
+    return {
+      id: 'admin',
+      name: 'admin',
+      description: 'Administrador del sistema',
+    };
+  }
+
+  if (name === 'user') {
+    return {
+      id: 'user',
+      name: 'user',
+      description: 'Usuario regular',
+    };
+  }
+
+  return null;
+}
+
 /**
  * Obtiene el rol del usuario actual
  */
 export async function getCurrentUserRole(): Promise<Role | null> {
   try {
+    const rpcClient = supabase as unknown as {
+      rpc?: (fn: string) => Promise<{ data: Array<{ role_name: string }> | null; error: unknown }>;
+    };
+
+    if (typeof rpcClient.rpc === 'function') {
+      const rpcResponse = await rpcClient.rpc('get_my_role');
+      const rpcRoleName = rpcResponse.data?.[0]?.role_name;
+
+      if (typeof rpcRoleName === 'string') {
+        const normalizedRole = roleFromName(rpcRoleName.trim().toLowerCase());
+        if (normalizedRole) {
+          void logActivity({ action: 'roles.get_current_user_role' });
+          return normalizedRole;
+        }
+      }
+    }
+
     const {
       data: { user },
     } = await supabase.auth.getUser();
 
     if (!user) return null;
 
-    const { data: profile, error: profileError } = await supabase
+    const { data: profiles, error: profileError } = await supabase
       .from('user_profiles')
-      .select('role_id')
-      .eq('user_id', user.id)
-      .single();
+      .select('role_id, status, updated_at')
+      .eq('user_id', user.id);
+
+    const normalizedProfiles = (profiles ?? []) as Array<{
+      role_id: string;
+      status: string | null;
+      updated_at: string | null;
+    }>;
+
+    const activeProfiles = normalizedProfiles.filter(
+      (item) => (item.status ?? '').trim().toLowerCase() === 'active'
+    );
+
+    activeProfiles.sort((a, b) => {
+      const aTime = a.updated_at ? Date.parse(a.updated_at) : 0;
+      const bTime = b.updated_at ? Date.parse(b.updated_at) : 0;
+      return bTime - aTime;
+    });
+
+    const profile = activeProfiles[0] ?? normalizedProfiles[0];
 
     if (profileError || !profile) return null;
 
@@ -121,16 +184,45 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
  */
 export async function listAllUsers(): Promise<UserProfile[]> {
   try {
+    const rpcClient = supabase as unknown as {
+      rpc?: (
+        fn: string
+      ) => Promise<{
+        data: Array<{
+          id: string;
+          user_id: string;
+          role_id: string;
+          role_name: 'admin' | 'user';
+          email: string | null;
+          status: 'pending' | 'active' | 'inactive';
+          created_at: string;
+          updated_at: string;
+        }> | null;
+        error: unknown;
+      }>;
+    };
+
+    if (typeof rpcClient.rpc === 'function') {
+      const rpcResponse = await rpcClient.rpc('list_users_admin');
+      if (!rpcResponse.error && rpcResponse.data) {
+        void logActivity({ action: 'roles.list_all_users' });
+
+        return rpcResponse.data.map((item) => ({
+          id: item.id,
+          user_id: item.user_id,
+          role_id: item.role_id,
+          status: item.status,
+          email: item.email ?? undefined,
+          created_at: item.created_at,
+          updated_at: item.updated_at,
+          roles: { name: item.role_name },
+        }));
+      }
+    }
+
     const { data, error } = await supabase
       .from('user_profiles')
-      .select(
-        `
-        *,
-        auth.users (
-          email
-        )
-      `
-      )
+      .select('*, roles(name)')
       .order('created_at', { ascending: false });
 
     if (error) throw error;
@@ -152,6 +244,23 @@ export async function updateUserStatus(
   status: 'pending' | 'active' | 'inactive'
 ): Promise<void> {
   try {
+    const rpcClient = supabase as unknown as RpcClient;
+    if (typeof rpcClient.rpc === 'function') {
+      const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {
+        target_user_id: userId,
+        new_status: status,
+      });
+
+      if (!rpcResponse.error) {
+        void logActivity({
+          action: 'roles.update_user_status',
+          targetUserId: userId,
+          metadata: { status },
+        });
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from('user_profiles')
       .update({ status, updated_at: new Date().toISOString() })
@@ -175,6 +284,22 @@ export async function updateUserStatus(
  */
 export async function assignAdminRole(userId: string): Promise<void> {
   try {
+    const rpcClient = supabase as unknown as RpcClient;
+    if (typeof rpcClient.rpc === 'function') {
+      const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {
+        target_user_id: userId,
+        new_role_name: 'admin',
+      });
+
+      if (!rpcResponse.error) {
+        void logActivity({
+          action: 'roles.assign_admin_role',
+          targetUserId: userId,
+        });
+        return;
+      }
+    }
+
     const adminRole = await supabase
       .from('roles')
       .select('id')
@@ -208,6 +333,22 @@ export async function assignAdminRole(userId: string): Promise<void> {
  */
 export async function removeAdminRole(userId: string): Promise<void> {
   try {
+    const rpcClient = supabase as unknown as RpcClient;
+    if (typeof rpcClient.rpc === 'function') {
+      const rpcResponse = await rpcClient.rpc('admin_update_user_profile', {
+        target_user_id: userId,
+        new_role_name: 'user',
+      });
+
+      if (!rpcResponse.error) {
+        void logActivity({
+          action: 'roles.remove_admin_role',
+          targetUserId: userId,
+        });
+        return;
+      }
+    }
+
     const userRole = await supabase
       .from('roles')
       .select('id')

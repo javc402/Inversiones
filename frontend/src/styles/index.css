@@ -1,7 +1,7 @@
 :root {
-  font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
-  color: #0f172a;
-  background: radial-gradient(circle at top left, #dbeafe 0%, #eff6ff 45%, #f8fafc 100%);
+  font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
+  color: #1d3557;
+  background: #eef3f9;
 }
 
 * {
@@ -11,6 +11,7 @@
 body {
   margin: 0;
   min-height: 100vh;
+  background: #eef3f9;
 }
 
 .auth-layout {
@@ -132,35 +133,97 @@ body {
 
 .dashboard-layout {
   display: grid;
-  gap: 18px;
+  gap: 16px;
   align-content: start;
 }
 
 .dashboard-shell {
   min-height: 100vh;
-  padding: 24px;
+  padding: 14px;
   display: grid;
-  grid-template-columns: 240px 1fr;
-  gap: 18px;
+  grid-template-columns: 260px 1fr;
+  gap: 14px;
 }
 
 .dashboard-sidebar {
-  background-color: #ffffff;
-  border: 1px solid #dbeafe;
-  border-radius: 14px;
-  padding: 14px;
+  background: linear-gradient(180deg, #f8fbff 0%, #f2f7fe 100%);
+  border: 1px solid #dbe2ee;
+  border-radius: 18px;
+  padding: 16px 14px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  height: fit-content;
+  gap: 12px;
+  min-height: calc(100vh - 28px);
   position: sticky;
-  top: 24px;
+  top: 14px;
 }
 
-.dashboard-sidebar h2 {
-  margin: 0 0 6px;
-  font-size: 15px;
-  color: #1e3a5f;
+.sidebar-brand {
+  margin: 2px 0 4px;
+  font-size: 32px;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #0e4f8a;
+}
+
+.sidebar-group-title {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: #8a9eb7;
+}
+
+.sidebar-section {
+  display: grid;
+  gap: 8px;
+}
+
+.sidebar-nav-section {
+  border: 0;
+  background: transparent;
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 2px 0;
+  cursor: pointer;
+}
+
+.sidebar-section-arrow {
+  color: #6c85a5;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.sidebar-section-content {
+  display: grid;
+  gap: 8px;
+  overflow: hidden;
+  padding-top: 2px;
+  max-height: 220px;
+  opacity: 1;
+  transition: max-height 0.24s ease, opacity 0.2s ease, padding-top 0.2s ease;
+}
+
+.sidebar-section-content.collapsed {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+}
+
+.sidebar-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  background: #e7f0fb;
+  color: #0f4f93;
+  font-size: 11px;
+  margin-left: 6px;
 }
 
 .dashboard-header {
@@ -169,46 +232,180 @@ body {
   align-items: center;
   gap: 16px;
   background-color: #ffffff;
-  border: 1px solid #dbeafe;
-  border-radius: 14px;
-  padding: 16px 18px;
+  border: 1px solid #d8e2ef;
+  border-radius: 18px;
+  padding: 18px 22px;
+  box-shadow: 0 14px 30px rgba(16, 43, 80, 0.08);
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .dashboard-header h1 {
   margin: 0;
-  font-size: 26px;
-  color: #0a2342;
+  font-size: 34px;
+  color: #0f3157;
+  letter-spacing: -0.02em;
 }
 
 .dashboard-header p {
-  margin: 5px 0 0;
-  color: #475569;
+  margin: 7px 0 0;
+  color: #5f7693;
+  font-size: 18px;
+}
+
+.dashboard-role {
+  font-size: 14px;
+  color: #1e5ba8;
+  font-weight: 700;
+}
+
+.system-status {
+  border: 1px solid #d8e7dc;
+  background: #f8fff9;
+  border-radius: 999px;
+  color: #2f7d4f;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 8px 12px;
+}
+
+.dashboard-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border: 1px solid #d8e2ef;
+  border-radius: 14px;
+  padding: 10px 14px;
+  box-shadow: 0 10px 24px rgba(16, 43, 80, 0.07);
+}
+
+.company-chip {
+  border: 1px solid #d3deeb;
+  background: #f1f6fc;
+  color: #355b84;
+  border-radius: 14px;
+  padding: 8px 14px;
+  font-weight: 700;
+}
+
+.topbar-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d5e0ed;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ffffff 0%, #f4f8fd 100%);
+  color: #7a8ea8;
+  cursor: pointer;
+  transition: transform 0.16s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.icon-btn:hover {
+  transform: translateY(-1px);
+  border-color: #b9cde4;
+  box-shadow: 0 10px 20px rgba(30, 91, 168, 0.14);
+}
+
+.icon-btn:focus {
+  outline: none;
+  border-color: #80a8da;
+  box-shadow: 0 0 0 4px rgba(52, 113, 191, 0.16);
 }
 
 .secondary-btn {
-  border: 1px solid #cbd5e1;
-  background-color: #f8fafc;
-  color: #1e293b;
-  border-radius: 10px;
-  padding: 10px 12px;
+  border: 1px solid #d2deeb;
+  background-color: #ffffff;
+  color: #36577c;
+  border-radius: 12px;
+  padding: 11px 14px;
   cursor: pointer;
+  font-weight: 600;
 }
 
 .menu-btn {
-  border: 1px solid #bfdbfe;
-  background-color: #f8fbff;
-  color: #1e3a5f;
-  border-radius: 10px;
-  padding: 10px 14px;
+  border: 1px solid #cfdbeb;
+  background: linear-gradient(180deg, #ffffff 0%, #f6faff 100%);
+  color: #355b84;
+  border-radius: 12px;
+  padding: 12px 14px;
   cursor: pointer;
   font-weight: 600;
   text-align: left;
+  position: relative;
+  padding-left: 36px;
+  transition: transform 0.15s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.menu-btn::before {
+  content: '';
+  width: 12px;
+  height: 12px;
+  border-radius: 4px;
+  border: 1.5px solid currentColor;
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0.65;
 }
 
 .menu-btn.active {
-  background-color: #1e5ba8;
-  border-color: #1e5ba8;
+  background: linear-gradient(180deg, #155fa9 0%, #0f4f93 100%);
+  border-color: #0f4f93;
   color: #ffffff;
+  box-shadow: 0 12px 24px rgba(15, 79, 147, 0.32);
+}
+
+.menu-btn:hover:not(.active) {
+  transform: translateY(-1px);
+  border-color: #b8cde5;
+  box-shadow: 0 10px 20px rgba(30, 91, 168, 0.1);
+}
+
+.menu-dashboard::before {
+  border-radius: 50%;
+}
+
+.menu-accounts::before {
+  border-radius: 3px;
+}
+
+.menu-users::before {
+  border-radius: 2px;
+  transform: translateY(-50%) rotate(45deg);
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  border-top: 1px solid #dde6f1;
+  padding-top: 12px;
+}
+
+.sidebar-user-email {
+  margin: 0;
+  color: #214a76;
+  font-size: 12px;
+  font-weight: 700;
+  word-break: break-word;
+}
+
+.sidebar-user-role {
+  margin: 4px 0 0;
+  color: #4f7397;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
 }
 
 .restricted-card p {
@@ -226,24 +423,27 @@ body {
 .chart-card,
 .table-card {
   background-color: #ffffff;
-  border: 1px solid #dbeafe;
-  border-radius: 14px;
-  padding: 16px;
+  border: 1px solid #d8e2ef;
+  border-radius: 20px;
+  padding: 18px;
+  box-shadow: 0 14px 30px rgba(16, 43, 80, 0.08);
 }
 
 .kpi-card h2,
 .chart-card h2,
 .table-card h2 {
   margin: 0;
-  font-size: 16px;
-  color: #1e3a5f;
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8aa0ba;
 }
 
 .kpi-value {
   margin: 8px 0;
-  font-size: 28px;
+  font-size: 40px;
   font-weight: 700;
-  color: #0a2342;
+  color: #183a61;
 }
 
 .kpi-trend {
@@ -272,7 +472,7 @@ body {
 .chart-wrapper {
   margin-top: 12px;
   width: 100%;
-  height: 260px;
+  height: 320px;
 }
 
 .table-wrapper {
@@ -289,18 +489,18 @@ th,
 td {
   text-align: left;
   padding: 10px;
-  border-bottom: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e7edf5;
   font-size: 14px;
 }
 
 th {
-  color: #334155;
+  color: #5d7594;
   font-weight: 600;
 }
 
 @media (max-width: 640px) {
   .dashboard-shell {
-    padding: 14px;
+    padding: 10px;
     grid-template-columns: 1fr;
   }
 
@@ -310,10 +510,33 @@ th {
   }
 
   .dashboard-header h1 {
-    font-size: 22px;
+    font-size: 28px;
+  }
+
+  .dashboard-header p {
+    font-size: 16px;
+  }
+
+  .dashboard-role {
+    font-size: 14px;
   }
 
   .dashboard-sidebar {
     position: static;
+    min-height: auto;
+    padding: 14px;
+  }
+
+  .sidebar-brand {
+    font-size: 28px;
+  }
+
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+
+  .dashboard-topbar {
+    padding: 10px 12px;
   }
 }
