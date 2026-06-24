@@ -216,6 +216,7 @@ describe('Roles Service coverage', () => {
       data: { user: { id: 'audit-user-1' } },
       error: null,
     });
+
     vi.mocked(supabase.from).mockImplementation((table: string) => {
       if (table === 'activity_logs') {
         return {
@@ -339,7 +340,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('assignAdminRole usa RPC cuando existe', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string, args?: Record<string, unknown>) => {
+    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }
@@ -363,7 +364,7 @@ describe('Roles Service coverage', () => {
   });
 
   it('removeAdminRole usa RPC cuando existe', async () => {
-    vi.mocked(supabase.rpc).mockImplementation(async (fn: string, args?: Record<string, unknown>) => {
+    vi.mocked(supabase.rpc).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
         return { data: [{ role_name: 'admin' }], error: null };
       }

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { supabase } from '@lib/supabase';
 import { detectChanges, logAuditActivity, logChangesWithStandardFormat } from '@services/audit';
 
