@@ -169,12 +169,14 @@ export async function createTradingAccount(input: UpsertTradingAccountInput): Pr
 }
 
 export async function updateTradingAccount(accountId: string, input: UpsertTradingAccountInput): Promise<void> {
-  // Cargar valores anteriores para auditoría before/after
+  // Cargar valores anteriores para auditoría before/after - TODOS los campos
   const { data: beforeData } = await supabase
     .from('trading_accounts')
-    .select('account_type')
+    .select('*')
     .eq('id', accountId)
     .single();
+
+  if (!beforeData) throw new Error('Account not found');
 
   const payload = {
     ...input,
@@ -201,10 +203,31 @@ export async function updateTradingAccount(accountId: string, input: UpsertTradi
 
   if (error) throw error;
 
+  // Detectar todos los cambios realizados
+  const fieldsToCheck = [
+    'name', 'alias', 'broker_name', 'account_type', 'platform', 'base_currency',
+    'leverage', 'initial_balance', 'initial_equity', 'opened_at', 'status',
+    'risk_per_trade_pct', 'max_daily_risk_pct', 'max_drawdown_pct', 'funding_firm',
+    'challenge_phase', 'profit_target_pct', 'daily_loss_limit_pct', 'max_loss_limit_pct',
+    'payout_cycle', 'notes'
+  ];
+
+  const changes: Array<{ field: string; before: any; after: any }> = [];
+
+  fieldsToCheck.forEach(field => {
+    if (field in input) {
+      const before = (beforeData as Record<string, any>)[field];
+      const after = (input as Record<string, any>)[field] ?? null;
+      if (before !== after) {
+        changes.push({ field, before, after });
+      }
+    }
+  });
+
+  // Log con todos los cambios capturados
   void logAccountActivity('accounts.update', accountId, {
-    fieldChanged: 'account_type',
-    before: beforeData?.account_type ?? 'unknown',
-    after: input.account_type,
+    fieldsChanged: changes.map(c => c.field),
+    changeDetails: changes.length > 0 ? changes : undefined,
   });
 }
 
