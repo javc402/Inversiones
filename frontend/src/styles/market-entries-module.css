@@ -309,6 +309,68 @@
   color: #991b1b;
 }
 
+.entries-status-no_entry {
+  background: #f4f4f5;
+  border-color: #d4d4d8;
+  color: #3f3f46;
+}
+
+.entries-context-editor {
+  border: 1px solid #dce7f4;
+  border-radius: 16px;
+  background: #fbfdff;
+  padding: 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.entries-context-tabs {
+  display: inline-flex;
+  background: #eef4fb;
+  border: 1px solid #d5e1f0;
+  border-radius: 12px;
+  padding: 4px;
+  gap: 4px;
+}
+
+.entries-context-tab {
+  border: 0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #315679;
+  background: transparent;
+  cursor: pointer;
+}
+
+.entries-context-tab.active {
+  background: #ffffff;
+  border: 1px solid #c9d8ea;
+  color: #13385f;
+}
+
+.entries-context-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.entries-context-suggestions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.entries-context-chip {
+  border: 1px solid #c7d8eb;
+  background: #ffffff;
+  color: #244b74;
+  border-radius: 999px;
+  padding: 6px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .entries-grid-meta {
   display: grid;
   gap: 4px;

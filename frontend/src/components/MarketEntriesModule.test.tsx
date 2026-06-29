@@ -3,9 +3,11 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import MarketEntriesModule from './MarketEntriesModule';
 import * as marketEntriesService from '@services/market-entries';
 import * as accountsService from '@services/accounts';
+import * as newsService from '@services/news';
 
 vi.mock('@services/market-entries');
 vi.mock('@services/accounts');
+vi.mock('@services/news');
 vi.mock('@services/audit');
 vi.mock('react-dom', async () => {
   const actual = await vi.importActual('react-dom');
@@ -16,7 +18,9 @@ describe('MarketEntriesModule', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([]);
+    vi.mocked(marketEntriesService.listMostUsedMarketContexts).mockResolvedValue([]);
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([]);
   });
 
   it('should render the module', () => {

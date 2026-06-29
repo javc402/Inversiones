@@ -12,8 +12,7 @@ vi.mock('react-dom', async () => {
 describe('NewsModule', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(newsService.seedNewsForUser).mockImplementation(() => {});
-    vi.mocked(newsService.listUserNews).mockReturnValue([]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([]);
   });
 
   it('should render the module', () => {
@@ -21,14 +20,9 @@ describe('NewsModule', () => {
     expect(screen.getByText('Mis noticias')).toBeInTheDocument();
   });
 
-  it('should seed data on mount', () => {
+  it('should show empty state', async () => {
     render(<NewsModule userEmail="test@example.com" />);
-    expect(vi.mocked(newsService.seedNewsForUser)).toHaveBeenCalled();
-  });
-
-  it('should show empty state', () => {
-    render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getByText('No tienes noticias todavía')).toBeInTheDocument();
+    expect(await screen.findByText('No tienes noticias todavía')).toBeInTheDocument();
   });
 
   it('should have search functionality', () => {
@@ -46,7 +40,7 @@ describe('NewsModule', () => {
     expect(screen.getByRole('combobox')).toBeInTheDocument();
   });
 
-  it('should display articles when available', () => {
+  it('should display articles when available', async () => {
     const article = {
       id: 'n1',
       userEmail: 'test@example.com',
@@ -64,12 +58,12 @@ describe('NewsModule', () => {
       createdAt: '2026-06-24T10:00:00Z',
       updatedAt: '2026-06-24T10:00:00Z',
     };
-    vi.mocked(newsService.listUserNews).mockReturnValue([article]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
     render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getByText('Test Article')).toBeInTheDocument();
+    expect(await screen.findByText('Test Article')).toBeInTheDocument();
   });
 
-  it('should show draft status', () => {
+  it('should show draft status', async () => {
     const article = {
       id: 'n1',
       userEmail: 'test@example.com',
@@ -87,12 +81,12 @@ describe('NewsModule', () => {
       createdAt: '2026-06-24T10:00:00Z',
       updatedAt: '2026-06-24T10:00:00Z',
     };
-    vi.mocked(newsService.listUserNews).mockReturnValue([article]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
     render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getAllByText('Borrador').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Borrador')).length).toBeGreaterThan(0);
   });
 
-  it('should show published status', () => {
+  it('should show published status', async () => {
     const article = {
       id: 'n1',
       userEmail: 'test@example.com',
@@ -110,12 +104,12 @@ describe('NewsModule', () => {
       createdAt: '2026-06-24T10:00:00Z',
       updatedAt: '2026-06-24T10:00:00Z',
     };
-    vi.mocked(newsService.listUserNews).mockReturnValue([article]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
     render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getAllByText('Publicada').length).toBeGreaterThan(0);
+    expect((await screen.findAllByText('Publicada')).length).toBeGreaterThan(0);
   });
 
-  it('should display multiple articles', () => {
+  it('should display multiple articles', async () => {
     const articles = [
       {
         id: 'n1',
@@ -152,13 +146,13 @@ describe('NewsModule', () => {
         updatedAt: '2026-06-24T09:00:00Z',
       },
     ];
-    vi.mocked(newsService.listUserNews).mockReturnValue(articles);
+    vi.mocked(newsService.listUserNews).mockResolvedValue(articles);
     render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getByText('Article 1')).toBeInTheDocument();
-    expect(screen.getByText('Article 2')).toBeInTheDocument();
+    expect(await screen.findByText('Article 1')).toBeInTheDocument();
+    expect(await screen.findByText('Article 2')).toBeInTheDocument();
   });
 
-  it('should show category', () => {
+  it('should show category', async () => {
     const article = {
       id: 'n1',
       userEmail: 'test@example.com',
@@ -176,13 +170,13 @@ describe('NewsModule', () => {
       createdAt: '2026-06-24T10:00:00Z',
       updatedAt: '2026-06-24T10:00:00Z',
     };
-    vi.mocked(newsService.listUserNews).mockReturnValue([article]);
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
     render(<NewsModule userEmail="test@example.com" />);
-    expect(screen.getByText('Tecnología')).toBeInTheDocument();
+    expect(await screen.findByText('Tecnología')).toBeInTheDocument();
   });
 
-  it('should accept userEmail prop', () => {
+  it('should accept userEmail prop', async () => {
     render(<NewsModule userEmail="custom@test.com" />);
-    expect(vi.mocked(newsService.seedNewsForUser)).toHaveBeenCalledWith('custom@test.com');
+    expect(await screen.findByText('Mis noticias')).toBeInTheDocument();
   });
 });

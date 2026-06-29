@@ -9,7 +9,6 @@ import {
   NewsArticleInput,
   NewsStatus,
   publishArticleNow,
-  seedNewsForUser,
   slugifyNewsTitle,
   toggleNewsPublication,
   updateNewsArticle,
@@ -243,13 +242,26 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
   const [form, setForm] = useState<NewsFormState>(emptyForm);
 
   useEffect(() => {
-    seedNewsForUser(userEmail);
-    setArticles(listUserNews(userEmail));
-  }, [userEmail]);
+    let isMounted = true;
 
-  useEffect(() => {
-    setArticles(listUserNews(userEmail));
-  }, [userEmail, success]);
+    async function loadArticles() {
+      try {
+        const loaded = await listUserNews(userEmail);
+        if (!isMounted) return;
+        setArticles(loaded);
+      } catch {
+        if (!isMounted) return;
+        setArticles([]);
+        setError('No se pudieron cargar las noticias desde la base de datos.');
+      }
+    }
+
+    void loadArticles();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userEmail]);
 
   const filteredArticles = useMemo(() => {
     return articles.filter((article) => {
@@ -316,12 +328,12 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
       };
 
       if (modalMode === 'create') {
-        createNewsArticle(userEmail, payload);
+        await createNewsArticle(userEmail, payload);
       } else if (editingArticle) {
-        updateNewsArticle(userEmail, editingArticle.id, payload);
+        await updateNewsArticle(userEmail, editingArticle.id, payload);
       }
 
-      setArticles(listUserNews(userEmail));
+      setArticles(await listUserNews(userEmail));
       setSuccess(modalMode === 'create' ? 'Noticia creada correctamente.' : 'Noticia actualizada correctamente.');
       closeModal();
     } catch (submitError) {
@@ -329,32 +341,32 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
     }
   }
 
-  function handleDelete(article: NewsArticle) {
+  async function handleDelete(article: NewsArticle) {
     if (!window.confirm(`Eliminar la noticia "${article.title}"?`)) return;
 
     try {
-      deleteNewsArticle(userEmail, article.id);
-      setArticles(listUserNews(userEmail));
+      await deleteNewsArticle(userEmail, article.id);
+      setArticles(await listUserNews(userEmail));
       setSuccess('Noticia eliminada.');
     } catch (deleteError) {
       setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la noticia.');
     }
   }
 
-  function handleTogglePublish(article: NewsArticle) {
+  async function handleTogglePublish(article: NewsArticle) {
     try {
-      toggleNewsPublication(userEmail, article.id);
-      setArticles(listUserNews(userEmail));
+      await toggleNewsPublication(userEmail, article.id);
+      setArticles(await listUserNews(userEmail));
       setSuccess(article.status === 'published' ? 'Noticia despublicada.' : 'Noticia publicada.');
     } catch (toggleError) {
       setError(toggleError instanceof Error ? toggleError.message : 'No se pudo cambiar el estado.');
     }
   }
 
-  function handlePublishNow(article: NewsArticle) {
+  async function handlePublishNow(article: NewsArticle) {
     try {
-      publishArticleNow(userEmail, article.id);
-      setArticles(listUserNews(userEmail));
+      await publishArticleNow(userEmail, article.id);
+      setArticles(await listUserNews(userEmail));
       setSuccess('Noticia publicada ahora.');
     } catch (publishError) {
       setError(publishError instanceof Error ? publishError.message : 'No se pudo publicar la noticia.');

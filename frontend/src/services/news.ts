@@ -1,3 +1,5 @@
+import { supabase } from '@lib/supabase';
+
 export type NewsStatus = 'draft' | 'scheduled' | 'published';
 
 export interface NewsArticle {
@@ -31,22 +33,21 @@ export interface NewsArticleInput {
   scheduledAt: string;
 }
 
-const NEWS_STORAGE_KEY = 'inversiones_news_articles';
-
-function loadAllArticles(): NewsArticle[] {
-  try {
-    const stored = localStorage.getItem(NEWS_STORAGE_KEY);
-    if (!stored) return [];
-
-    const parsed = JSON.parse(stored) as NewsArticle[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveAllArticles(articles: NewsArticle[]): void {
-  localStorage.setItem(NEWS_STORAGE_KEY, JSON.stringify(articles));
+interface NewsArticleRow {
+  id: string;
+  title: string;
+  slug: string;
+  source_url: string;
+  summary: string;
+  content: string;
+  cover_image_url: string;
+  category: string;
+  tags: string[];
+  status: NewsStatus;
+  scheduled_at: string | null;
+  published_at: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 function nowIso(): string {
@@ -64,12 +65,6 @@ function normalizeSlug(value: string): string {
 
 export function slugifyNewsTitle(title: string): string {
   return normalizeSlug(title);
-}
-
-export function listUserNews(userEmail: string): NewsArticle[] {
-  return loadAllArticles()
-    .filter((article) => article.userEmail === userEmail)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
 function validateSourceUrl(sourceUrl: string): string {
@@ -100,166 +95,243 @@ function resolvePublishedAt(status: NewsStatus, currentValue: string | null = nu
   return null;
 }
 
-export function createNewsArticle(userEmail: string, input: NewsArticleInput): NewsArticle {
+function mapRowToArticle(row: NewsArticleRow): NewsArticle {
+  return {
+    id: row.id,
+    userEmail: '',
+    title: row.title,
+    slug: row.slug,
+    sourceUrl: row.source_url,
+    summary: row.summary,
+    content: row.content,
+    coverImageUrl: row.cover_image_url,
+    category: row.category,
+    tags: Array.isArray(row.tags) ? row.tags : [],
+    status: row.status,
+    scheduledAt: row.scheduled_at ?? '',
+    publishedAt: row.published_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+async function getAuthenticatedUserId(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
+}
+
+export async function listUserNews(_userEmail: string): Promise<NewsArticle[]> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from('news_articles')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapRowToArticle(row as NewsArticleRow));
+}
+
+export async function createNewsArticle(_userEmail: string, input: NewsArticleInput): Promise<NewsArticle> {
   validateArticleInput(input);
 
-  const articles = loadAllArticles();
-  const slug = normalizeSlug(input.slug);
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para crear noticias.');
+  }
 
+  const slug = normalizeSlug(input.slug);
   if (!slug) throw new Error('El slug es obligatorio.');
-  if (articles.some((article) => article.slug === slug && article.userEmail === userEmail)) {
+
+  const { data: duplicateSlug, error: duplicateError } = await supabase
+    .from('news_articles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('slug', slug)
+    .limit(1);
+
+  if (duplicateError) throw duplicateError;
+  if (duplicateSlug && duplicateSlug.length > 0) {
+    throw new Error('Ya existe una noticia tuya con ese slug.');
+  }
+
+  const sourceUrl = validateSourceUrl(input.sourceUrl);
+  const publishedAt = resolvePublishedAt(input.status);
+  const timestamp = nowIso();
+
+  const { data, error } = await supabase
+    .from('news_articles')
+    .insert({
+      user_id: userId,
+      title: input.title.trim(),
+      slug,
+      source_url: sourceUrl,
+      summary: input.summary.trim(),
+      content: input.content.trim(),
+      cover_image_url: input.coverImageUrl.trim(),
+      category: input.category.trim(),
+      tags: input.tags.map((tag) => tag.trim()).filter(Boolean),
+      status: input.status,
+      scheduled_at: input.scheduledAt || null,
+      published_at: publishedAt,
+      created_at: timestamp,
+      updated_at: timestamp,
+    })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+
+  return mapRowToArticle(data as NewsArticleRow);
+}
+
+export async function updateNewsArticle(_userEmail: string, articleId: string, input: NewsArticleInput): Promise<NewsArticle> {
+  validateArticleInput(input);
+
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para actualizar noticias.');
+  }
+
+  const { data: previousData, error: previousError } = await supabase
+    .from('news_articles')
+    .select('*')
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .single();
+
+  if (previousError || !previousData) {
+    throw new Error('No se encontró la noticia solicitada.');
+  }
+
+  const previous = previousData as NewsArticleRow;
+  const slug = normalizeSlug(input.slug);
+  if (!slug) throw new Error('El slug es obligatorio.');
+
+  const { data: duplicateSlug, error: duplicateError } = await supabase
+    .from('news_articles')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('slug', slug)
+    .neq('id', articleId)
+    .limit(1);
+
+  if (duplicateError) throw duplicateError;
+  if (duplicateSlug && duplicateSlug.length > 0) {
     throw new Error('Ya existe una noticia tuya con ese slug.');
   }
 
   const sourceUrl = validateSourceUrl(input.sourceUrl);
   const timestamp = nowIso();
-  const article: NewsArticle = {
-    id: `news-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
-    userEmail,
-    title: input.title.trim(),
-    slug,
-    sourceUrl,
-    summary: input.summary.trim(),
-    content: input.content.trim(),
-    coverImageUrl: input.coverImageUrl.trim(),
-    category: input.category.trim(),
-    tags: input.tags.map((tag) => tag.trim()).filter(Boolean),
-    status: input.status,
-    scheduledAt: input.scheduledAt,
-    publishedAt: resolvePublishedAt(input.status),
-    createdAt: timestamp,
-    updatedAt: timestamp,
-  };
 
-  articles.unshift(article);
-  saveAllArticles(articles);
-  return article;
+  const { data, error } = await supabase
+    .from('news_articles')
+    .update({
+      title: input.title.trim(),
+      slug,
+      source_url: sourceUrl,
+      summary: input.summary.trim(),
+      content: input.content.trim(),
+      cover_image_url: input.coverImageUrl.trim(),
+      category: input.category.trim(),
+      tags: input.tags.map((tag) => tag.trim()).filter(Boolean),
+      status: input.status,
+      scheduled_at: input.scheduledAt || null,
+      published_at: resolvePublishedAt(input.status, previous.published_at),
+      updated_at: timestamp,
+    })
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+
+  return mapRowToArticle(data as NewsArticleRow);
 }
 
-export function updateNewsArticle(userEmail: string, articleId: string, input: NewsArticleInput): NewsArticle {
-  validateArticleInput(input);
-
-  const articles = loadAllArticles();
-  const index = articles.findIndex((article) => article.id === articleId && article.userEmail === userEmail);
-  if (index === -1) throw new Error('No se encontró la noticia solicitada.');
-
-  const slug = normalizeSlug(input.slug);
-  if (!slug) throw new Error('El slug es obligatorio.');
-  if (articles.some((article) => article.id !== articleId && article.userEmail === userEmail && article.slug === slug)) {
-    throw new Error('Ya existe una noticia tuya con ese slug.');
+export async function deleteNewsArticle(_userEmail: string, articleId: string): Promise<void> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para eliminar noticias.');
   }
 
-  const previous = articles[index];
-  const nextStatus = input.status;
-  const sourceUrl = validateSourceUrl(input.sourceUrl);
-  const timestamp = nowIso();
+  const { data, error } = await supabase
+    .from('news_articles')
+    .delete()
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .select('id');
 
-  const next: NewsArticle = {
-    ...previous,
-    title: input.title.trim(),
-    slug,
-    sourceUrl,
-    summary: input.summary.trim(),
-    content: input.content.trim(),
-    coverImageUrl: input.coverImageUrl.trim(),
-    category: input.category.trim(),
-    tags: input.tags.map((tag) => tag.trim()).filter(Boolean),
-    status: nextStatus,
-    scheduledAt: input.scheduledAt,
-    publishedAt: resolvePublishedAt(nextStatus, previous.publishedAt),
-    updatedAt: timestamp,
-  };
-
-  articles[index] = next;
-  saveAllArticles(articles);
-  return next;
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error('No se encontró la noticia solicitada.');
+  }
 }
 
-export function deleteNewsArticle(userEmail: string, articleId: string): void {
-  const articles = loadAllArticles();
-  const next = articles.filter((article) => !(article.id === articleId && article.userEmail === userEmail));
-  if (next.length === articles.length) throw new Error('No se encontró la noticia solicitada.');
-  saveAllArticles(next);
-}
+export async function toggleNewsPublication(_userEmail: string, articleId: string): Promise<NewsArticle> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para actualizar noticias.');
+  }
 
-export function toggleNewsPublication(userEmail: string, articleId: string): NewsArticle {
-  const articles = loadAllArticles();
-  const index = articles.findIndex((article) => article.id === articleId && article.userEmail === userEmail);
-  if (index === -1) throw new Error('No se encontró la noticia solicitada.');
+  const { data: currentData, error: currentError } = await supabase
+    .from('news_articles')
+    .select('*')
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .single();
 
-  const current = articles[index];
+  if (currentError || !currentData) {
+    throw new Error('No se encontró la noticia solicitada.');
+  }
+
+  const current = currentData as NewsArticleRow;
   const nextStatus: NewsStatus = current.status === 'published' ? 'draft' : 'published';
-  const next: NewsArticle = {
-    ...current,
-    status: nextStatus,
-    publishedAt: resolvePublishedAt(nextStatus, current.publishedAt),
-    updatedAt: nowIso(),
-  };
 
-  articles[index] = next;
-  saveAllArticles(articles);
-  return next;
+  const { data, error } = await supabase
+    .from('news_articles')
+    .update({
+      status: nextStatus,
+      published_at: resolvePublishedAt(nextStatus, current.published_at),
+      updated_at: nowIso(),
+    })
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+
+  return mapRowToArticle(data as NewsArticleRow);
 }
 
-export function publishArticleNow(userEmail: string, articleId: string): NewsArticle {
-  const articles = loadAllArticles();
-  const index = articles.findIndex((article) => article.id === articleId && article.userEmail === userEmail);
-  if (index === -1) throw new Error('No se encontró la noticia solicitada.');
-
-  const current = articles[index];
-  const next: NewsArticle = {
-    ...current,
-    status: 'published',
-    publishedAt: nowIso(),
-    updatedAt: nowIso(),
-  };
-
-  articles[index] = next;
-  saveAllArticles(articles);
-  return next;
-}
-
-export function seedNewsForUser(userEmail: string): void {
-  const existing = listUserNews(userEmail);
-  if (existing.length > 0) return;
+export async function publishArticleNow(_userEmail: string, articleId: string): Promise<NewsArticle> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para publicar noticias.');
+  }
 
   const timestamp = nowIso();
-  const demoArticles: NewsArticle[] = [
-    {
-      id: `news-${Date.now()}-a`,
-      userEmail,
-      title: 'Mercado abre con sesgo alcista',
-      slug: 'mercado-abre-con-sesgo-alcista',
-      sourceUrl: 'https://example.com/fuente-mercado',
-      summary: 'Panorama inicial del mercado con focos en índices y divisas.',
-      content: 'Contenido de ejemplo para la noticia. Aquí iría el cuerpo completo del artículo.',
-      coverImageUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?auto=format&fit=crop&w=1200&q=80',
-      category: 'Mercados',
-      tags: ['mercados', 'sesion'],
-      status: 'draft',
-      scheduledAt: '',
-      publishedAt: null,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-    {
-      id: `news-${Date.now()}-b`,
-      userEmail,
-      title: 'Bitcoin supera resistencia clave',
-      slug: 'bitcoin-supera-resistencia-clave',
-      sourceUrl: 'https://example.com/fuente-bitcoin',
-      summary: 'La cripto rompe una zona técnica y deja señales de continuidad.',
-      content: 'Contenido de ejemplo para la segunda noticia.',
-      coverImageUrl: 'https://images.unsplash.com/photo-1642104704074-907c0698cbd9?auto=format&fit=crop&w=1200&q=80',
-      category: 'Cripto',
-      tags: ['crypto', 'btc'],
+  const { data, error } = await supabase
+    .from('news_articles')
+    .update({
       status: 'published',
-      scheduledAt: '',
-      publishedAt: timestamp,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    },
-  ];
+      published_at: timestamp,
+      updated_at: timestamp,
+    })
+    .eq('id', articleId)
+    .eq('user_id', userId)
+    .select('*')
+    .single();
 
-  saveAllArticles([...loadAllArticles(), ...demoArticles]);
+  if (error) throw error;
+
+  return mapRowToArticle(data as NewsArticleRow);
 }

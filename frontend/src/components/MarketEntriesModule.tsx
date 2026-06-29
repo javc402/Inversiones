@@ -6,11 +6,14 @@ import {
   createMarketEntriesForAccounts,
   deleteMarketEntryById,
   listMarketEntriesByUser,
+  listMostUsedMarketContexts,
+  MarketContextSource,
   MarketEntry,
   MarketEntryDirection,
   MarketEntryStatus,
   updateMarketEntryById,
 } from '@services/market-entries';
+import { listUserNews, NewsArticle } from '@services/news';
 import { logAuditActivity } from '@services/audit';
 import '../styles/market-entries-module.css';
 
@@ -31,12 +34,16 @@ interface MarketEntriesModuleProps {
 interface EntryCommonForm {
   symbol: string;
   marketContext: string;
+  contextSource: MarketContextSource;
+  newsArticleId: string;
   setup: string;
   session: string;
   direction: MarketEntryDirection;
   entryPrice: string;
   stopLoss: string;
   takeProfit: string;
+  resultR: string;
+  noEntryReason: string;
   note: string;
   plannedAt: string;
   status: MarketEntryStatus;
@@ -47,18 +54,23 @@ interface EditForm {
   riskAmount: string;
   investmentPercent: string;
   resultR: string;
+  noEntryReason: string;
   note: string;
 }
 
 const defaultCommonForm: EntryCommonForm = {
   symbol: '',
   marketContext: '',
+  contextSource: 'free_text',
+  newsArticleId: '',
   setup: '',
   session: 'NEW YORK',
   direction: 'buy',
   entryPrice: '',
   stopLoss: '',
   takeProfit: '',
+  resultR: '',
+  noEntryReason: '',
   note: '',
   plannedAt: new Date().toISOString().slice(0, 16),
   status: 'planned',
@@ -69,6 +81,7 @@ const defaultEditForm: EditForm = {
   riskAmount: '',
   investmentPercent: '',
   resultR: '',
+  noEntryReason: '',
   note: '',
 };
 
@@ -82,7 +95,8 @@ function formatDate(value: string): string {
 function statusLabel(status: MarketEntryStatus): string {
   if (status === 'planned') return 'Planificada';
   if (status === 'open') return 'Abierta';
-  if (status === 'closed') return 'Cerrada';
+  if (status === 'closed') return 'Completada';
+  if (status === 'no_entry') return 'Sin entrada';
   return 'Cancelada';
 }
 
@@ -219,13 +233,14 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
   onDelete: (entry: MarketEntry) => void;
 }>) {
   const isGroupedEntry = groupSize > 1;
+  const isNoEntry = entry.status === 'no_entry';
 
   return (
     <article className="entries-card">
       <header className="entries-card-header">
         <div>
-          <p className="entries-card-account">{entry.accountName}</p>
-          <h3>{entry.symbol} · {directionLabel(entry.direction)}</h3>
+          <p className="entries-card-account">{entry.accountName || 'Sin cuenta asociada'}</p>
+          <h3>{isNoEntry ? (entry.symbol || 'Sin entrada al mercado') : `${entry.symbol} · ${directionLabel(entry.direction)}`}</h3>
           {isGroupedEntry && (
             <span className="entries-group-badge">Grupo · {groupSize} cuentas</span>
           )}
@@ -235,22 +250,27 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
 
       <div className="entries-grid-meta">
         <p><strong>Contexto:</strong> {entry.marketContext}</p>
-        <p><strong>Setup:</strong> {entry.setup}</p>
+        <p><strong>Setup/Estrategia:</strong> {entry.setup}</p>
         <p><strong>Sesion:</strong> {entry.session}</p>
-        <p><strong>Fecha plan:</strong> {formatDate(entry.plannedAt)}</p>
+        <p><strong>Fecha de ejecucion:</strong> {formatDate(entry.plannedAt)}</p>
+        {isNoEntry && <p><strong>Motivo sin entrada:</strong> {entry.noEntryReason || 'Sin detalle'}</p>}
       </div>
 
-      <div className="entries-prices-row">
-        <span>Entrada: {entry.entryPrice}</span>
-        <span>SL: {entry.stopLoss}</span>
-        <span>TP: {entry.takeProfit}</span>
-      </div>
+      {!isNoEntry && (
+        <>
+          <div className="entries-prices-row">
+            <span>Entrada: {entry.entryPrice}</span>
+            <span>SL: {entry.stopLoss}</span>
+            <span>TP: {entry.takeProfit}</span>
+          </div>
 
-      <div className="entries-risk-row">
-        <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
-        <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
-        <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(2)}</span>
-      </div>
+          <div className="entries-risk-row">
+            <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
+            <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
+            <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(2)}</span>
+          </div>
+        </>
+      )}
 
       <p className="entries-note">{entry.note || 'Sin notas.'}</p>
 
@@ -285,6 +305,9 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [query, setQuery] = useState('');
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
+  const [mostUsedContexts, setMostUsedContexts] = useState<string[]>([]);
+  const [newsQuery, setNewsQuery] = useState('');
 
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [editingEntry, setEditingEntry] = useState<MarketEntry | null>(null);
@@ -295,12 +318,23 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [applyCommonToGroup, setApplyCommonToGroup] = useState(false);
 
   const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
+  const isCompletedOnCreate = commonForm.status === 'closed';
+  const isNoEntryOnCreate = commonForm.status === 'no_entry';
+  const isNewsContextMode = commonForm.contextSource === 'news';
 
   async function loadData() {
     try {
-      const loadedAccounts = await listTradingAccounts();
+      const [loadedAccounts, loadedEntries, loadedNews, usedContexts] = await Promise.all([
+        listTradingAccounts(),
+        listMarketEntriesByUser(userEmail),
+        listUserNews(userEmail),
+        listMostUsedMarketContexts(userEmail),
+      ]);
+
       setAccounts(loadedAccounts);
-      setEntries(await listMarketEntriesByUser(userEmail));
+      setEntries(loadedEntries);
+      setNewsArticles(loadedNews);
+      setMostUsedContexts(usedContexts);
 
       if (perAccountRows.length === 1 && !perAccountRows[0].accountId) {
         setPerAccountRows(buildDefaultAccountRows(loadedAccounts));
@@ -315,6 +349,17 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   useEffect(() => {
     void loadData();
   }, [userEmail]);
+
+  const filteredNewsArticles = useMemo(() => {
+    const term = newsQuery.trim().toLowerCase();
+    if (!term) return newsArticles;
+
+    return newsArticles.filter((article) =>
+      article.title.toLowerCase().includes(term) ||
+      article.summary.toLowerCase().includes(term) ||
+      article.category.toLowerCase().includes(term)
+    );
+  }, [newsArticles, newsQuery]);
 
   const filteredEntries = useMemo(() => {
     return entries.filter((entry) => {
@@ -351,6 +396,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setPerAccountRows(buildDefaultAccountRows(accounts));
     setEditForm(defaultEditForm);
     setApplyCommonToGroup(false);
+    setNewsQuery('');
     setError('');
     setSuccess('');
   }
@@ -363,6 +409,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       riskAmount: String(entry.riskAmount),
       investmentPercent: String(entry.investmentPercent),
       resultR: entry.resultR === null ? '' : String(entry.resultR),
+      noEntryReason: entry.noEntryReason ?? '',
       note: entry.note,
     });
     setApplyCommonToGroup(false);
@@ -397,37 +444,49 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setError('');
 
     try {
+      const resultRValue = toNumberOrNull(commonForm.resultR);
+
+      if (isCompletedOnCreate && resultRValue === null) {
+        throw new Error('Debes indicar Resultado R para una entrada completada.');
+      }
+
       const accountIds = new Set<string>();
-      const perAccount = perAccountRows.map((row, index) => {
-        const account = accounts.find((item) => item.id === row.accountId);
-        if (!account) {
-          throw new Error(`Selecciona una cuenta valida en la fila ${index + 1}.`);
-        }
+      const perAccount = isNoEntryOnCreate
+        ? []
+        : perAccountRows.map((row, index) => {
+            const account = accounts.find((item) => item.id === row.accountId);
+            if (!account) {
+              throw new Error(`Selecciona una cuenta valida en la fila ${index + 1}.`);
+            }
 
-        if (accountIds.has(account.id)) {
-          throw new Error(`La cuenta ${account.alias || account.name} esta repetida.`);
-        }
+            if (accountIds.has(account.id)) {
+              throw new Error(`La cuenta ${account.alias || account.name} esta repetida.`);
+            }
 
-        accountIds.add(account.id);
+            accountIds.add(account.id);
 
-        return {
-          accountId: account.id,
-          accountName: account.alias || account.name,
-          riskAmount: toNumber(row.riskAmount),
-          investmentPercent: toNumber(row.investmentPercent),
-        };
-      });
+            return {
+              accountId: account.id,
+              accountName: account.alias || account.name,
+              riskAmount: toNumber(row.riskAmount),
+              investmentPercent: toNumber(row.investmentPercent),
+            };
+          });
 
       const created = await createMarketEntriesForAccounts(userEmail, {
         common: {
           symbol: commonForm.symbol,
           marketContext: commonForm.marketContext,
+          contextSource: commonForm.contextSource,
+          newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
           setup: commonForm.setup,
           session: commonForm.session,
-          direction: commonForm.direction,
-          entryPrice: toNumber(commonForm.entryPrice),
-          stopLoss: toNumber(commonForm.stopLoss),
-          takeProfit: toNumber(commonForm.takeProfit),
+          direction: isNoEntryOnCreate ? undefined : commonForm.direction,
+          entryPrice: isNoEntryOnCreate ? undefined : toNumber(commonForm.entryPrice),
+          stopLoss: isNoEntryOnCreate ? undefined : toNumber(commonForm.stopLoss),
+          takeProfit: isNoEntryOnCreate ? undefined : toNumber(commonForm.takeProfit),
+          resultR: isCompletedOnCreate ? resultRValue : null,
+          noEntryReason: isNoEntryOnCreate ? commonForm.noEntryReason : undefined,
           note: commonForm.note,
           plannedAt: commonForm.plannedAt,
           status: commonForm.status,
@@ -436,6 +495,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       });
 
       setEntries(await listMarketEntriesByUser(userEmail));
+      setMostUsedContexts(await listMostUsedMarketContexts(userEmail));
       setSuccess(`Entrada creada en ${created.length} cuenta(s).`);
 
       void logAuditActivity('market_entries.create_batch', {
@@ -443,9 +503,13 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         targetType: 'system' as AuditTargetTypeWithSystem,
         source: 'frontend',
         symbol: commonForm.symbol,
+        contextSource: commonForm.contextSource,
+        newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
+        status: commonForm.status,
         accountsCount: perAccount.length,
         accountIds: perAccount.map((item) => item.accountId),
         riskByAccount: perAccount.map((item) => ({ accountId: item.accountId, riskAmount: item.riskAmount, investmentPercent: item.investmentPercent })),
+        noEntryReason: isNoEntryOnCreate ? commonForm.noEntryReason : null,
       });
 
       closeModal();
@@ -466,6 +530,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
         resultR: toNumberOrNull(editForm.resultR),
+        noEntryReason: editForm.noEntryReason,
         note: editForm.note,
       }, {
         applyCommonToGroup,
@@ -498,7 +563,11 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   }
 
   async function handleDelete(entry: MarketEntry) {
-    if (!window.confirm(`Eliminar entrada de ${entry.accountName} para ${entry.symbol}?`)) return;
+    const entryLabel = entry.status === 'no_entry'
+      ? `registro sin entrada${entry.symbol ? ` de ${entry.symbol}` : ''}`
+      : `entrada de ${entry.accountName} para ${entry.symbol}`;
+
+    if (!window.confirm(`Eliminar ${entryLabel}?`)) return;
 
     try {
       await deleteMarketEntryById(userEmail, entry.id);
@@ -535,66 +604,226 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
               <form className="entries-form" onSubmit={handleCreateSubmit}>
                 <label>
                   <EntryFieldLabel text="Simbolo" help="Par de mercado o activo sobre el que vas a registrar la entrada." />
-                  <input value={commonForm.symbol} onChange={(event) => setCommonForm((prev) => ({ ...prev, symbol: event.target.value }))} placeholder="EURUSD" required />
+                  <input
+                    value={commonForm.symbol}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, symbol: event.target.value }))}
+                    placeholder="EURUSD"
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
                   <EntryFieldLabel text="Direccion" help="Sentido de la operación: BUY para largos o SELL para cortos." />
-                  <select value={commonForm.direction} onChange={(event) => setCommonForm((prev) => ({ ...prev, direction: event.target.value as MarketEntryDirection }))}>
+                  <select
+                    value={commonForm.direction}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, direction: event.target.value as MarketEntryDirection }))}
+                    disabled={isNoEntryOnCreate}
+                  >
                     <option value="buy">BUY</option>
                     <option value="sell">SELL</option>
                   </select>
                 </label>
 
-                <label className="entries-form-span-2">
-                  <EntryFieldLabel text="Contexto / Noticia" help="Evento o contexto que respalda la hipótesis de entrada." />
-                  <input value={commonForm.marketContext} onChange={(event) => setCommonForm((prev) => ({ ...prev, marketContext: event.target.value }))} placeholder="CPI, FOMC, PRE market..." required />
-                </label>
+                <div className="entries-context-editor entries-form-span-2">
+                  <div className="entries-context-tabs" role="tablist" aria-label="Origen del contexto">
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={!isNewsContextMode}
+                      className={`entries-context-tab ${!isNewsContextMode ? 'active' : ''}`}
+                      onClick={() => setCommonForm((prev) => ({ ...prev, contextSource: 'free_text', newsArticleId: '' }))}
+                    >
+                      Texto libre
+                    </button>
+                    <button
+                      type="button"
+                      role="tab"
+                      aria-selected={isNewsContextMode}
+                      className={`entries-context-tab ${isNewsContextMode ? 'active' : ''}`}
+                      onClick={() => setCommonForm((prev) => ({ ...prev, contextSource: 'news' }))}
+                    >
+                      Noticias registradas
+                    </button>
+                  </div>
+
+                  {isNewsContextMode ? (
+                    <div className="entries-context-panel">
+                      <label>
+                        <EntryFieldLabel text="Buscar noticia" help="Filtra noticias creadas para reutilizarlas como contexto de entrada." />
+                        <input
+                          value={newsQuery}
+                          onChange={(event) => setNewsQuery(event.target.value)}
+                          placeholder="Buscar por titulo o categoria"
+                        />
+                      </label>
+
+                      <label>
+                        <EntryFieldLabel text="Noticia" help="Selecciona una noticia existente para enlazarla con esta entrada." />
+                        <select
+                          value={commonForm.newsArticleId}
+                          onChange={(event) => {
+                            const selectedId = event.target.value;
+                            const selectedNews = filteredNewsArticles.find((item) => item.id === selectedId);
+                            setCommonForm((prev) => ({
+                              ...prev,
+                              newsArticleId: selectedId,
+                              marketContext: selectedNews?.title ?? prev.marketContext,
+                            }));
+                          }}
+                          required
+                        >
+                          <option value="">Selecciona noticia</option>
+                          {filteredNewsArticles.map((article) => (
+                            <option key={article.id} value={article.id}>{article.title}</option>
+                          ))}
+                        </select>
+                      </label>
+
+                      <label>
+                        <EntryFieldLabel text="Contexto/Noticia" help="Se completa con el titulo de la noticia seleccionada, editable si necesitas precisión adicional." />
+                        <input
+                          value={commonForm.marketContext}
+                          onChange={(event) => setCommonForm((prev) => ({ ...prev, marketContext: event.target.value }))}
+                          placeholder="Contexto asociado"
+                          required
+                        />
+                      </label>
+                    </div>
+                  ) : (
+                    <div className="entries-context-panel">
+                      <label>
+                        <EntryFieldLabel text="Contexto/Noticia" help="Evento o contexto que respalda la hipótesis de entrada." />
+                        <input
+                          value={commonForm.marketContext}
+                          onChange={(event) => setCommonForm((prev) => ({ ...prev, marketContext: event.target.value }))}
+                          placeholder="CPI, FOMC, PRE market..."
+                          required
+                        />
+                      </label>
+
+                      {mostUsedContexts.length > 0 && (
+                        <div className="entries-context-suggestions" aria-label="Contextos más usados">
+                          {mostUsedContexts.map((contextText) => (
+                            <button
+                              key={contextText}
+                              type="button"
+                              className="entries-context-chip"
+                              onClick={() => setCommonForm((prev) => ({ ...prev, marketContext: contextText }))}
+                            >
+                              {contextText}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
 
                 <label>
-                  <EntryFieldLabel text="Setup" help="Patrón o estructura técnica que define la ejecución." />
-                  <input value={commonForm.setup} onChange={(event) => setCommonForm((prev) => ({ ...prev, setup: event.target.value }))} required />
+                  <EntryFieldLabel text="Setup/Estrategia" help="Patrón o estrategia operativa concreta que define la ejecución." />
+                  <input
+                    value={commonForm.setup}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, setup: event.target.value }))}
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
                   <EntryFieldLabel text="Sesion" help="Bloque horario de mercado donde se planifica la operación." />
-                  <input value={commonForm.session} onChange={(event) => setCommonForm((prev) => ({ ...prev, session: event.target.value }))} required />
+                  <input
+                    value={commonForm.session}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, session: event.target.value }))}
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
                   <EntryFieldLabel text="Entrada" help="Precio objetivo para ejecutar la entrada." />
-                  <input type="number" step="0.0001" value={commonForm.entryPrice} onChange={(event) => setCommonForm((prev) => ({ ...prev, entryPrice: event.target.value }))} required />
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={commonForm.entryPrice}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, entryPrice: event.target.value }))}
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
                   <EntryFieldLabel text="Stop Loss" help="Nivel de invalidación de la idea para limitar pérdida." />
-                  <input type="number" step="0.0001" value={commonForm.stopLoss} onChange={(event) => setCommonForm((prev) => ({ ...prev, stopLoss: event.target.value }))} required />
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={commonForm.stopLoss}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, stopLoss: event.target.value }))}
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
                   <EntryFieldLabel text="Take Profit" help="Objetivo de salida con beneficio para la operación." />
-                  <input type="number" step="0.0001" value={commonForm.takeProfit} onChange={(event) => setCommonForm((prev) => ({ ...prev, takeProfit: event.target.value }))} required />
+                  <input
+                    type="number"
+                    step="0.0001"
+                    value={commonForm.takeProfit}
+                    onChange={(event) => setCommonForm((prev) => ({ ...prev, takeProfit: event.target.value }))}
+                    required={!isNoEntryOnCreate}
+                    disabled={isNoEntryOnCreate}
+                  />
                 </label>
 
                 <label>
-                  <EntryFieldLabel text="Fecha/hora" help="Momento planificado para ejecutar o evaluar la entrada." />
+                  <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora real (pasada) o prevista (futura) en la que se ejecuta/ejecutará la operación." />
                   <input type="datetime-local" value={commonForm.plannedAt} onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))} required />
                 </label>
 
                 <label>
-                  <EntryFieldLabel text="Estado inicial" help="Estado con el que se crea la entrada en el flujo operativo." />
+                  <EntryFieldLabel text="Estado" help="Define si la entrada queda planificada, abierta o completada al registrarla." />
                   <select value={commonForm.status} onChange={(event) => setCommonForm((prev) => ({ ...prev, status: event.target.value as MarketEntryStatus }))}>
                     <option value="planned">Planificada</option>
                     <option value="open">Abierta</option>
+                    <option value="closed">Completada</option>
+                    <option value="no_entry">Sin entrada</option>
                   </select>
                 </label>
+
+                {isNoEntryOnCreate && (
+                  <label>
+                    <EntryFieldLabel text="Motivo sin entrada" help="Razón por la que se decidió no ejecutar operación en mercado." />
+                    <input
+                      value={commonForm.noEntryReason}
+                      onChange={(event) => setCommonForm((prev) => ({ ...prev, noEntryReason: event.target.value }))}
+                      placeholder="Ej: no confirmo setup, spread alto, riesgo noticia"
+                      required={isNoEntryOnCreate}
+                    />
+                  </label>
+                )}
+
+                {isCompletedOnCreate && (
+                  <label>
+                    <EntryFieldLabel text="Resultado R" help="Resultado final en múltiplos de riesgo para registrar la operación ya cerrada." />
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={commonForm.resultR}
+                      onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
+                      placeholder="Ej: 1.5"
+                      required={isCompletedOnCreate}
+                    />
+                  </label>
+                )}
 
                 <label className="entries-form-span-2">
                   <EntryFieldLabel text="Notas" help="Observaciones tácticas para seguimiento y revisión posterior." />
                   <textarea value={commonForm.note} onChange={(event) => setCommonForm((prev) => ({ ...prev, note: event.target.value }))} rows={3} />
                 </label>
 
-                <div className="entries-accounts-editor entries-form-span-2">
+                {!isNoEntryOnCreate && (
+                  <div className="entries-accounts-editor entries-form-span-2">
                   <div className="entries-accounts-title-row">
                     <h3>Cuentas asociadas</h3>
                     <button type="button" className="entries-inline-btn" onClick={addAccountRow} disabled={!canAddMoreAccounts}>
@@ -654,7 +883,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                   </div>
 
                   <p className="entries-accounts-summary">Se crearan {perAccountRows.length} registro(s), uno por cuenta.</p>
-                </div>
+                  </div>
+                )}
 
                 {error && <p className="entries-form-error">{error}</p>}
 
@@ -680,25 +910,39 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                   <select value={editForm.status} onChange={(event) => setEditForm((prev) => ({ ...prev, status: event.target.value as MarketEntryStatus }))}>
                     <option value="planned">Planificada</option>
                     <option value="open">Abierta</option>
-                    <option value="closed">Cerrada</option>
+                    <option value="closed">Completada</option>
+                    <option value="no_entry">Sin entrada</option>
                     <option value="cancelled">Cancelada</option>
                   </select>
                 </label>
 
-                <label>
-                  <EntryFieldLabel text="Riesgo ($)" help="Capital que se arriesga en esta cuenta para la entrada." />
-                  <input type="number" step="0.01" min="0" value={editForm.riskAmount} onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: event.target.value }))} required />
-                </label>
+                {editForm.status !== 'no_entry' ? (
+                  <>
+                    <label>
+                      <EntryFieldLabel text="Riesgo ($)" help="Capital que se arriesga en esta cuenta para la entrada." />
+                      <input type="number" step="0.01" min="0" value={editForm.riskAmount} onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: event.target.value }))} required />
+                    </label>
 
-                <label>
-                  <EntryFieldLabel text="% inversion" help="Porcentaje del capital asignado a esta cuenta para la entrada." />
-                  <input type="number" step="0.01" min="0" value={editForm.investmentPercent} onChange={(event) => setEditForm((prev) => ({ ...prev, investmentPercent: event.target.value }))} required />
-                </label>
+                    <label>
+                      <EntryFieldLabel text="% inversion" help="Porcentaje del capital asignado a esta cuenta para la entrada." />
+                      <input type="number" step="0.01" min="0" value={editForm.investmentPercent} onChange={(event) => setEditForm((prev) => ({ ...prev, investmentPercent: event.target.value }))} required />
+                    </label>
 
-                <label>
-                  <EntryFieldLabel text="Resultado R" help="Resultado medido en múltiplos de riesgo; opcional hasta cierre." />
-                  <input type="number" step="0.01" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} placeholder="Opcional" />
-                </label>
+                    <label>
+                      <EntryFieldLabel text="Resultado R" help="Resultado medido en múltiplos de riesgo; opcional hasta cierre." />
+                      <input type="number" step="0.01" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} placeholder="Opcional" />
+                    </label>
+                  </>
+                ) : (
+                  <label>
+                    <EntryFieldLabel text="Motivo sin entrada" help="Razón por la que no se ejecutó la operación." />
+                    <input
+                      value={editForm.noEntryReason}
+                      onChange={(event) => setEditForm((prev) => ({ ...prev, noEntryReason: event.target.value }))}
+                      required
+                    />
+                  </label>
+                )}
 
                 <label className="entries-form-span-2">
                   <EntryFieldLabel text="Notas" help="Comentario operativo de seguimiento y cierre para la entrada." />
@@ -766,7 +1010,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         </article>
         <article className="entries-kpi-card">
           <p>Cuentas activas</p>
-          <strong>{new Set(filteredEntries.map((entry) => entry.accountId)).size}</strong>
+          <strong>{new Set(filteredEntries.filter((entry) => entry.accountId).map((entry) => entry.accountId)).size}</strong>
         </article>
       </section>
 
