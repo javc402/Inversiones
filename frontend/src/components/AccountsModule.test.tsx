@@ -608,4 +608,80 @@ describe('AccountsModule', () => {
 
     expect(screen.getByRole('button', { name: 'Guardar cuenta' })).toBeInTheDocument();
   });
+
+  it('cierra popovers por click fuera y responde a resize/scroll', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        user_id: 'user-1',
+        name: 'Cuenta Principal',
+        alias: 'CP',
+        broker_name: 'IC Markets',
+        account_type: 'real',
+        platform: 'mt5',
+        base_currency: 'USD',
+        leverage: '1:100',
+        initial_balance: 10000,
+        initial_equity: 10000,
+        opened_at: '2026-06-23',
+        status: 'active',
+        risk_per_trade_pct: 1,
+        max_daily_risk_pct: 3,
+        max_drawdown_pct: 8,
+        funding_firm: null,
+        challenge_phase: null,
+        profit_target_pct: null,
+        daily_loss_limit_pct: null,
+        max_loss_limit_pct: null,
+        payout_cycle: null,
+        notes: null,
+        is_favorite: false,
+        created_at: '2026-06-23T00:00:00.000Z',
+        updated_at: '2026-06-23T00:00:00.000Z',
+      },
+    ]);
+
+    render(<AccountsModule />);
+
+    const opsHeader = await screen.findByText('Ops');
+    fireEvent.click(opsHeader);
+    expect(await screen.findByText('Número total de operaciones')).toBeInTheDocument();
+
+    globalThis.dispatchEvent(new Event('resize'));
+    globalThis.dispatchEvent(new Event('scroll'));
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByText('Número total de operaciones')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: '+ Nueva cuenta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Nombre de la cuenta *' }));
+    expect(await screen.findByRole('tooltip')).toBeInTheDocument();
+
+    globalThis.dispatchEvent(new Event('resize'));
+    globalThis.dispatchEvent(new Event('scroll'));
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('dispara onChange de campos funded no cubiertos', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([]);
+
+    render(<AccountsModule />);
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+
+    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'funded' } });
+    expect(await screen.findByText('Reglas de fondeo')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Fase desafío'), { target: { value: 'funded' } });
+    fireEvent.change(screen.getByLabelText('Límite pérdida diaria %'), { target: { value: '4.5' } });
+    fireEvent.change(screen.getByLabelText('Límite pérdida total %'), { target: { value: '9.5' } });
+    fireEvent.change(screen.getByLabelText('Ciclo de pago'), { target: { value: 'custom' } });
+    fireEvent.change(screen.getByLabelText('Observaciones'), { target: { value: 'nota funded' } });
+
+    expect((screen.getByLabelText('Ciclo de pago') as HTMLSelectElement).value).toBe('custom');
+    expect((screen.getByLabelText('Observaciones') as HTMLTextAreaElement).value).toBe('nota funded');
+  });
 });
