@@ -138,4 +138,40 @@ describe('SettingsModule', () => {
       expect(updateConfigMock).toHaveBeenCalled();
     });
   });
+
+  it('edita valor y descripcion de item existente', () => {
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tipos de cuenta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Real' }));
+    fireEvent.change(screen.getByLabelText('Editar valor'), { target: { value: 'real-pro' } });
+    fireEvent.change(screen.getByLabelText('Editar descripción'), { target: { value: 'Cuenta real profesional' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar' }));
+
+    expect(updateConfigMock).toHaveBeenCalled();
+  });
+
+  it('agrega item en monedas con descripcion', () => {
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Monedas base' }));
+    fireEvent.change(screen.getByLabelText('Nuevo nombre para Monedas base'), { target: { value: 'Peso colombiano' } });
+    fireEvent.change(screen.getByLabelText('Nuevo valor para Monedas base'), { target: { value: 'cop' } });
+    fireEvent.change(screen.getByLabelText('Nueva descripción para Monedas base'), { target: { value: 'Moneda local' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar' }));
+
+    expect(updateConfigMock).toHaveBeenCalled();
+  });
+
+  it('actualiza todos los campos del perfil', () => {
+    render(<SettingsModule userEmail="test@demo.com" isAdmin={false} />);
+
+    fireEvent.change(screen.getByLabelText('Nombre completo'), { target: { value: 'Nombre Test' } });
+    fireEvent.change(screen.getByLabelText('Teléfono'), { target: { value: '+57 300 123 4567' } });
+    fireEvent.change(screen.getByLabelText('Ciudad'), { target: { value: 'Bogota' } });
+    fireEvent.change(screen.getByLabelText('País'), { target: { value: 'Colombia' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(screen.getByText('Cambios guardados')).toBeInTheDocument();
+  });
 });

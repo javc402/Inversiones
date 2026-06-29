@@ -165,4 +165,75 @@ describe('AdminPanel Component', () => {
 
     expect(rolesService.listAllUsers).toHaveBeenCalledTimes(2); // Initial + click
   });
+
+  it('should filter users by query and status', async () => {
+    const mockUsers = [
+      {
+        id: '1',
+        user_id: 'user-1',
+        role_id: 'role-1',
+        status: 'active' as const,
+        email: 'active@example.com',
+        created_at: '2026-06-23',
+        updated_at: '2026-06-23',
+        roles: { name: 'user' as const },
+      },
+      {
+        id: '2',
+        user_id: 'user-2',
+        role_id: 'role-1',
+        status: 'inactive' as const,
+        email: 'inactive@example.com',
+        created_at: '2026-06-23',
+        updated_at: '2026-06-23',
+        roles: { name: 'user' as const },
+      },
+    ];
+
+    vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce(mockUsers as any);
+
+    render(<AdminPanel />);
+
+    expect(await screen.findByRole('heading', { name: 'active@example.com' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Buscar por usuario'), { target: { value: 'inactive' } });
+    expect(screen.queryByRole('heading', { name: 'active@example.com' })).not.toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'inactive@example.com' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Filtrar por estado'), { target: { value: 'active' } });
+    expect(screen.queryByRole('heading', { name: 'inactive@example.com' })).not.toBeInTheDocument();
+  });
+
+  it('should remove admin role and activate user with icon buttons', async () => {
+    const mockUsers = [
+      {
+        id: '1',
+        user_id: 'user-1',
+        role_id: 'role-1',
+        status: 'pending' as const,
+        email: 'adminuser@example.com',
+        created_at: '2026-06-23',
+        updated_at: '2026-06-23',
+        roles: { name: 'admin' as const },
+      },
+    ];
+
+    vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce(mockUsers as any);
+    vi.mocked(rolesService.removeAdminRole).mockResolvedValueOnce(undefined);
+    vi.mocked(rolesService.updateUserStatus).mockResolvedValueOnce(undefined);
+
+    render(<AdminPanel />);
+
+    expect(await screen.findByRole('heading', { name: 'adminuser@example.com' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Quitar admin' }));
+    await waitFor(() => {
+      expect(rolesService.removeAdminRole).toHaveBeenCalledWith('user-1');
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Activar usuario' }));
+    await waitFor(() => {
+      expect(rolesService.updateUserStatus).toHaveBeenCalledWith('user-1', 'active');
+    });
+  });
 });

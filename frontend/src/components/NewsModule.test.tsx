@@ -440,4 +440,76 @@ describe('NewsModule', () => {
       expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
     });
   });
+
+  it('should change all create modal fields including media and scheduling', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('Ej. Mercado abre con sesgo alcista'), { target: { value: 'Titulo largo' } });
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'titulo-largo' } });
+
+    const sourceInputs = screen.getAllByPlaceholderText('https://...');
+    fireEvent.change(sourceInputs[0], { target: { value: 'https://fuente.com' } });
+    fireEvent.change(sourceInputs[1], { target: { value: 'https://imagen.com/cover.png' } });
+
+    const textareas = screen.getAllByRole('textbox').filter((el) => el.tagName.toLowerCase() === 'textarea');
+    fireEvent.change(textareas[0], { target: { value: 'Resumen ampliado' } });
+    fireEvent.change(textareas[1], { target: { value: 'Contenido ampliado' } });
+
+    fireEvent.change(screen.getByDisplayValue('Mercados'), { target: { value: 'Cripto' } });
+    fireEvent.change(screen.getByPlaceholderText('trading, mercados, crypto'), { target: { value: 'btc,eth' } });
+    const dialogSelects = document.querySelectorAll('dialog select');
+    fireEvent.change(dialogSelects[0], { target: { value: 'scheduled' } });
+    const datetimeInput = document.querySelector('dialog input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.change(datetimeInput, { target: { value: '2026-06-30T12:30' } });
+
+    expect(screen.getByRole('button', { name: 'Guardar noticia' })).toBeInTheDocument();
+  });
+
+  it('should filter scheduled status from toolbar', async () => {
+    const articles = [
+      {
+        id: 'n1',
+        userEmail: 'test@example.com',
+        title: 'Programada',
+        slug: 'programada',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'scheduled' as const,
+        scheduledAt: '2026-07-01T10:00:00Z',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+      {
+        id: 'n2',
+        userEmail: 'test@example.com',
+        title: 'Borrador',
+        slug: 'borrador',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'draft' as const,
+        scheduledAt: '',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+    ];
+    vi.mocked(newsService.listUserNews).mockResolvedValue(articles);
+
+    render(<NewsModule userEmail="test@example.com" />);
+    expect(await screen.findByRole('heading', { name: 'Programada' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'scheduled' } });
+    expect(screen.getByRole('heading', { name: 'Programada' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Borrador' })).not.toBeInTheDocument();
+  });
 });

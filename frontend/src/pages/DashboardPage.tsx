@@ -38,11 +38,11 @@ type DashboardTab = 'resumen' | 'noticias' | 'entradas' | 'cuentas' | 'usuarios'
 
 const DASHBOARD_TAB_STORAGE_KEY = 'inversiones_dashboard_active_tab';
 
-function isDashboardTab(value: string | null): value is DashboardTab {
+export function isDashboardTab(value: string | null): value is DashboardTab {
   return value === 'resumen' || value === 'noticias' || value === 'entradas' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
 }
 
-function loadStoredDashboardTab(): DashboardTab {
+export function loadStoredDashboardTab(): DashboardTab {
   if (globalThis.window === undefined) return 'resumen';
   try {
     const stored = localStorage.getItem(DASHBOARD_TAB_STORAGE_KEY);
@@ -78,13 +78,13 @@ const pageTitleByTab: Record<DashboardTab, string> = {
   configuracion: 'Configuración',
 };
 
-function formatDate(dateValue: string): string {
+export function formatDate(dateValue: string): string {
   const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) return dateValue;
   return parsed.toLocaleDateString('es-MX');
 }
 
-function formatCurrency(value: number): string {
+export function formatCurrency(value: number): string {
   return new Intl.NumberFormat('es-MX', {
     style: 'currency',
     currency: 'USD',
@@ -92,7 +92,7 @@ function formatCurrency(value: number): string {
   }).format(value);
 }
 
-function statusLabel(status: MarketEntry['status']): string {
+export function statusLabel(status: MarketEntry['status']): string {
   if (status === 'planned') return 'Planeada';
   if (status === 'open') return 'Abierta';
   if (status === 'closed') return 'Completada';
@@ -100,13 +100,13 @@ function statusLabel(status: MarketEntry['status']): string {
   return 'Cancelada';
 }
 
-function roleNameLabel(roleName: Role['name'] | null | undefined): string {
+export function roleNameLabel(roleName: Role['name'] | null | undefined): string {
   if (roleName === 'admin') return 'Administrador';
   if (roleName === 'user') return 'Usuario';
   return 'Sin rol';
 }
 
-function tradeResultClass(result: string): 'negative' | 'neutral' | 'positive' {
+export function tradeResultClass(result: string): 'negative' | 'neutral' | 'positive' {
   if (result.startsWith('-')) return 'negative';
   if (result === 'N/A') return 'neutral';
   return 'positive';
@@ -346,7 +346,7 @@ function DashboardTabPanels({ activeTab, mainContent, userEmail, isAdmin }: Read
   );
 }
 
-function prefetchDashboardTab(tab: DashboardTab, isAdmin: boolean): void {
+export function prefetchDashboardTab(tab: DashboardTab, isAdmin: boolean): void {
   if (tab === 'noticias') {
     void loadNewsModule();
     return;

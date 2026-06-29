@@ -391,6 +391,46 @@ describe('DashboardPage', () => {
     expect(screen.getByText('1 operaciones')).toBeInTheDocument()
   })
 
+  it('dispara toggles de sidebar y prefetch por hover/focus', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-admin',
+      name: 'admin',
+      description: 'Administrador',
+    })
+
+    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const gestionarBtn = await screen.findByRole('button', { name: /Gestion 3/i })
+    fireEvent.click(gestionarBtn)
+    fireEvent.click(gestionarBtn)
+
+    const cuentaBtn = screen.getByRole('button', { name: /Mi cuenta 1/i })
+    fireEvent.click(cuentaBtn)
+    fireEvent.click(cuentaBtn)
+
+    const noticiasBtn = screen.getByRole('button', { name: 'Mis noticias' })
+    fireEvent.mouseEnter(noticiasBtn)
+    fireEvent.focus(noticiasBtn)
+
+    const entradasBtn = screen.getByRole('button', { name: 'Entradas mercado' })
+    fireEvent.mouseEnter(entradasBtn)
+    fireEvent.focus(entradasBtn)
+
+    const cuentasBtn = screen.getByRole('button', { name: 'Gestionar cuentas' })
+    fireEvent.mouseEnter(cuentasBtn)
+    fireEvent.focus(cuentasBtn)
+
+    const usuariosBtn = screen.getByRole('button', { name: 'Gestionar usuarios' })
+    fireEvent.mouseEnter(usuariosBtn)
+    fireEvent.focus(usuariosBtn)
+
+    const configBtn = screen.getByRole('button', { name: 'Configuración' })
+    fireEvent.mouseEnter(configBtn)
+    fireEvent.focus(configBtn)
+
+    expect(screen.getByText('Dashboard de Inversiones')).toBeInTheDocument()
+  })
+
   it('calcula ganancia cero cuando no hay operaciones', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([])

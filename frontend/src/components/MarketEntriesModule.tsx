@@ -29,7 +29,7 @@ type AccountRowForm = {
   investmentPercent: string;
 };
 
-function createAccountRow(accountId = ''): AccountRowForm {
+export function createAccountRow(accountId = ''): AccountRowForm {
   const cryptoApi = globalThis.crypto;
   return {
     id: cryptoApi?.randomUUID?.() ?? `account-row-${Date.now()}`,
@@ -97,14 +97,14 @@ const defaultEditForm: EditForm = {
   note: '',
 };
 
-function formatDate(value: string): string {
+export function formatDate(value: string): string {
   return new Intl.DateTimeFormat('es-ES', {
     dateStyle: 'medium',
     timeStyle: 'short',
   }).format(new Date(value));
 }
 
-function statusLabel(status: MarketEntryStatus): string {
+export function statusLabel(status: MarketEntryStatus): string {
   if (status === 'planned') return 'Planificada';
   if (status === 'open') return 'Abierta';
   if (status === 'closed') return 'Completada';
@@ -112,21 +112,21 @@ function statusLabel(status: MarketEntryStatus): string {
   return 'Cancelada';
 }
 
-function directionLabel(direction: MarketEntryDirection): string {
+export function directionLabel(direction: MarketEntryDirection): string {
   return direction === 'buy' ? 'BUY' : 'SELL';
 }
 
-function toNumber(value: string): number {
+export function toNumber(value: string): number {
   return Number(value.trim());
 }
 
-function toNumberOrNull(value: string): number | null {
+export function toNumberOrNull(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return Number(trimmed);
 }
 
-function entryDeletionLabel(entry: MarketEntry): string {
+export function entryDeletionLabel(entry: MarketEntry): string {
   if (entry.status !== 'no_entry') {
     return `entrada de ${entry.accountName} para ${entry.symbol}`;
   }
@@ -138,7 +138,7 @@ function entryDeletionLabel(entry: MarketEntry): string {
   return `registro sin entrada de ${entry.symbol}`;
 }
 
-function buildCreatePerAccountSelection(
+export function buildCreatePerAccountSelection(
   accounts: TradingAccount[],
   perAccountRows: AccountRowForm[],
   isNoEntryOnCreate: boolean
@@ -169,7 +169,7 @@ function buildCreatePerAccountSelection(
   });
 }
 
-function buildCreateMarketEntryRequest(
+export function buildCreateMarketEntryRequest(
   commonForm: EntryCommonForm,
   perAccount: ReturnType<typeof buildCreatePerAccountSelection>,
   isNoEntryOnCreate: boolean,
@@ -206,7 +206,7 @@ function buildCreateMarketEntryRequest(
   };
 }
 
-function buildDefaultAccountRows(accounts: TradingAccount[]): AccountRowForm[] {
+export function buildDefaultAccountRows(accounts: TradingAccount[]): AccountRowForm[] {
   if (accounts.length === 0) {
     return [createAccountRow()];
   }

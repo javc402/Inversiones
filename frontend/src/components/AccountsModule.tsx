@@ -255,7 +255,7 @@ const DEFAULT_FORM: AccountFormState = {
   notes: '',
 };
 
-function toNumberOrUndefined(value: string): number | undefined {
+export function toNumberOrUndefined(value: string): number | undefined {
   const trimmed = value.trim();
   if (!trimmed) return undefined;
 
@@ -263,11 +263,11 @@ function toNumberOrUndefined(value: string): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
-function toStringOrEmpty(value: number | null): string {
+export function toStringOrEmpty(value: number | null): string {
   return value === null ? '' : String(value);
 }
 
-function mapAccountToForm(account: TradingAccount): AccountFormState {
+export function mapAccountToForm(account: TradingAccount): AccountFormState {
   return {
     name: account.name,
     alias: account.alias ?? '',
@@ -293,7 +293,7 @@ function mapAccountToForm(account: TradingAccount): AccountFormState {
   };
 }
 
-function mapFormToPayload(form: AccountFormState): UpsertTradingAccountInput {
+export function mapFormToPayload(form: AccountFormState): UpsertTradingAccountInput {
   return {
     name: form.name.trim(),
     alias: form.alias.trim() || undefined,
@@ -329,7 +329,7 @@ interface AccountSummaryRow {
   tpProfit: number;
 }
 
-function getSummaryRows(): AccountSummaryRow[] {
+export function getSummaryRows(): AccountSummaryRow[] {
   return [
     {
       label: 'Total',

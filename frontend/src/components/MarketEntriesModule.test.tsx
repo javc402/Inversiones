@@ -644,4 +644,230 @@ describe('MarketEntriesModule', () => {
     expect(screen.getByText('Spread alto')).toBeInTheDocument();
   });
 
+  it('should create a no-entry record from modal', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(marketEntriesService.createMarketEntriesForAccounts).mockResolvedValueOnce([] as never);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
+
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
+
+    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+      target: { value: 'No setup válido' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
+
+    await waitFor(() => {
+      expect(marketEntriesService.createMarketEntriesForAccounts).toHaveBeenCalled();
+    });
+  });
+
+  it('should show create error message when submit fails', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(marketEntriesService.createMarketEntriesForAccounts).mockRejectedValueOnce(new Error('No se pudo guardar'));
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+      target: { value: 'No setup válido' },
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
+
+    const errors = await screen.findAllByText('No se pudo guardar');
+    expect(errors.length).toBeGreaterThan(0);
+  });
+
+  it('should save edited entry from modal', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+    vi.mocked(marketEntriesService.updateMarketEntryById).mockResolvedValueOnce({
+      updatedEntry: {} as never,
+      affectedEntries: 1,
+      groupApplied: false,
+    } as never);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(marketEntriesService.updateMarketEntryById).toHaveBeenCalled();
+    });
+  });
+
+  it('should open and close help popover in modal', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Contexto/Noticia' }));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should trigger changes across create modal fields', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+      { id: 'acc-2', name: 'Cuenta Demo', alias: 'Demo' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'CPI',
+        source: 'Reuters',
+        published_at: '2026-06-29T10:00:00.000Z',
+        impact: 'high',
+        summary: 'summary',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-06-29T10:00:00.000Z',
+        updated_at: '2026-06-29T10:00:00.000Z',
+      } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Noticias registradas' }));
+
+    const fields = document.querySelectorAll('dialog input, dialog select, dialog textarea');
+    fields.forEach((field) => {
+      if (field instanceof HTMLInputElement) {
+        if (field.type === 'number') {
+          fireEvent.change(field, { target: { value: '1' } });
+        } else if (field.type === 'datetime-local') {
+          fireEvent.change(field, { target: { value: '2026-06-29T10:00' } });
+        } else {
+          fireEvent.change(field, { target: { value: field.value || 'valor' } });
+        }
+      } else if (field instanceof HTMLSelectElement) {
+        const option = field.options.length > 1 ? field.options[1].value : field.value;
+        fireEvent.change(field, { target: { value: option } });
+      } else if (field instanceof HTMLTextAreaElement) {
+        fireEvent.change(field, { target: { value: 'nota' } });
+      }
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /Agregar cuenta/i }));
+    const removeButtons = screen.queryAllByRole('button', { name: /Eliminar fila/i });
+    if (removeButtons.length > 0) {
+      fireEvent.click(removeButtons[0]);
+    }
+
+    expect(screen.getByRole('button', { name: 'Guardar entradas' })).toBeInTheDocument();
+  });
+
+  it('should trigger changes across edit modal fields', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.09,
+        takeProfit: 1.12,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+
+    const fields = document.querySelectorAll('dialog input, dialog select, dialog textarea');
+    fields.forEach((field) => {
+      if (field instanceof HTMLInputElement && field.type === 'number') {
+        fireEvent.change(field, { target: { value: '2' } });
+      } else if (field instanceof HTMLSelectElement) {
+        const option = field.options.length > 1 ? field.options[1].value : field.value;
+        fireEvent.change(field, { target: { value: option } });
+      } else if (field instanceof HTMLTextAreaElement) {
+        fireEvent.change(field, { target: { value: 'nota editada' } });
+      }
+    });
+
+    expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+  });
+
 });
