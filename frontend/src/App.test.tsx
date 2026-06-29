@@ -118,6 +118,34 @@ describe('App', () => {
     })
   })
 
+  it('ignora evento auth cuando el usuario no cambió', async () => {
+    appMocks.getSessionMock.mockResolvedValueOnce({ data: { session: { user: { id: 'user-1', email: 'same@correo.com' } } } })
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('DASHBOARD_VIEW:same@correo.com')).toBeInTheDocument()
+    })
+
+    authStateCallback?.('TOKEN_REFRESHED', { user: { id: 'user-1', email: 'changed@correo.com' } })
+
+    await waitFor(() => {
+      expect(screen.getByText('DASHBOARD_VIEW:same@correo.com')).toBeInTheDocument()
+    })
+    expect(screen.queryByText('DASHBOARD_VIEW:changed@correo.com')).not.toBeInTheDocument()
+  })
+
+  it('si falla resolver rol mantiene la sesión', async () => {
+    appMocks.getCurrentUserRoleMock.mockRejectedValueOnce(new Error('role fail'))
+    appMocks.getSessionMock.mockResolvedValueOnce({ data: { session: { user: { id: 'user-1', email: 'demo@correo.com' } } } })
+
+    render(<App />)
+
+    await waitFor(() => {
+      expect(screen.getByText('DASHBOARD_VIEW:demo@correo.com')).toBeInTheDocument()
+    })
+  })
+
   it('desuscribe el listener al desmontar', async () => {
     appMocks.getSessionMock.mockResolvedValueOnce({ data: { session: null } })
 

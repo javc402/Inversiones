@@ -1,6 +1,7 @@
+/// <reference types="node" />
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import path from 'path'
+import { fileURLToPath, URL } from 'node:url'
 
 const repoName = 'Inversiones'
 const isGitHubActions = process.env.GITHUB_ACTIONS === 'true'
@@ -35,44 +36,15 @@ export default defineConfig({
       },
     },
   },
-  test: {
-    environment: 'jsdom',
-    setupFiles: './src/test/setup.ts',
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'html', 'lcov'],
-      include: [
-        'src/App.tsx',
-        'src/pages/LoginPage.tsx',
-        'src/components/AppIcon.tsx',
-        'src/services/auth.ts',
-        'src/services/audit.ts',
-      ],
-      exclude: [
-        'src/main.tsx',
-        'src/vite-env.d.ts',
-        'src/**/*.d.ts',
-        'src/**/test/**',
-        'src/**/*.test.ts',
-        'src/**/*.test.tsx',
-      ],
-      thresholds: {
-        lines: 90,
-        functions: 90,
-        branches: 60,
-        statements: 90,
-      },
-    },
-  },
   resolve: {
     alias: {
-      '@': path.resolve(__dirname, './src'),
-      '@components': path.resolve(__dirname, './src/components'),
-      '@pages': path.resolve(__dirname, './src/pages'),
-      '@services': path.resolve(__dirname, './src/services'),
-      '@hooks': path.resolve(__dirname, './src/hooks'),
-      '@lib': path.resolve(__dirname, './src/lib'),
-      '@types': path.resolve(__dirname, './src/types'),
+      '@': fileURLToPath(new URL('./src', import.meta.url)),
+      '@components': fileURLToPath(new URL('./src/components', import.meta.url)),
+      '@pages': fileURLToPath(new URL('./src/pages', import.meta.url)),
+      '@services': fileURLToPath(new URL('./src/services', import.meta.url)),
+      '@hooks': fileURLToPath(new URL('./src/hooks', import.meta.url)),
+      '@lib': fileURLToPath(new URL('./src/lib', import.meta.url)),
+      '@types': fileURLToPath(new URL('./src/types', import.meta.url)),
     },
   },
   server: {

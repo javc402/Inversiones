@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import NewsModule from './NewsModule';
 import * as newsService from '@services/news';
@@ -178,5 +178,338 @@ describe('NewsModule', () => {
   it('should accept userEmail prop', async () => {
     render(<NewsModule userEmail="custom@test.com" />);
     expect(await screen.findByText('Mis noticias')).toBeInTheDocument();
+  });
+
+  it('should show error when loading fails', async () => {
+    vi.mocked(newsService.listUserNews).mockRejectedValueOnce(new Error('Load failed'));
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    expect(await screen.findByText('No se pudieron cargar las noticias desde la base de datos.')).toBeInTheDocument();
+  });
+
+  it('should open and close create modal', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+    expect(screen.getByRole('heading', { name: 'Nueva noticia' })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    await waitFor(() => {
+      expect(screen.queryByRole('heading', { name: 'Nueva noticia' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('should create article successfully', async () => {
+    vi.mocked(newsService.createNewsArticle).mockResolvedValueOnce(undefined as never);
+    vi.mocked(newsService.listUserNews)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([
+        {
+          id: 'n1',
+          userEmail: 'test@example.com',
+          title: 'Creada',
+          slug: 'creada',
+          sourceUrl: 'https://test.com',
+          summary: 'Summary',
+          content: 'Content',
+          coverImageUrl: '',
+          category: 'Mercados',
+          tags: ['fed'],
+          status: 'draft',
+          scheduledAt: '',
+          publishedAt: null,
+          createdAt: '2026-06-24T10:00:00Z',
+          updatedAt: '2026-06-24T10:00:00Z',
+        },
+      ] as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('Ej. Mercado abre con sesgo alcista'), { target: { value: 'Articulo nuevo' } });
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'articulo-nuevo' } });
+    fireEvent.change(screen.getAllByPlaceholderText('https://...')[0], { target: { value: 'https://source.com' } });
+    const textareas = screen.getAllByRole('textbox').filter((el) => el.tagName.toLowerCase() === 'textarea');
+    fireEvent.change(textareas[0], { target: { value: 'Resumen prueba' } });
+    fireEvent.change(textareas[1], { target: { value: 'Contenido prueba' } });
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar noticia' }));
+
+    await waitFor(() => {
+      expect(newsService.createNewsArticle).toHaveBeenCalled();
+    });
+  });
+
+  it('should open edit modal and update article', async () => {
+    const article = {
+      id: 'n1',
+      userEmail: 'test@example.com',
+      title: 'Article',
+      slug: 'article',
+      sourceUrl: 'https://test.com',
+      summary: 'Summary',
+      content: 'Content',
+      coverImageUrl: '',
+      category: 'Mercados',
+      tags: ['macro'],
+      status: 'draft' as const,
+      scheduledAt: '',
+      publishedAt: null,
+      createdAt: '2026-06-24T10:00:00Z',
+      updatedAt: '2026-06-24T10:00:00Z',
+    };
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
+    vi.mocked(newsService.updateNewsArticle).mockResolvedValueOnce(undefined as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar noticia' }));
+    expect(screen.getByText('Editar noticia')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'article-updated' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Actualizar noticia' }));
+
+    await waitFor(() => {
+      expect(newsService.updateNewsArticle).toHaveBeenCalled();
+    });
+  });
+
+  it('should filter by query and status', async () => {
+    const articles = [
+      {
+        id: 'n1',
+        userEmail: 'test@example.com',
+        title: 'Macro semanal',
+        slug: 'macro',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'draft' as const,
+        scheduledAt: '',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+      {
+        id: 'n2',
+        userEmail: 'test@example.com',
+        title: 'Cripto al alza',
+        slug: 'cripto',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Cripto',
+        tags: [],
+        status: 'published' as const,
+        scheduledAt: '',
+        publishedAt: '2026-06-24T10:00:00Z',
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+    ];
+    vi.mocked(newsService.listUserNews).mockResolvedValue(articles);
+
+    render(<NewsModule userEmail="test@example.com" />);
+    expect(await screen.findByText('Macro semanal')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText(/Buscar/i), { target: { value: 'Cripto' } });
+    expect(screen.queryByText('Macro semanal')).not.toBeInTheDocument();
+    expect(screen.getByText('Cripto al alza')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'draft' } });
+    expect(screen.queryByText('Cripto al alza')).not.toBeInTheDocument();
+  });
+
+  it('should toggle publication and publish now', async () => {
+    const article = {
+      id: 'n1',
+      userEmail: 'test@example.com',
+      title: 'Article',
+      slug: 'article',
+      sourceUrl: 'https://test.com',
+      summary: 'Summary',
+      content: 'Content',
+      coverImageUrl: '',
+      category: 'Mercados',
+      tags: [],
+      status: 'draft' as const,
+      scheduledAt: '',
+      publishedAt: null,
+      createdAt: '2026-06-24T10:00:00Z',
+      updatedAt: '2026-06-24T10:00:00Z',
+    };
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
+    vi.mocked(newsService.toggleNewsPublication).mockResolvedValueOnce(undefined as never);
+    vi.mocked(newsService.publishArticleNow).mockResolvedValueOnce(undefined as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    const toggleBtn = await screen.findByRole('button', { name: 'Publicar noticia' });
+    fireEvent.click(toggleBtn);
+
+    await waitFor(() => {
+      expect(newsService.toggleNewsPublication).toHaveBeenCalled();
+    });
+
+    const publishNowBtn = screen.getByRole('button', { name: 'Publicar ahora' });
+    fireEvent.click(publishNowBtn);
+
+    await waitFor(() => {
+      expect(newsService.publishArticleNow).toHaveBeenCalled();
+    });
+  });
+
+  it('should delete article when confirmed', async () => {
+    const article = {
+      id: 'n1',
+      userEmail: 'test@example.com',
+      title: 'Article',
+      slug: 'article',
+      sourceUrl: 'https://test.com',
+      summary: 'Summary',
+      content: 'Content',
+      coverImageUrl: '',
+      category: 'Mercados',
+      tags: [],
+      status: 'draft' as const,
+      scheduledAt: '',
+      publishedAt: null,
+      createdAt: '2026-06-24T10:00:00Z',
+      updatedAt: '2026-06-24T10:00:00Z',
+    };
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
+    vi.mocked(newsService.deleteNewsArticle).mockResolvedValueOnce(undefined as never);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar noticia' }));
+
+    await waitFor(() => {
+      expect(newsService.deleteNewsArticle).toHaveBeenCalled();
+    });
+
+    confirmSpy.mockRestore();
+  });
+
+  it('should not delete article when confirm is cancelled', async () => {
+    const article = {
+      id: 'n1',
+      userEmail: 'test@example.com',
+      title: 'Article',
+      slug: 'article',
+      sourceUrl: 'https://test.com',
+      summary: 'Summary',
+      content: 'Content',
+      coverImageUrl: '',
+      category: 'Mercados',
+      tags: [],
+      status: 'draft' as const,
+      scheduledAt: '',
+      publishedAt: null,
+      createdAt: '2026-06-24T10:00:00Z',
+      updatedAt: '2026-06-24T10:00:00Z',
+    };
+    vi.mocked(newsService.listUserNews).mockResolvedValue([article]);
+    const confirmSpy = vi.spyOn(globalThis, 'confirm').mockReturnValue(false);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar noticia' }));
+    expect(newsService.deleteNewsArticle).not.toHaveBeenCalled();
+
+    confirmSpy.mockRestore();
+  });
+
+  it('should show help popover and close with Escape', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    const helpBtn = screen.getByRole('button', { name: 'Ayuda: Titulo' });
+    fireEvent.click(helpBtn);
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should change all create modal fields including media and scheduling', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('Ej. Mercado abre con sesgo alcista'), { target: { value: 'Titulo largo' } });
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'titulo-largo' } });
+
+    const sourceInputs = screen.getAllByPlaceholderText('https://...');
+    fireEvent.change(sourceInputs[0], { target: { value: 'https://fuente.com' } });
+    fireEvent.change(sourceInputs[1], { target: { value: 'https://imagen.com/cover.png' } });
+
+    const textareas = screen.getAllByRole('textbox').filter((el) => el.tagName.toLowerCase() === 'textarea');
+    fireEvent.change(textareas[0], { target: { value: 'Resumen ampliado' } });
+    fireEvent.change(textareas[1], { target: { value: 'Contenido ampliado' } });
+
+    fireEvent.change(screen.getByDisplayValue('Mercados'), { target: { value: 'Cripto' } });
+    fireEvent.change(screen.getByPlaceholderText('trading, mercados, crypto'), { target: { value: 'btc,eth' } });
+    const dialogSelects = document.querySelectorAll('dialog select');
+    fireEvent.change(dialogSelects[0], { target: { value: 'scheduled' } });
+    const datetimeInput = document.querySelector('dialog input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.change(datetimeInput, { target: { value: '2026-06-30T12:30' } });
+
+    expect(screen.getByRole('button', { name: 'Guardar noticia' })).toBeInTheDocument();
+  });
+
+  it('should filter scheduled status from toolbar', async () => {
+    const articles = [
+      {
+        id: 'n1',
+        userEmail: 'test@example.com',
+        title: 'Programada',
+        slug: 'programada',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'scheduled' as const,
+        scheduledAt: '2026-07-01T10:00:00Z',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+      {
+        id: 'n2',
+        userEmail: 'test@example.com',
+        title: 'Borrador',
+        slug: 'borrador',
+        sourceUrl: 'https://test.com',
+        summary: 'Summary',
+        content: 'Content',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'draft' as const,
+        scheduledAt: '',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+    ];
+    vi.mocked(newsService.listUserNews).mockResolvedValue(articles);
+
+    render(<NewsModule userEmail="test@example.com" />);
+    expect(await screen.findByRole('heading', { name: 'Programada' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByRole('combobox'), { target: { value: 'scheduled' } });
+    expect(screen.getByRole('heading', { name: 'Programada' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: 'Borrador' })).not.toBeInTheDocument();
   });
 });

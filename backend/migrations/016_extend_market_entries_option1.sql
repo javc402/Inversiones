@@ -41,25 +41,57 @@ ALTER TABLE public.market_entries DROP CONSTRAINT IF EXISTS market_entries_conte
 ALTER TABLE public.market_entries DROP CONSTRAINT IF EXISTS market_entries_no_entry_reason_check;
 ALTER TABLE public.market_entries DROP CONSTRAINT IF EXISTS market_entries_state_fields_check;
 
+CREATE OR REPLACE FUNCTION public.market_entries_is_valid_status(status_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT status_value IN ('planned', 'open', 'closed', 'cancelled', 'no_entry');
+$$;
+
+CREATE OR REPLACE FUNCTION public.market_entries_is_no_entry(status_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT status_value = 'no_entry';
+$$;
+
+CREATE OR REPLACE FUNCTION public.market_entries_is_valid_context_source(context_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT context_value IN ('free_text', 'news');
+$$;
+
+CREATE OR REPLACE FUNCTION public.market_entries_is_news_context(context_value TEXT)
+RETURNS BOOLEAN
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+  SELECT context_value = 'news';
+$$;
+
 ALTER TABLE public.market_entries
   ADD CONSTRAINT market_entries_status_check
-    CHECK (status IN ('planned', 'open', 'closed', 'cancelled', 'no_entry')),
+    CHECK (public.market_entries_is_valid_status(status)),
   ADD CONSTRAINT market_entries_context_source_check
-    CHECK (context_source IN ('free_text', 'news')),
+    CHECK (public.market_entries_is_valid_context_source(context_source)),
   ADD CONSTRAINT market_entries_context_source_news_check
     CHECK (
-      (context_source = 'news' AND news_article_id IS NOT NULL)
-      OR (context_source = 'free_text' AND news_article_id IS NULL)
+      (public.market_entries_is_news_context(context_source) AND news_article_id IS NOT NULL)
+      OR (NOT public.market_entries_is_news_context(context_source) AND news_article_id IS NULL)
     ),
   ADD CONSTRAINT market_entries_no_entry_reason_check
     CHECK (
-      status <> 'no_entry'
+      NOT public.market_entries_is_no_entry(status)
       OR (no_entry_reason IS NOT NULL AND btrim(no_entry_reason) <> '')
     ),
   ADD CONSTRAINT market_entries_state_fields_check
     CHECK (
       (
-        status = 'no_entry'
+        public.market_entries_is_no_entry(status)
         AND account_id IS NULL
         AND (account_name IS NULL OR btrim(account_name) = '')
         AND direction IS NULL
@@ -71,7 +103,7 @@ ALTER TABLE public.market_entries
       )
       OR
       (
-        status <> 'no_entry'
+        NOT public.market_entries_is_no_entry(status)
         AND account_id IS NOT NULL
         AND account_name IS NOT NULL
         AND btrim(account_name) <> ''

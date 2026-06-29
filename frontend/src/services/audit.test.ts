@@ -73,4 +73,91 @@ describe('audit service', () => {
 
     expect(supabase.from).not.toHaveBeenCalled();
   });
+
+  it('detectChanges ignora campos no presentes y normaliza undefined a null', () => {
+    const changes = detectChanges(
+      { note: 'a', other: 1 },
+      { note: undefined, another: 'x' },
+      ['note', 'missing']
+    );
+
+    expect(changes).toEqual([{ field: 'note', before: 'a', after: null }]);
+  });
+
+  it('logAuditActivity no hace nada en modo test', async () => {
+    vi.stubEnv('MODE', 'test');
+
+    await logAuditActivity('accounts.update', {
+      module: 'accounts',
+      targetType: 'account',
+      fieldsChanged: ['name'],
+    });
+
+    expect(supabase.auth.getUser).not.toHaveBeenCalled();
+  });
+
+  it('logAuditActivity no inserta si no hay usuario', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({ data: { user: null } as any, error: null } as any);
+
+    await logAuditActivity('accounts.update', {
+      module: 'accounts',
+      targetType: 'account',
+      fieldsChanged: ['name'],
+    });
+
+    expect(supabase.from).not.toHaveBeenCalled();
+  });
+
+  it('logAuditActivity conserva source enviado y registra error de insert', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-1' } as any },
+      error: null,
+    } as any);
+
+    const insert = vi.fn().mockResolvedValueOnce({ error: new Error('insert fail') });
+    vi.mocked(supabase.from).mockReturnValueOnce({ insert } as never);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    await logAuditActivity('accounts.update', {
+      source: 'backend',
+      module: 'accounts',
+      targetType: 'account',
+      fieldsChanged: ['name'],
+    });
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({ source: 'backend' }),
+      })
+    );
+    expect(errorSpy).toHaveBeenCalled();
+    errorSpy.mockRestore();
+  });
+
+  it('logChangesWithStandardFormat registra cambios y metadatos adicionales', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-1' } as any },
+      error: null,
+    } as any);
+    const insert = vi.fn().mockResolvedValueOnce({ error: null });
+    vi.mocked(supabase.from).mockReturnValueOnce({ insert } as never);
+
+    await logChangesWithStandardFormat(
+      'accounts.update',
+      'accounts',
+      'account',
+      'acc-1',
+      [{ field: 'name', before: 'a', after: 'b' }],
+      { extraMeta: true }
+    );
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          fieldsChanged: ['name'],
+          extraMeta: true,
+        }),
+      })
+    );
+  });
 });
