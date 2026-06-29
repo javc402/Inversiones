@@ -1,7 +1,8 @@
 import { supabase } from '@lib/supabase';
 
 export type MarketEntryDirection = 'buy' | 'sell';
-export type MarketEntryStatus = 'planned' | 'open' | 'closed' | 'cancelled';
+export type MarketEntryStatus = 'planned' | 'open' | 'closed' | 'cancelled' | 'no_entry';
+export type MarketContextSource = 'free_text' | 'news';
 
 export interface MarketEntry {
   id: string;
@@ -11,6 +12,8 @@ export interface MarketEntry {
   accountName: string;
   symbol: string;
   marketContext: string;
+  contextSource: MarketContextSource;
+  newsArticleId: string | null;
   setup: string;
   session: string;
   direction: MarketEntryDirection;
@@ -20,6 +23,7 @@ export interface MarketEntry {
   riskAmount: number;
   investmentPercent: number;
   resultR: number | null;
+  noEntryReason: string | null;
   note: string;
   status: MarketEntryStatus;
   plannedAt: string;
@@ -28,14 +32,18 @@ export interface MarketEntry {
 }
 
 export interface MarketEntryCommonInput {
-  symbol: string;
+  symbol?: string;
   marketContext: string;
-  setup: string;
-  session: string;
-  direction: MarketEntryDirection;
-  entryPrice: number;
-  stopLoss: number;
-  takeProfit: number;
+  contextSource: MarketContextSource;
+  newsArticleId?: string | null;
+  setup?: string;
+  session?: string;
+  direction?: MarketEntryDirection;
+  entryPrice?: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  resultR?: number | null;
+  noEntryReason?: string;
   note: string;
   plannedAt: string;
   status: MarketEntryStatus;
@@ -66,19 +74,22 @@ interface UpdateMarketEntryResult {
 interface MarketEntryRow {
   id: string;
   group_id: string;
-  account_id: string;
-  account_name: string;
+  account_id: string | null;
+  account_name: string | null;
   symbol: string;
   market_context: string;
+  context_source: MarketContextSource;
+  news_article_id: string | null;
   setup: string;
   session: string;
-  direction: MarketEntryDirection;
-  entry_price: number;
-  stop_loss: number;
-  take_profit: number;
-  risk_amount: number;
-  investment_percent: number;
+  direction: MarketEntryDirection | null;
+  entry_price: number | null;
+  stop_loss: number | null;
+  take_profit: number | null;
+  risk_amount: number | null;
+  investment_percent: number | null;
   result_r: number | null;
+  no_entry_reason: string | null;
   note: string;
   status: MarketEntryStatus;
   planned_at: string;
@@ -100,19 +111,22 @@ function mapRowToEntry(row: MarketEntryRow): MarketEntry {
     id: row.id,
     groupId: row.group_id,
     userEmail: '',
-    accountId: row.account_id,
-    accountName: row.account_name,
+    accountId: row.account_id ?? '',
+    accountName: row.account_name ?? '',
     symbol: row.symbol,
     marketContext: row.market_context,
+    contextSource: row.context_source,
+    newsArticleId: row.news_article_id,
     setup: row.setup,
     session: row.session,
-    direction: row.direction,
-    entryPrice: Number(row.entry_price),
-    stopLoss: Number(row.stop_loss),
-    takeProfit: Number(row.take_profit),
-    riskAmount: Number(row.risk_amount),
-    investmentPercent: Number(row.investment_percent),
+    direction: row.direction ?? 'buy',
+    entryPrice: row.entry_price === null ? 0 : Number(row.entry_price),
+    stopLoss: row.stop_loss === null ? 0 : Number(row.stop_loss),
+    takeProfit: row.take_profit === null ? 0 : Number(row.take_profit),
+    riskAmount: row.risk_amount === null ? 0 : Number(row.risk_amount),
+    investmentPercent: row.investment_percent === null ? 0 : Number(row.investment_percent),
     resultR: row.result_r,
+    noEntryReason: row.no_entry_reason,
     note: row.note,
     status: row.status,
     plannedAt: row.planned_at,
@@ -139,16 +153,33 @@ function normalizePerAccount(perAccount: MarketEntryAccountInput[]): MarketEntry
 }
 
 function validateCommonInput(common: MarketEntryCommonInput): void {
-  if (!common.symbol.trim()) throw new Error('El símbolo es obligatorio.');
   if (!common.marketContext.trim()) throw new Error('El contexto/noticia es obligatorio.');
-  if (!common.setup.trim()) throw new Error('El setup es obligatorio.');
-  if (!common.session.trim()) throw new Error('La sesión es obligatoria.');
-  if (!Number.isFinite(common.entryPrice) || common.entryPrice <= 0) throw new Error('Precio de entrada inválido.');
-  if (!Number.isFinite(common.stopLoss) || common.stopLoss <= 0) throw new Error('Stop loss inválido.');
-  if (!Number.isFinite(common.takeProfit) || common.takeProfit <= 0) throw new Error('Take profit inválido.');
+  if (common.contextSource === 'news' && !common.newsArticleId) {
+    throw new Error('Debes seleccionar una noticia registrada.');
+  }
+
+  if (common.status === 'no_entry') {
+    if (!common.noEntryReason?.trim()) {
+      throw new Error('Debes indicar el motivo sin entrada.');
+    }
+    return;
+  }
+
+  if (!common.symbol?.trim()) throw new Error('El símbolo es obligatorio.');
+  if (!common.setup?.trim()) throw new Error('El setup/estrategia es obligatorio.');
+  if (!common.session?.trim()) throw new Error('La sesión es obligatoria.');
+  if (!common.direction) throw new Error('La dirección es obligatoria.');
+  if (!Number.isFinite(common.entryPrice) || (common.entryPrice ?? 0) <= 0) throw new Error('Precio de entrada inválido.');
+  if (!Number.isFinite(common.stopLoss) || (common.stopLoss ?? 0) <= 0) throw new Error('Stop loss inválido.');
+  if (!Number.isFinite(common.takeProfit) || (common.takeProfit ?? 0) <= 0) throw new Error('Take profit inválido.');
+  if (common.status === 'closed' && (common.resultR === null || common.resultR === undefined || !Number.isFinite(common.resultR))) {
+    throw new Error('El Resultado R es obligatorio para entradas completadas.');
+  }
 }
 
-function validatePerAccount(perAccount: MarketEntryAccountInput[]): void {
+function validatePerAccount(perAccount: MarketEntryAccountInput[], status: MarketEntryStatus): void {
+  if (status === 'no_entry') return;
+
   if (perAccount.length === 0) {
     throw new Error('Debes asociar al menos una cuenta.');
   }
@@ -189,11 +220,36 @@ export async function listMarketEntriesByUser(_userEmail: string): Promise<Marke
   return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
 }
 
+export async function listMostUsedMarketContexts(_userEmail: string, limit = 8): Promise<string[]> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from('market_entries')
+    .select('market_context, context_source')
+    .eq('user_id', userId)
+    .eq('context_source', 'free_text');
+
+  if (error) throw error;
+
+  const counts = new Map<string, number>();
+  for (const row of data ?? []) {
+    const context = typeof row.market_context === 'string' ? row.market_context.trim() : '';
+    if (!context) continue;
+    counts.set(context, (counts.get(context) ?? 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, Math.max(1, limit))
+    .map(([context]) => context);
+}
+
 export async function createMarketEntriesForAccounts(_userEmail: string, input: CreateMarketEntriesInput): Promise<MarketEntry[]> {
   validateCommonInput(input.common);
 
   const normalizedPerAccount = normalizePerAccount(input.perAccount);
-  validatePerAccount(normalizedPerAccount);
+  validatePerAccount(normalizedPerAccount, input.common.status);
 
   const userId = await getAuthenticatedUserId();
   if (!userId) {
@@ -203,30 +259,59 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
   const timestamp = nowIso();
   const groupId = createGroupId();
 
-  const payload = normalizedPerAccount.map((item) => ({
-    user_id: userId,
-    group_id: groupId,
-    account_id: item.accountId,
-    account_name: item.accountName,
-    symbol: input.common.symbol.trim().toUpperCase(),
-    market_context: input.common.marketContext.trim(),
-    setup: input.common.setup.trim(),
-    session: input.common.session.trim(),
-    direction: input.common.direction,
-    entry_price: input.common.entryPrice,
-    stop_loss: input.common.stopLoss,
-    take_profit: input.common.takeProfit,
-    risk_amount: item.riskAmount,
-    investment_percent: item.investmentPercent,
-    result_r: null,
-    note: input.common.note.trim(),
-    status: input.common.status,
-    planned_at: input.common.plannedAt,
-    created_at: timestamp,
-    updated_at: timestamp,
-  }));
+  const payload = input.common.status === 'no_entry'
+    ? [{
+        user_id: userId,
+        group_id: groupId,
+        account_id: null,
+        account_name: null,
+        symbol: (input.common.symbol ?? '').trim().toUpperCase(),
+        market_context: input.common.marketContext.trim(),
+        context_source: input.common.contextSource,
+        news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
+        setup: (input.common.setup ?? '').trim(),
+        session: (input.common.session ?? '').trim(),
+        direction: null,
+        entry_price: null,
+        stop_loss: null,
+        take_profit: null,
+        risk_amount: null,
+        investment_percent: null,
+        result_r: null,
+        no_entry_reason: input.common.noEntryReason?.trim() ?? '',
+        note: input.common.note.trim(),
+        status: input.common.status,
+        planned_at: input.common.plannedAt,
+        created_at: timestamp,
+        updated_at: timestamp,
+      }]
+    : normalizedPerAccount.map((item) => ({
+        user_id: userId,
+        group_id: groupId,
+        account_id: item.accountId,
+        account_name: item.accountName,
+        symbol: (input.common.symbol ?? '').trim().toUpperCase(),
+        market_context: input.common.marketContext.trim(),
+        context_source: input.common.contextSource,
+        news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
+        setup: (input.common.setup ?? '').trim(),
+        session: (input.common.session ?? '').trim(),
+        direction: input.common.direction,
+        entry_price: input.common.entryPrice,
+        stop_loss: input.common.stopLoss,
+        take_profit: input.common.takeProfit,
+        risk_amount: item.riskAmount,
+        investment_percent: item.investmentPercent,
+        result_r: input.common.resultR ?? null,
+        no_entry_reason: null,
+        note: input.common.note.trim(),
+        status: input.common.status,
+        planned_at: input.common.plannedAt,
+        created_at: timestamp,
+        updated_at: timestamp,
+      }));
 
-  const { data, error } = await supabase.from('market_entries').insert(payload).select('*');
+  const { data, error } = await supabase.from('market_entries').insert(payload as never).select('*');
 
   if (error) throw error;
 
@@ -242,20 +327,13 @@ export async function updateMarketEntryById(
     investmentPercent: number;
     resultR: number | null;
     note: string;
+    noEntryReason?: string;
   },
   options?: UpdateMarketEntryOptions
 ): Promise<UpdateMarketEntryResult> {
   const userId = await getAuthenticatedUserId();
   if (!userId) {
     throw new Error('No hay un usuario autenticado para actualizar entradas.');
-  }
-
-  if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
-    throw new Error('El riesgo debe ser mayor que 0.');
-  }
-
-  if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
-    throw new Error('El % de inversión debe ser mayor que 0.');
   }
 
   const { data: previousRow, error: previousError } = await supabase
@@ -270,19 +348,43 @@ export async function updateMarketEntryById(
   }
 
   const previous = previousRow as MarketEntryRow;
+  const isNoEntryFlow = previous.status === 'no_entry' || next.status === 'no_entry';
+
+  if (!isNoEntryFlow) {
+    if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
+      throw new Error('El riesgo debe ser mayor que 0.');
+    }
+
+    if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
+      throw new Error('El % de inversión debe ser mayor que 0.');
+    }
+  } else if (next.status === 'no_entry' && !next.noEntryReason?.trim()) {
+    throw new Error('Debes indicar el motivo sin entrada.');
+  }
+
   const timestamp = nowIso();
   const trimmedNote = next.note.trim();
 
+  const baseUpdate = isNoEntryFlow
+    ? {
+        status: next.status,
+        note: trimmedNote,
+        no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
+        updated_at: timestamp,
+      }
+    : {
+        status: next.status,
+        risk_amount: next.riskAmount,
+        investment_percent: next.investmentPercent,
+        result_r: next.resultR,
+        note: trimmedNote,
+        no_entry_reason: null,
+        updated_at: timestamp,
+      };
+
   const { data: updatedRows, error: updateError } = await supabase
     .from('market_entries')
-    .update({
-      status: next.status,
-      risk_amount: next.riskAmount,
-      investment_percent: next.investmentPercent,
-      result_r: next.resultR,
-      note: trimmedNote,
-      updated_at: timestamp,
-    })
+    .update(baseUpdate)
     .eq('id', entryId)
     .eq('user_id', userId)
     .select('*');
@@ -319,10 +421,11 @@ export async function updateMarketEntryById(
     updatedEntry: {
       ...updated,
       status: next.status,
-      riskAmount: next.riskAmount,
-      investmentPercent: next.investmentPercent,
-      resultR: next.resultR,
+      riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
+      investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
+      resultR: isNoEntryFlow ? updated.resultR : next.resultR,
       note: trimmedNote,
+      noEntryReason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? updated.noEntryReason) : null,
     },
     affectedEntries,
     groupApplied: shouldApplyCommonToGroup,

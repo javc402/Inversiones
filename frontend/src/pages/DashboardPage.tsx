@@ -87,7 +87,8 @@ function formatCurrency(value: number): string {
 function statusLabel(status: MarketEntry['status']): string {
   if (status === 'planned') return 'Planeada';
   if (status === 'open') return 'Abierta';
-  if (status === 'closed') return 'Cerrada';
+  if (status === 'closed') return 'Completada';
+  if (status === 'no_entry') return 'Sin entrada';
   return 'Cancelada';
 }
 
