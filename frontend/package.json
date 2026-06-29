@@ -12,6 +12,7 @@
     "format": "prettier --write \"src/**/*.{ts,tsx,css}\""
   },
   "dependencies": {
+    "@fontsource/material-symbols-rounded": "^5.2.45",
     "@supabase/supabase-js": "^2.33.0",
     "axios": "^1.4.0",
     "react": "^18.2.0",
