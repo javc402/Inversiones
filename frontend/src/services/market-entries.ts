@@ -61,6 +61,15 @@ export interface CreateMarketEntriesInput {
   perAccount: MarketEntryAccountInput[];
 }
 
+interface UpdateMarketEntryInput {
+  status: MarketEntryStatus;
+  riskAmount: number;
+  investmentPercent: number;
+  resultR: number | null;
+  note: string;
+  noEntryReason?: string;
+}
+
 interface UpdateMarketEntryOptions {
   applyCommonToGroup?: boolean;
 }
@@ -102,8 +111,12 @@ function nowIso(): string {
 }
 
 function createGroupId(): string {
-  const random = Math.random().toString(16).slice(2, 10);
-  return `group-${Date.now()}-${random}`;
+  const cryptoApi = globalThis.crypto;
+  if (cryptoApi && typeof cryptoApi.randomUUID === 'function') {
+    return `group-${cryptoApi.randomUUID()}`;
+  }
+
+  return `group-${Date.now()}`;
 }
 
 function mapRowToEntry(row: MarketEntryRow): MarketEntry {
@@ -203,6 +216,53 @@ function validatePerAccount(perAccount: MarketEntryAccountInput[], status: Marke
       throw new Error('El % de inversión por cuenta debe ser mayor que 0.');
     }
   }
+}
+
+function validateUpdateMarketEntryInput(
+  next: UpdateMarketEntryInput,
+  isNoEntryFlow: boolean
+): void {
+  if (isNoEntryFlow) {
+    if (next.status === 'no_entry' && !next.noEntryReason?.trim()) {
+      throw new Error('Debes indicar el motivo sin entrada.');
+    }
+    return;
+  }
+
+  if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
+    throw new Error('El riesgo debe ser mayor que 0.');
+  }
+
+  if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
+    throw new Error('El % de inversión debe ser mayor que 0.');
+  }
+}
+
+function buildMarketEntryUpdatePayload(
+  previous: MarketEntryRow,
+  next: UpdateMarketEntryInput,
+  timestamp: string,
+  trimmedNote: string,
+  isNoEntryFlow: boolean
+) {
+  if (isNoEntryFlow) {
+    return {
+      status: next.status,
+      note: trimmedNote,
+      no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
+      updated_at: timestamp,
+    };
+  }
+
+  return {
+    status: next.status,
+    risk_amount: next.riskAmount,
+    investment_percent: next.investmentPercent,
+    result_r: next.resultR,
+    note: trimmedNote,
+    no_entry_reason: null,
+    updated_at: timestamp,
+  };
 }
 
 export async function listMarketEntriesByUser(_userEmail: string): Promise<MarketEntry[]> {
@@ -321,14 +381,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
 export async function updateMarketEntryById(
   _userEmail: string,
   entryId: string,
-  next: {
-    status: MarketEntryStatus;
-    riskAmount: number;
-    investmentPercent: number;
-    resultR: number | null;
-    note: string;
-    noEntryReason?: string;
-  },
+  next: UpdateMarketEntryInput,
   options?: UpdateMarketEntryOptions
 ): Promise<UpdateMarketEntryResult> {
   const userId = await getAuthenticatedUserId();
@@ -349,38 +402,11 @@ export async function updateMarketEntryById(
 
   const previous = previousRow as MarketEntryRow;
   const isNoEntryFlow = previous.status === 'no_entry' || next.status === 'no_entry';
-
-  if (!isNoEntryFlow) {
-    if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
-      throw new Error('El riesgo debe ser mayor que 0.');
-    }
-
-    if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
-      throw new Error('El % de inversión debe ser mayor que 0.');
-    }
-  } else if (next.status === 'no_entry' && !next.noEntryReason?.trim()) {
-    throw new Error('Debes indicar el motivo sin entrada.');
-  }
+  validateUpdateMarketEntryInput(next, isNoEntryFlow);
 
   const timestamp = nowIso();
   const trimmedNote = next.note.trim();
-
-  const baseUpdate = isNoEntryFlow
-    ? {
-        status: next.status,
-        note: trimmedNote,
-        no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
-        updated_at: timestamp,
-      }
-    : {
-        status: next.status,
-        risk_amount: next.riskAmount,
-        investment_percent: next.investmentPercent,
-        result_r: next.resultR,
-        note: trimmedNote,
-        no_entry_reason: null,
-        updated_at: timestamp,
-      };
+  const baseUpdate = buildMarketEntryUpdatePayload(previous, next, timestamp, trimmedNote, isNoEntryFlow);
 
   const { data: updatedRows, error: updateError } = await supabase
     .from('market_entries')

@@ -39,7 +39,9 @@ const emptyForm: NewsFormState = {
 };
 
 function statusLabel(status: NewsStatus): string {
-  return status === 'draft' ? 'Borrador' : status === 'scheduled' ? 'Programada' : 'Publicada';
+  if (status === 'draft') return 'Borrador';
+  if (status === 'scheduled') return 'Programada';
+  return 'Publicada';
 }
 
 function formatDate(value: string | null | undefined): string {
@@ -342,7 +344,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
   }
 
   async function handleDelete(article: NewsArticle) {
-    if (!window.confirm(`Eliminar la noticia "${article.title}"?`)) return;
+    if (!globalThis.confirm(`Eliminar la noticia "${article.title}"?`)) return;
 
     try {
       await deleteNewsArticle(userEmail, article.id);
@@ -375,8 +377,8 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
 
   const modal = modalMode
     ? createPortal(
-        <div className="news-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="news-modal-title">
-          <div className="news-modal-shell">
+        <div className="news-modal-overlay">
+          <dialog className="news-modal-shell" open aria-labelledby="news-modal-title">
             <div className="news-modal-header">
               <div>
                 <p className="news-modal-kicker">Gestión de noticias</p>
@@ -487,7 +489,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
                 </button>
               </div>
             </form>
-          </div>
+          </dialog>
         </div>,
         document.body
       )
