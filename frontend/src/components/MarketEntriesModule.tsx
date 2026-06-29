@@ -9,7 +9,6 @@ import {
   MarketEntry,
   MarketEntryDirection,
   MarketEntryStatus,
-  seedMarketEntries,
   updateMarketEntryById,
 } from '@services/market-entries';
 import { logAuditActivity } from '@services/audit';
@@ -295,14 +294,21 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [editForm, setEditForm] = useState<EditForm>(defaultEditForm);
   const [applyCommonToGroup, setApplyCommonToGroup] = useState(false);
 
-  async function loadData() {
-    const loadedAccounts = await listTradingAccounts();
-    setAccounts(loadedAccounts);
-    seedMarketEntries(userEmail, loadedAccounts);
-    setEntries(listMarketEntriesByUser(userEmail));
+  const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
 
-    if (perAccountRows.length === 1 && !perAccountRows[0].accountId) {
-      setPerAccountRows(buildDefaultAccountRows(loadedAccounts));
+  async function loadData() {
+    try {
+      const loadedAccounts = await listTradingAccounts();
+      setAccounts(loadedAccounts);
+      setEntries(await listMarketEntriesByUser(userEmail));
+
+      if (perAccountRows.length === 1 && !perAccountRows[0].accountId) {
+        setPerAccountRows(buildDefaultAccountRows(loadedAccounts));
+      }
+    } catch {
+      setAccounts([]);
+      setEntries([]);
+      setError('No se pudieron cargar las entradas desde la base de datos.');
     }
   }
 
@@ -412,7 +418,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         };
       });
 
-      const created = createMarketEntriesForAccounts(userEmail, {
+      const created = await createMarketEntriesForAccounts(userEmail, {
         common: {
           symbol: commonForm.symbol,
           marketContext: commonForm.marketContext,
@@ -429,7 +435,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         perAccount,
       });
 
-      setEntries(listMarketEntriesByUser(userEmail));
+      setEntries(await listMarketEntriesByUser(userEmail));
       setSuccess(`Entrada creada en ${created.length} cuenta(s).`);
 
       void logAuditActivity('market_entries.create_batch', {
@@ -455,7 +461,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setError('');
 
     try {
-      const result = updateMarketEntryById(userEmail, editingEntry.id, {
+      const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
@@ -465,7 +471,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         applyCommonToGroup,
       });
 
-      setEntries(listMarketEntriesByUser(userEmail));
+      setEntries(await listMarketEntriesByUser(userEmail));
       setSuccess(
         result.groupApplied
           ? `Cambios comunes aplicados a ${result.affectedEntries} registro(s) del grupo. Riesgo y % quedaron por cuenta.`
@@ -491,12 +497,12 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     }
   }
 
-  function handleDelete(entry: MarketEntry) {
+  async function handleDelete(entry: MarketEntry) {
     if (!window.confirm(`Eliminar entrada de ${entry.accountName} para ${entry.symbol}?`)) return;
 
     try {
-      deleteMarketEntryById(userEmail, entry.id);
-      setEntries(listMarketEntriesByUser(userEmail));
+      await deleteMarketEntryById(userEmail, entry.id);
+      setEntries(await listMarketEntriesByUser(userEmail));
       setSuccess('Entrada eliminada.');
 
       void logAuditActivity('market_entries.delete', {
@@ -591,7 +597,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 <div className="entries-accounts-editor entries-form-span-2">
                   <div className="entries-accounts-title-row">
                     <h3>Cuentas asociadas</h3>
-                    <button type="button" className="entries-inline-btn" onClick={addAccountRow}>
+                    <button type="button" className="entries-inline-btn" onClick={addAccountRow} disabled={!canAddMoreAccounts}>
                       <AppIcon name="check" />
                       Agregar cuenta
                     </button>
@@ -609,7 +615,12 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                       <div className="entries-accounts-row" key={`row-${index}`}>
                         <select value={row.accountId} onChange={(event) => updateAccountRow(index, { accountId: event.target.value })} required>
                           <option value="">Selecciona cuenta</option>
-                          {accounts.map((account) => (
+                          {accounts
+                            .filter((account) => {
+                              if (account.id === row.accountId) return true;
+                              return !perAccountRows.some((selectedRow) => selectedRow.accountId === account.id);
+                            })
+                            .map((account) => (
                             <option key={account.id} value={account.id}>
                               {account.alias || account.name}
                             </option>

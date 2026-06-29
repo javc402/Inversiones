@@ -1,4 +1,10 @@
-@import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL@24,400,0');
+@font-face {
+  font-family: 'Material Symbols Rounded';
+  font-style: normal;
+  font-display: block;
+  font-weight: 400;
+  src: url('@fontsource/material-symbols-rounded/files/material-symbols-rounded-latin-400-normal.woff2') format('woff2');
+}
 
 :root {
   font-family: "Trebuchet MS", "Segoe UI", Tahoma, sans-serif;
@@ -525,6 +531,31 @@ body {
   color: #475569;
 }
 
+.dashboard-summary-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.dashboard-summary-filter-label {
+  color: #5d7594;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.dashboard-summary-filter {
+  min-width: 240px;
+  border: 1px solid #c6d9f2;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #183a61;
+  font-size: 14px;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
 .kpi-grid {
   display: grid;
   gap: 14px;
@@ -650,5 +681,15 @@ th {
 
   .dashboard-topbar {
     padding: 10px 12px;
+  }
+
+  .dashboard-summary-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    margin-bottom: 12px;
+  }
+
+  .dashboard-summary-filter {
+    min-width: 100%;
   }
 }

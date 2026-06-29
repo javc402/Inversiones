@@ -1,4 +1,4 @@
-import { TradingAccount } from '@services/accounts';
+import { supabase } from '@lib/supabase';
 
 export type MarketEntryDirection = 'buy' | 'sell';
 export type MarketEntryStatus = 'planned' | 'open' | 'closed' | 'cancelled';
@@ -63,29 +63,70 @@ interface UpdateMarketEntryResult {
   groupApplied: boolean;
 }
 
-const MARKET_ENTRIES_STORAGE_KEY = 'inversiones_market_entries';
+interface MarketEntryRow {
+  id: string;
+  group_id: string;
+  account_id: string;
+  account_name: string;
+  symbol: string;
+  market_context: string;
+  setup: string;
+  session: string;
+  direction: MarketEntryDirection;
+  entry_price: number;
+  stop_loss: number;
+  take_profit: number;
+  risk_amount: number;
+  investment_percent: number;
+  result_r: number | null;
+  note: string;
+  status: MarketEntryStatus;
+  planned_at: string;
+  created_at: string;
+  updated_at: string;
+}
 
 function nowIso(): string {
   return new Date().toISOString();
 }
 
-function createId(prefix: string): string {
-  return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+function createGroupId(): string {
+  const random = Math.random().toString(16).slice(2, 10);
+  return `group-${Date.now()}-${random}`;
 }
 
-function loadAllEntries(): MarketEntry[] {
-  try {
-    const stored = localStorage.getItem(MARKET_ENTRIES_STORAGE_KEY);
-    if (!stored) return [];
-    const parsed = JSON.parse(stored) as MarketEntry[];
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
+function mapRowToEntry(row: MarketEntryRow): MarketEntry {
+  return {
+    id: row.id,
+    groupId: row.group_id,
+    userEmail: '',
+    accountId: row.account_id,
+    accountName: row.account_name,
+    symbol: row.symbol,
+    marketContext: row.market_context,
+    setup: row.setup,
+    session: row.session,
+    direction: row.direction,
+    entryPrice: Number(row.entry_price),
+    stopLoss: Number(row.stop_loss),
+    takeProfit: Number(row.take_profit),
+    riskAmount: Number(row.risk_amount),
+    investmentPercent: Number(row.investment_percent),
+    resultR: row.result_r,
+    note: row.note,
+    status: row.status,
+    plannedAt: row.planned_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
-function saveAllEntries(entries: MarketEntry[]): void {
-  localStorage.setItem(MARKET_ENTRIES_STORAGE_KEY, JSON.stringify(entries));
+async function getAuthenticatedUserId(): Promise<string | null> {
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  return user?.id ?? null;
 }
 
 function normalizePerAccount(perAccount: MarketEntryAccountInput[]): MarketEntryAccountInput[] {
@@ -133,56 +174,67 @@ function validatePerAccount(perAccount: MarketEntryAccountInput[]): void {
   }
 }
 
-export function listMarketEntriesByUser(userEmail: string): MarketEntry[] {
-  return loadAllEntries()
-    .filter((entry) => entry.userEmail === userEmail)
-    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+export async function listMarketEntriesByUser(_userEmail: string): Promise<MarketEntry[]> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) return [];
+
+  const { data, error } = await supabase
+    .from('market_entries')
+    .select('*')
+    .eq('user_id', userId)
+    .order('updated_at', { ascending: false });
+
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
 }
 
-export function createMarketEntriesForAccounts(userEmail: string, input: CreateMarketEntriesInput): MarketEntry[] {
+export async function createMarketEntriesForAccounts(_userEmail: string, input: CreateMarketEntriesInput): Promise<MarketEntry[]> {
   validateCommonInput(input.common);
 
   const normalizedPerAccount = normalizePerAccount(input.perAccount);
   validatePerAccount(normalizedPerAccount);
 
-  const current = loadAllEntries();
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para crear entradas.');
+  }
+
   const timestamp = nowIso();
-  const groupId = createId('group');
+  const groupId = createGroupId();
 
-  const created = normalizedPerAccount.map((item) => {
-    const entry: MarketEntry = {
-      id: createId('entry'),
-      groupId,
-      userEmail,
-      accountId: item.accountId,
-      accountName: item.accountName,
-      symbol: input.common.symbol.trim().toUpperCase(),
-      marketContext: input.common.marketContext.trim(),
-      setup: input.common.setup.trim(),
-      session: input.common.session.trim(),
-      direction: input.common.direction,
-      entryPrice: input.common.entryPrice,
-      stopLoss: input.common.stopLoss,
-      takeProfit: input.common.takeProfit,
-      riskAmount: item.riskAmount,
-      investmentPercent: item.investmentPercent,
-      resultR: null,
-      note: input.common.note.trim(),
-      status: input.common.status,
-      plannedAt: input.common.plannedAt,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-    };
+  const payload = normalizedPerAccount.map((item) => ({
+    user_id: userId,
+    group_id: groupId,
+    account_id: item.accountId,
+    account_name: item.accountName,
+    symbol: input.common.symbol.trim().toUpperCase(),
+    market_context: input.common.marketContext.trim(),
+    setup: input.common.setup.trim(),
+    session: input.common.session.trim(),
+    direction: input.common.direction,
+    entry_price: input.common.entryPrice,
+    stop_loss: input.common.stopLoss,
+    take_profit: input.common.takeProfit,
+    risk_amount: item.riskAmount,
+    investment_percent: item.investmentPercent,
+    result_r: null,
+    note: input.common.note.trim(),
+    status: input.common.status,
+    planned_at: input.common.plannedAt,
+    created_at: timestamp,
+    updated_at: timestamp,
+  }));
 
-    return entry;
-  });
+  const { data, error } = await supabase.from('market_entries').insert(payload).select('*');
 
-  saveAllEntries([...created, ...current]);
-  return created;
+  if (error) throw error;
+
+  return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
 }
 
-export function updateMarketEntryById(
-  userEmail: string,
+export async function updateMarketEntryById(
+  _userEmail: string,
   entryId: string,
   next: {
     status: MarketEntryStatus;
@@ -192,12 +244,10 @@ export function updateMarketEntryById(
     note: string;
   },
   options?: UpdateMarketEntryOptions
-): UpdateMarketEntryResult {
-  const entries = loadAllEntries();
-  const index = entries.findIndex((entry) => entry.id === entryId && entry.userEmail === userEmail);
-
-  if (index === -1) {
-    throw new Error('No se encontró la entrada solicitada.');
+): Promise<UpdateMarketEntryResult> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para actualizar entradas.');
   }
 
   if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
@@ -208,93 +258,93 @@ export function updateMarketEntryById(
     throw new Error('El % de inversión debe ser mayor que 0.');
   }
 
-  const previous = entries[index];
+  const { data: previousRow, error: previousError } = await supabase
+    .from('market_entries')
+    .select('*')
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .single();
+
+  if (previousError || !previousRow) {
+    throw new Error('No se encontró la entrada solicitada.');
+  }
+
+  const previous = previousRow as MarketEntryRow;
   const timestamp = nowIso();
   const trimmedNote = next.note.trim();
 
-  const updated: MarketEntry = {
-    ...previous,
-    status: next.status,
-    riskAmount: next.riskAmount,
-    investmentPercent: next.investmentPercent,
-    resultR: next.resultR,
-    note: trimmedNote,
-    updatedAt: timestamp,
-  };
+  const { data: updatedRows, error: updateError } = await supabase
+    .from('market_entries')
+    .update({
+      status: next.status,
+      risk_amount: next.riskAmount,
+      investment_percent: next.investmentPercent,
+      result_r: next.resultR,
+      note: trimmedNote,
+      updated_at: timestamp,
+    })
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select('*');
 
+  if (updateError || !updatedRows || updatedRows.length === 0) {
+    throw new Error('No se pudo actualizar la entrada solicitada.');
+  }
+
+  const updated = mapRowToEntry(updatedRows[0] as MarketEntryRow);
   const shouldApplyCommonToGroup = Boolean(options?.applyCommonToGroup);
 
-  const nextEntries = entries.map((entry) => {
-    if (entry.userEmail !== userEmail) return entry;
+  let affectedEntries = 1;
 
-    if (entry.id === entryId) {
-      return updated;
-    }
-
-    if (shouldApplyCommonToGroup && entry.groupId === previous.groupId) {
-      return {
-        ...entry,
+  if (shouldApplyCommonToGroup) {
+    const { data: groupRows, error: groupError } = await supabase
+      .from('market_entries')
+      .update({
         status: next.status,
         note: trimmedNote,
-        updatedAt: timestamp,
-      };
+        updated_at: timestamp,
+      })
+      .eq('group_id', previous.group_id)
+      .eq('user_id', userId)
+      .select('id');
+
+    if (groupError) {
+      throw new Error('No se pudieron aplicar cambios al grupo.');
     }
 
-    return entry;
-  });
-
-  saveAllEntries(nextEntries);
-
-  const affectedEntries = shouldApplyCommonToGroup
-    ? nextEntries.filter((entry) => entry.userEmail === userEmail && entry.groupId === previous.groupId).length
-    : 1;
+    affectedEntries = groupRows?.length ?? 0;
+  }
 
   return {
-    updatedEntry: updated,
+    updatedEntry: {
+      ...updated,
+      status: next.status,
+      riskAmount: next.riskAmount,
+      investmentPercent: next.investmentPercent,
+      resultR: next.resultR,
+      note: trimmedNote,
+    },
     affectedEntries,
     groupApplied: shouldApplyCommonToGroup,
   };
 }
 
-export function deleteMarketEntryById(userEmail: string, entryId: string): void {
-  const entries = loadAllEntries();
-  const next = entries.filter((entry) => !(entry.id === entryId && entry.userEmail === userEmail));
-
-  if (next.length === entries.length) {
-    throw new Error('No se encontró la entrada solicitada.');
+export async function deleteMarketEntryById(_userEmail: string, entryId: string): Promise<void> {
+  const userId = await getAuthenticatedUserId();
+  if (!userId) {
+    throw new Error('No hay un usuario autenticado para eliminar entradas.');
   }
 
-  saveAllEntries(next);
-}
+  const { data, error } = await supabase
+    .from('market_entries')
+    .delete()
+    .eq('id', entryId)
+    .eq('user_id', userId)
+    .select('id');
 
-export function seedMarketEntries(userEmail: string, accounts: TradingAccount[]): void {
-  const existing = listMarketEntriesByUser(userEmail);
-  if (existing.length > 0) return;
+  if (error) throw error;
 
-  const usableAccounts = accounts.slice(0, 2);
-  if (usableAccounts.length === 0) return;
-
-  const input: CreateMarketEntriesInput = {
-    common: {
-      symbol: 'EURUSD',
-      marketContext: 'CPI 6:30 / sesgo previo alcista',
-      setup: 'Ruptura y retesteo en M5',
-      session: 'NEW YORK',
-      direction: 'buy',
-      entryPrice: 1.0842,
-      stopLoss: 1.0829,
-      takeProfit: 1.087,
-      note: 'Esperar confirmación de volumen en vela de entrada.',
-      plannedAt: new Date().toISOString().slice(0, 16),
-      status: 'planned',
-    },
-    perAccount: usableAccounts.map((account, index) => ({
-      accountId: account.id,
-      accountName: account.alias || account.name,
-      riskAmount: index === 0 ? 100 : 65,
-      investmentPercent: index === 0 ? 1.2 : 0.8,
-    })),
-  };
-
-  createMarketEntriesForAccounts(userEmail, input);
+  if (!data || data.length === 0) {
+    throw new Error('No se encontró la entrada solicitada.');
+  }
 }

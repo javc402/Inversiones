@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -13,6 +13,8 @@ import {
   Cell,
 } from 'recharts';
 import { AppIcon } from '@components/AppIcon';
+import { listTradingAccounts, TradingAccount } from '@services/accounts';
+import { listMarketEntriesByUser, MarketEntry } from '@services/market-entries';
 import { getCurrentUserRole, Role } from '@services/roles';
 
 const loadAdminPanelModule = () => import('@components/AdminPanel');
@@ -68,12 +70,26 @@ const distributionData = [
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 
-const recentTrades = [
-  { date: '23/06/2026', pair: 'EURUSD', type: 'BUY', result: '+$350', status: 'Exito' },
-  { date: '23/06/2026', pair: 'GBPUSD', type: 'SELL', result: '-$120', status: 'Cierre' },
-  { date: '22/06/2026', pair: 'USDMXN', type: 'BUY', result: '+$520', status: 'Exito' },
-  { date: '22/06/2026', pair: 'EURGBP', type: 'SELL', result: '+$140', status: 'Exito' },
-];
+function formatDate(dateValue: string): string {
+  const parsed = new Date(dateValue);
+  if (Number.isNaN(parsed.getTime())) return dateValue;
+  return parsed.toLocaleDateString('es-MX');
+}
+
+function formatCurrency(value: number): string {
+  return new Intl.NumberFormat('es-MX', {
+    style: 'currency',
+    currency: 'USD',
+    maximumFractionDigits: 2,
+  }).format(value);
+}
+
+function statusLabel(status: MarketEntry['status']): string {
+  if (status === 'planned') return 'Planeada';
+  if (status === 'open') return 'Abierta';
+  if (status === 'closed') return 'Cerrada';
+  return 'Cancelada';
+}
 
 export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) {
   const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
@@ -83,6 +99,9 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     gestion: false,
     cuenta: false,
   });
+  const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
+  const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const isAdmin = userRole?.name === 'admin';
   const roleLabel = userRole?.name === 'admin' ? 'Administrador' : userRole?.name === 'user' ? 'Usuario' : 'Sin rol';
   const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
@@ -207,22 +226,117 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     };
   }, [isAdmin]);
 
+  useEffect(() => {
+    if (activeTab !== 'resumen') return;
+
+    let isMounted = true;
+
+    async function loadSummaryData() {
+      try {
+        const accounts = await listTradingAccounts();
+        if (!isMounted) return;
+
+        setSummaryAccounts(accounts);
+        setSummaryEntries(await listMarketEntriesByUser(userEmail));
+      } catch {
+        if (!isMounted) return;
+        setSummaryAccounts([]);
+        setSummaryEntries([]);
+      }
+    }
+
+    void loadSummaryData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [activeTab, userEmail]);
+
+  useEffect(() => {
+    if (selectedAccountId === 'all') return;
+    if (!summaryAccounts.some((account) => account.id === selectedAccountId)) {
+      setSelectedAccountId('all');
+    }
+  }, [selectedAccountId, summaryAccounts]);
+
+  const filteredEntries = useMemo(() => {
+    if (selectedAccountId === 'all') return summaryEntries;
+    return summaryEntries.filter((entry) => entry.accountId === selectedAccountId);
+  }, [selectedAccountId, summaryEntries]);
+
+  const monthlyProfit = useMemo(() => {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    return filteredEntries
+      .filter((entry) => {
+        if (entry.resultR === null) return false;
+        const updatedAt = new Date(entry.updatedAt);
+        return updatedAt.getMonth() === currentMonth && updatedAt.getFullYear() === currentYear;
+      })
+      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+  }, [filteredEntries]);
+
+  const winRate = useMemo(() => {
+    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
+    if (entriesWithResult.length === 0) return 0;
+    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
+    return (wins / entriesWithResult.length) * 100;
+  }, [filteredEntries]);
+
+  const openRisk = useMemo(() => {
+    return filteredEntries
+      .filter((entry) => entry.status === 'planned' || entry.status === 'open')
+      .reduce((sum, entry) => sum + entry.riskAmount, 0);
+  }, [filteredEntries]);
+
+  const recentTrades = useMemo(() => {
+    return filteredEntries.slice(0, 8).map((entry) => {
+      const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
+      return {
+        date: formatDate(entry.updatedAt || entry.createdAt),
+        pair: entry.symbol,
+        type: entry.direction.toUpperCase(),
+        result: resultValue,
+        status: statusLabel(entry.status),
+      };
+    });
+  }, [filteredEntries]);
+
   const mainContent = (
     <>
+      <section className="dashboard-summary-toolbar">
+        <label htmlFor="dashboard-account-filter" className="dashboard-summary-filter-label">Filtrar por cuenta</label>
+        <select
+          id="dashboard-account-filter"
+          className="dashboard-summary-filter"
+          value={selectedAccountId}
+          onChange={(event) => setSelectedAccountId(event.target.value)}
+        >
+          <option value="all">Todas las cuentas</option>
+          {summaryAccounts.map((account) => (
+            <option key={account.id} value={account.id}>{account.alias || account.name}</option>
+          ))}
+        </select>
+      </section>
+
       <section className="kpi-grid">
         <article className="kpi-card">
           <h2>Ganancia del mes</h2>
-          <p className="kpi-value">$22,550</p>
-          <span className="kpi-trend positive">+33%</span>
+          <p className="kpi-value">{formatCurrency(monthlyProfit)}</p>
+          <span className={`kpi-trend ${monthlyProfit >= 0 ? 'positive' : 'negative'}`}>
+            {filteredEntries.length} operaciones
+          </span>
         </article>
         <article className="kpi-card">
           <h2>Tasa de exito</h2>
-          <p className="kpi-value">69.5%</p>
-          <span className="kpi-trend positive">+4.2%</span>
+          <p className="kpi-value">{winRate.toFixed(1)}%</p>
+          <span className="kpi-trend neutral">Sobre operaciones cerradas</span>
         </article>
         <article className="kpi-card">
           <h2>Riesgo abierto</h2>
-          <p className="kpi-value">$2,450</p>
+          <p className="kpi-value">{formatCurrency(openRisk)}</p>
           <span className="kpi-trend neutral">Controlado</span>
         </article>
       </section>
@@ -283,15 +397,21 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
               </tr>
             </thead>
             <tbody>
-              {recentTrades.map((trade) => (
-                <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
-                  <td>{trade.date}</td>
-                  <td>{trade.pair}</td>
-                  <td>{trade.type}</td>
-                  <td className={trade.result.startsWith('+') ? 'positive' : 'negative'}>{trade.result}</td>
-                  <td>{trade.status}</td>
+              {recentTrades.length === 0 ? (
+                <tr>
+                  <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
-              ))}
+              ) : (
+                recentTrades.map((trade) => (
+                  <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                    <td>{trade.date}</td>
+                    <td>{trade.pair}</td>
+                    <td>{trade.type}</td>
+                    <td className={trade.result.startsWith('-') ? 'negative' : trade.result === 'N/A' ? 'neutral' : 'positive'}>{trade.result}</td>
+                    <td>{trade.status}</td>
+                  </tr>
+                ))
+              )}
             </tbody>
           </table>
         </div>
