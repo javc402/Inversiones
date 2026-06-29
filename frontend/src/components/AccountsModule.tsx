@@ -1,4 +1,4 @@
-import { FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { FormEvent, useEffect, useMemo, useRef, useState, type Dispatch, type RefObject, type SetStateAction } from 'react';
 import { createPortal } from 'react-dom';
 import { AppIcon } from './AppIcon';
 import {
@@ -16,6 +16,39 @@ import { useSystemConfig } from '@hooks/useSystemConfig';
 import '../styles/accounts-module.css';
 
 type ModalMode = 'create' | 'edit';
+
+function useDismissiblePopover(
+  open: boolean,
+  triggerRef: RefObject<HTMLElement | null>,
+  popoverRef: RefObject<HTMLElement | null>,
+  setOpen: Dispatch<SetStateAction<boolean>>
+) {
+  useEffect(() => {
+    if (!open) return;
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
+        return;
+      }
+      setOpen(false);
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [open, triggerRef, popoverRef, setOpen]);
+}
 
 function FieldLabel({ text, help }: Readonly<{ text: string; help: string }>) {
   const [open, setOpen] = useState(false);
@@ -55,31 +88,7 @@ function FieldLabel({ text, help }: Readonly<{ text: string; help: string }>) {
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    function handleOutsideClick(event: MouseEvent) {
-      const target = event.target as Node;
-      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
-        return;
-      }
-      setOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [open]);
+  useDismissiblePopover(open, triggerRef, popoverRef, setOpen);
 
   return (
     <span className="accounts-field-label">
@@ -153,31 +162,7 @@ function TableHeaderWithPopover({ children, description }: Readonly<{ children: 
     };
   }, [open]);
 
-  useEffect(() => {
-    if (!open) return;
-
-    function handleOutsideClick(event: MouseEvent) {
-      const target = event.target as Node;
-      if (triggerRef.current?.contains(target) || popoverRef.current?.contains(target)) {
-        return;
-      }
-      setOpen(false);
-    }
-
-    function handleEscape(event: KeyboardEvent) {
-      if (event.key === 'Escape') {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener('mousedown', handleOutsideClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleOutsideClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [open]);
+  useDismissiblePopover(open, triggerRef, popoverRef, setOpen);
 
   return (
     <>
@@ -368,7 +353,7 @@ export default function AccountsModule() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
-  const [typeFilter, setTypeFilter] = useState<'all' | string>('all');
+  const [typeFilter, setTypeFilter] = useState<'all' | TradingAccountType>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | TradingAccountStatus>('all');
 
   const [modalOpen, setModalOpen] = useState(false);
@@ -635,7 +620,7 @@ export default function AccountsModule() {
         <select
           className="accounts-filter"
           value={typeFilter}
-          onChange={(event) => setTypeFilter(event.target.value)}
+          onChange={(event) => setTypeFilter(event.target.value as 'all' | TradingAccountType)}
           aria-label="Filtrar por tipo"
         >
           <option value="all">Tipo: Todos</option>

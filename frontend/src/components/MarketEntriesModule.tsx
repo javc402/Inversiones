@@ -13,7 +13,7 @@ import {
   MarketEntryDirection,
   MarketEntryStatus,
   updateMarketEntryById,
-} from '@services/market-entries';
+} from '../services/market-entries';
 import { listUserNews, NewsArticle } from '@services/news';
 import { logAuditActivity } from '@services/audit';
 import '../styles/market-entries-module.css';
