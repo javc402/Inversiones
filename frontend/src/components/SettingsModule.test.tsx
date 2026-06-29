@@ -30,6 +30,14 @@ describe('SettingsModule', () => {
     expect(screen.getByText('Información personal')).toBeInTheDocument();
   });
 
+  it('cae a perfil cuando sección guardada es inválida', () => {
+    localStorage.setItem('inversiones_settings_active_section_test@demo.com', 'invalid');
+
+    render(<SettingsModule userEmail="test@demo.com" isAdmin={false} />);
+
+    expect(screen.getByText('Información personal')).toBeInTheDocument();
+  });
+
   it('muestra email como solo lectura', () => {
     render(<SettingsModule userEmail="test@demo.com" isAdmin={false} />);
     const emailInput = screen.getByLabelText('Correo electrónico') as HTMLInputElement;
@@ -94,6 +102,15 @@ describe('SettingsModule', () => {
     expect(updateConfigMock).toHaveBeenCalledTimes(1);
   });
 
+  it('muestra error cuando faltan nombre o valor al agregar', () => {
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tipos de cuenta' }));
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar' }));
+
+    expect(screen.getByText('Nombre y valor son requeridos.')).toBeInTheDocument();
+  });
+
   it('muestra error al intentar agregar valor duplicado', () => {
     render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
 
@@ -116,6 +133,16 @@ describe('SettingsModule', () => {
     expect(updateConfigMock).toHaveBeenCalled();
   });
 
+  it('permite cancelar edición', () => {
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tipos de cuenta' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Editar Real' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+
+    expect(screen.queryByLabelText('Editar nombre')).not.toBeInTheDocument();
+  });
+
   it('permite eliminar un item existente', () => {
     render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
 
@@ -136,6 +163,20 @@ describe('SettingsModule', () => {
 
     return waitFor(() => {
       expect(updateConfigMock).toHaveBeenCalled();
+    });
+  });
+
+  it('muestra mensaje fallback si updateConfig falla con error no-Error', async () => {
+    updateConfigMock.mockRejectedValueOnce('remote-fail');
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Tipos de cuenta' }));
+    fireEvent.change(screen.getByLabelText('Nuevo nombre para Tipos de cuenta'), { target: { value: 'Fondeada' } });
+    fireEvent.change(screen.getByLabelText('Nuevo valor para Tipos de cuenta'), { target: { value: 'funded' } });
+    fireEvent.click(screen.getByRole('button', { name: '+ Agregar' }));
+
+    await waitFor(() => {
+      expect(screen.getByText('No se pudo guardar. Contacta a un administrador del sistema.')).toBeInTheDocument();
     });
   });
 
@@ -173,5 +214,73 @@ describe('SettingsModule', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     expect(screen.getByText('Cambios guardados')).toBeInTheDocument();
+  });
+
+  it('si usuario deja de ser admin, vuelve a perfil', async () => {
+    const { rerender } = render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Plataformas' }));
+    expect(screen.getByText('Gestiona las plataformas de trading disponibles en el formulario de cuentas.')).toBeInTheDocument();
+
+    rerender(<SettingsModule userEmail="admin@demo.com" isAdmin={false} />);
+
+    await waitFor(() => {
+      expect(screen.getByText('Información personal')).toBeInTheDocument();
+    });
+  });
+
+  it('tolera error al persistir sección activa en localStorage', () => {
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('quota exceeded');
+    });
+
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Plataformas' }));
+
+    expect(screen.getByText('Gestiona las plataformas de trading disponibles en el formulario de cuentas.')).toBeInTheDocument();
+    setItemSpy.mockRestore();
+  });
+
+  it('tolera error al guardar perfil sin mostrar badge de guardado', () => {
+    const originalSetItem = Storage.prototype.setItem;
+    const setItemSpy = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(function (this: Storage, key: string, value: string) {
+      if (key.startsWith('inversiones_profile_')) {
+        throw new Error('write failed');
+      }
+      return originalSetItem.call(this, key, value);
+    });
+
+    render(<SettingsModule userEmail="test@demo.com" isAdmin={false} />);
+
+    fireEvent.change(screen.getByLabelText('Nombre completo'), {
+      target: { value: 'No Persistido' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    expect(screen.queryByText('Cambios guardados')).not.toBeInTheDocument();
+    setItemSpy.mockRestore();
+  });
+
+  it('recupera sección válida guardada para admin', () => {
+    localStorage.setItem('inversiones_settings_active_section_admin@demo.com', 'plataformas');
+
+    render(<SettingsModule userEmail="admin@demo.com" isAdmin={true} />);
+
+    expect(screen.getByText('Gestiona las plataformas de trading disponibles en el formulario de cuentas.')).toBeInTheDocument();
+  });
+
+  it('tolera error al leer sección activa guardada', () => {
+    const originalGetItem = Storage.prototype.getItem;
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(function (this: Storage, key: string) {
+      if (key.startsWith('inversiones_settings_active_section_')) {
+        throw new Error('read failed');
+      }
+      return originalGetItem.call(this, key);
+    });
+
+    render(<SettingsModule userEmail="test@demo.com" isAdmin={false} />);
+
+    expect(screen.getByText('Información personal')).toBeInTheDocument();
+    getItemSpy.mockRestore();
   });
 });

@@ -146,6 +146,28 @@ describe('coverage helpers', () => {
     expect(toNumberOrNull(' 2.5 ')).toBe(2.5);
   });
 
+  it('market helpers cubren ramas adicionales', () => {
+    const originalRandomUUID = globalThis.crypto.randomUUID;
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      value: undefined,
+      configurable: true,
+    });
+
+    expect(createAccountRow().id).toContain('account-row-');
+
+    Object.defineProperty(globalThis.crypto, 'randomUUID', {
+      value: originalRandomUUID,
+      configurable: true,
+    });
+
+    expect(() => formatEntryDate('')).toThrow();
+    expect(marketStatusLabel('open')).toBe('Abierta');
+    expect(marketStatusLabel('closed')).toBe('Completada');
+    expect(marketStatusLabel('no_entry')).toBe('Sin entrada');
+    expect(Number.isNaN(toNumber('abc'))).toBe(true);
+    expect(Number.isNaN(toNumberOrNull('abc') as number)).toBe(true);
+  });
+
   it('market entryDeletionLabel cubre casos', () => {
     expect(
       entryDeletionLabel({ status: 'open', accountName: 'Real', symbol: 'EURUSD' } as never)
@@ -204,7 +226,7 @@ describe('coverage helpers', () => {
       note: '',
       plannedAt: '2026-06-20T10:00',
       status: 'closed',
-    } as never;
+    } satisfies Parameters<typeof buildCreateMarketEntryRequest>[0];
 
     expect(() =>
       buildCreateMarketEntryRequest(common, [], false, true)
@@ -219,6 +241,81 @@ describe('coverage helpers', () => {
 
     expect(request.createInput.common.noEntryReason).toBe('No setup');
     expect(request.createInput.common.direction).toBeUndefined();
+  });
+
+  it('market buildCreateMarketEntryRequest cubre newsArticleId y parseos numéricos', () => {
+    const newsRequest = buildCreateMarketEntryRequest(
+      {
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'news',
+        newsArticleId: '',
+        setup: 'Breakout',
+        session: 'NY',
+        direction: 'buy',
+        entryPrice: '1.1',
+        stopLoss: '1.09',
+        takeProfit: '1.12',
+        resultR: '',
+        noEntryReason: '',
+        note: '',
+        plannedAt: '2026-06-20T10:00',
+        status: 'planned',
+      },
+      [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      false
+    );
+    expect(newsRequest.createInput.common.newsArticleId).toBe('');
+
+    const invalidNumbersRequest = buildCreateMarketEntryRequest(
+      {
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: 'news-1',
+        setup: 'Breakout',
+        session: 'NY',
+        direction: 'buy',
+        entryPrice: '',
+        stopLoss: '',
+        takeProfit: '',
+        resultR: '',
+        noEntryReason: '',
+        note: '',
+        plannedAt: '2026-06-20T10:00',
+        status: 'planned',
+      },
+      [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      false
+    );
+    expect(invalidNumbersRequest.createInput.common.entryPrice).toBe(0);
+
+    expect(() =>
+      buildCreateMarketEntryRequest(
+        {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: 'news-1',
+          setup: 'Breakout',
+          session: 'NY',
+          direction: 'buy',
+          entryPrice: '1.1',
+          stopLoss: '1.09',
+          takeProfit: '1.12',
+          resultR: '',
+          noEntryReason: '',
+          note: '',
+          plannedAt: '2026-06-20T10:00',
+          status: 'planned',
+        } as never,
+        [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+        false,
+        true
+      )
+    ).toThrow('Debes indicar Resultado R');
   });
 
   it('market buildDefaultAccountRows usa cuenta por defecto', () => {

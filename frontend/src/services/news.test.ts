@@ -142,6 +142,18 @@ describe('news service', () => {
     await expect(createNewsArticle('user@example.com', buildInput() as never)).rejects.toThrow('Ya existe una noticia tuya con ese slug.');
   });
 
+  it('createNewsArticle propaga error al validar duplicado', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('dup query fail') });
+    const mockEqSlug = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqUser = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEqUser });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelect });
+
+    await expect(createNewsArticle('user@example.com', buildInput() as never)).rejects.toThrow('dup query fail');
+  });
+
   it('createNewsArticle crea noticia y limpia datos', async () => {
     supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
 
@@ -162,6 +174,45 @@ describe('news service', () => {
 
     expect(created.slug).toBe('mi-titulo');
     expect(mockInsert).toHaveBeenCalledTimes(1);
+  });
+
+  it('createNewsArticle propaga error de insert', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+    const mockEqSlug = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqUser = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelectDuplicate = vi.fn().mockReturnValue({ eq: mockEqUser });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('insert fail') });
+    const mockInsertSelect = vi.fn().mockReturnValue({ single: mockSingle });
+    const mockInsert = vi.fn().mockReturnValue({ select: mockInsertSelect });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectDuplicate })
+      .mockReturnValueOnce({ insert: mockInsert });
+
+    await expect(createNewsArticle('user@example.com', buildInput() as never)).rejects.toThrow('insert fail');
+  });
+
+  it('createNewsArticle permite sourceUrl vacío', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+    const mockEqSlug = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqUser = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelectDuplicate = vi.fn().mockReturnValue({ eq: mockEqUser });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: buildRow({ source_url: '' }), error: null });
+    const mockInsertSelect = vi.fn().mockReturnValue({ single: mockSingle });
+    const mockInsert = vi.fn().mockReturnValue({ select: mockInsertSelect });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectDuplicate })
+      .mockReturnValueOnce({ insert: mockInsert });
+
+    const created = await createNewsArticle('user@example.com', buildInput({ sourceUrl: '   ' }) as never);
+    expect(created.sourceUrl).toBe('');
   });
 
   it('updateNewsArticle falla sin usuario', async () => {
@@ -201,6 +252,54 @@ describe('news service', () => {
       .mockReturnValueOnce({ select: mockSelectDuplicate });
 
     await expect(updateNewsArticle('user@example.com', 'news-1', buildInput() as never)).rejects.toThrow('Ya existe una noticia tuya con ese slug.');
+  });
+
+  it('updateNewsArticle propaga error al buscar duplicado', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: buildRow({ id: 'news-1' }), error: null });
+    const mockEqUserFirst = vi.fn().mockReturnValue({ single: mockSingle });
+    const mockEqId = vi.fn().mockReturnValue({ eq: mockEqUserFirst });
+    const mockSelectCurrent = vi.fn().mockReturnValue({ eq: mockEqId });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('dup fail') });
+    const mockNeq = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqSlug = vi.fn().mockReturnValue({ neq: mockNeq });
+    const mockEqUserSecond = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelectDuplicate = vi.fn().mockReturnValue({ eq: mockEqUserSecond });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectCurrent })
+      .mockReturnValueOnce({ select: mockSelectDuplicate });
+
+    await expect(updateNewsArticle('user@example.com', 'news-1', buildInput() as never)).rejects.toThrow('dup fail');
+  });
+
+  it('updateNewsArticle propaga error de update', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingleCurrent = vi.fn().mockResolvedValueOnce({ data: buildRow({ id: 'news-1' }), error: null });
+    const mockEqUserFirst = vi.fn().mockReturnValue({ single: mockSingleCurrent });
+    const mockEqIdFirst = vi.fn().mockReturnValue({ eq: mockEqUserFirst });
+    const mockSelectCurrent = vi.fn().mockReturnValue({ eq: mockEqIdFirst });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+    const mockNeq = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqSlug = vi.fn().mockReturnValue({ neq: mockNeq });
+    const mockEqUserSecond = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelectDuplicate = vi.fn().mockReturnValue({ eq: mockEqUserSecond });
+
+    const mockSingleUpdated = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('update fail') });
+    const mockEqUserUpdate = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: mockSingleUpdated }) });
+    const mockEqIdUpdate = vi.fn().mockReturnValue({ eq: mockEqUserUpdate });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEqIdUpdate });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectCurrent })
+      .mockReturnValueOnce({ select: mockSelectDuplicate })
+      .mockReturnValueOnce({ update: mockUpdate });
+
+    await expect(updateNewsArticle('user@example.com', 'news-1', buildInput() as never)).rejects.toThrow('update fail');
   });
 
   it('updateNewsArticle actualiza y mantiene publishedAt al publicar', async () => {
@@ -293,6 +392,31 @@ describe('news service', () => {
     await expect(toggleNewsPublication('user@example.com', 'news-1')).rejects.toThrow('No se encontró la noticia solicitada.');
   });
 
+  it('toggleNewsPublication falla sin usuario', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: null }, error: null });
+    await expect(toggleNewsPublication('user@example.com', 'news-1')).rejects.toThrow('No hay un usuario autenticado para actualizar noticias.');
+  });
+
+  it('toggleNewsPublication propaga error de update', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingleCurrent = vi.fn().mockResolvedValueOnce({ data: buildRow({ status: 'draft' }), error: null });
+    const mockEqUserFirst = vi.fn().mockReturnValue({ single: mockSingleCurrent });
+    const mockEqIdFirst = vi.fn().mockReturnValue({ eq: mockEqUserFirst });
+    const mockSelectCurrent = vi.fn().mockReturnValue({ eq: mockEqIdFirst });
+
+    const mockSingleUpdated = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('toggle fail') });
+    const mockEqUserUpdate = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: mockSingleUpdated }) });
+    const mockEqIdUpdate = vi.fn().mockReturnValue({ eq: mockEqUserUpdate });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEqIdUpdate });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectCurrent })
+      .mockReturnValueOnce({ update: mockUpdate });
+
+    await expect(toggleNewsPublication('user@example.com', 'news-1')).rejects.toThrow('toggle fail');
+  });
+
   it('publishArticleNow publica inmediatamente', async () => {
     supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
 
@@ -309,5 +433,29 @@ describe('news service', () => {
   it('publishArticleNow falla sin usuario', async () => {
     supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: null }, error: null });
     await expect(publishArticleNow('user@example.com', 'news-1')).rejects.toThrow('No hay un usuario autenticado para publicar noticias.');
+  });
+
+  it('publishArticleNow propaga error de update', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('publish fail') });
+    const mockEqUser = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: mockSingle }) });
+    const mockEqId = vi.fn().mockReturnValue({ eq: mockEqUser });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEqId });
+    supabaseMocks.from.mockReturnValueOnce({ update: mockUpdate });
+
+    await expect(publishArticleNow('user@example.com', 'news-1')).rejects.toThrow('publish fail');
+  });
+
+  it('listUserNews normaliza tags inválidos a arreglo vacío', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockOrder = vi.fn().mockResolvedValueOnce({ data: [buildRow({ tags: null })], error: null });
+    const mockEq = vi.fn().mockReturnValue({ order: mockOrder });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelect });
+
+    const rows = await listUserNews('user@example.com');
+    expect(rows[0].tags).toEqual([]);
   });
 });

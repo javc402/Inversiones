@@ -1,7 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { supabase } from '@lib/supabase';
 import {
+  assertCurrentUserIsAdmin,
+  isAdminPermissionError,
   getCurrentUserRole,
+  getCurrentUserProfile,
   listAllUsers,
   updateUserStatus,
   assignAdminRole,
@@ -26,6 +29,17 @@ vi.mock('@lib/supabase', () => ({
 describe('Roles Service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      return {
+        select: vi.fn(),
+        update: vi.fn(),
+        insert: vi.fn().mockResolvedValue({ error: null }),
+      } as any;
+    });
   });
 
   describe('getCurrentUserRole', () => {
@@ -315,6 +329,37 @@ describe('Roles Service coverage', () => {
     expect(users[0].email).toBe('admin@example.com');
   });
 
+  it('listAllUsers via RPC mapea email null a undefined', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') {
+        return { data: [{ role_name: 'admin' }], error: null };
+      }
+
+      if (fn === 'list_users_admin') {
+        return {
+          data: [
+            {
+              id: 'profile-1',
+              user_id: 'user-123',
+              role_id: 'role-1',
+              role_name: 'user',
+              email: null,
+              status: 'active',
+              created_at: '2026-06-23',
+              updated_at: '2026-06-23',
+            },
+          ],
+          error: null,
+        };
+      }
+
+      return { data: null, error: null };
+    });
+
+    const users = await listAllUsers();
+    expect(users[0].email).toBeUndefined();
+  });
+
   it('updateUserStatus usa RPC cuando existe', async () => {
     (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
       if (fn === 'get_my_role') {
@@ -433,5 +478,444 @@ describe('Roles Service coverage', () => {
         new_status: 'inactive',
       })
     );
+  });
+
+  it('isAdminPermissionError detecta correctamente', () => {
+    const err = new Error('x');
+    err.name = 'AdminPermissionError';
+    expect(isAdminPermissionError(err)).toBe(true);
+    expect(isAdminPermissionError(new Error('y'))).toBe(false);
+  });
+
+  it('assertCurrentUserIsAdmin no lanza en modo test', async () => {
+    vi.stubEnv('MODE', 'test');
+    await expect(assertCurrentUserIsAdmin()).resolves.toBeUndefined();
+    vi.unstubAllEnvs();
+  });
+
+  it('assertCurrentUserIsAdmin lanza si rol no es admin', async () => {
+    vi.stubEnv('MODE', 'production');
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({
+      data: [{ role_name: 'user' }],
+      error: null,
+    });
+
+    await expect(assertCurrentUserIsAdmin()).rejects.toThrow('Ya no tienes permisos de administrador');
+    vi.unstubAllEnvs();
+  });
+
+  it('getCurrentUserRole retorna null si RPC devuelve rol desconocido y no hay usuario', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({
+      data: [{ role_name: 'unknown_role' }],
+      error: null,
+    });
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: null } as any,
+      error: null,
+    } as any);
+
+    const result = await getCurrentUserRole();
+    expect(result).toBeNull();
+  });
+
+  it('getCurrentUserRole retorna null cuando falla lookup de role', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({ data: null, error: new Error('rpc fail') });
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } as any } as any,
+      error: null,
+    } as any);
+
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: async () => ({
+            data: [{ role_id: 'role-1', status: 'active', updated_at: '2026-06-23' }],
+            error: null,
+          }),
+        }),
+      } as any)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: () => ({
+            single: async () => ({ data: null, error: new Error('role lookup fail') }),
+          }),
+        }),
+      } as any);
+
+    const result = await getCurrentUserRole();
+    expect(result).toBeNull();
+  });
+
+  it('listAllUsers cae a fallback y lanza si query falla', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'list_users_admin') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          select: () => ({
+            order: async () => ({ data: null, error: new Error('fallback fail') }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(listAllUsers()).rejects.toThrow('fallback fail');
+  });
+
+  it('updateUserStatus usa fallback y lanza error si update falla', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          update: () => ({
+            eq: async () => ({ error: new Error('update fail') }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(updateUserStatus('user-1', 'active')).rejects.toThrow('update fail');
+  });
+
+  it('assignAdminRole usa fallback y falla si no encuentra rol admin', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'roles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: null, error: new Error('role not found') }),
+            }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(assignAdminRole('user-1')).rejects.toThrow('role not found');
+  });
+
+  it('removeAdminRole usa fallback y falla si no encuentra rol user', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'roles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: null, error: new Error('user role missing') }),
+            }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(removeAdminRole('user-1')).rejects.toThrow('user role missing');
+  });
+
+  it('getCurrentUserProfile lanza cuando getUser falla', async () => {
+    vi.mocked(supabase.auth.getUser).mockRejectedValueOnce(new Error('auth fail') as any);
+    await expect(getCurrentUserProfile()).rejects.toThrow('auth fail');
+  });
+
+  it('getCurrentUserRole usa fallback cuando rpc no existe', async () => {
+    const originalRpc = (supabase as any).rpc;
+    (supabase as any).rpc = undefined;
+
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } as any } as any,
+      error: null,
+    } as any);
+
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: async () => ({
+            data: [{ role_id: 'role-1', status: 'inactive', updated_at: '2020-01-01' }],
+            error: null,
+          }),
+        }),
+      } as any)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: () => ({ single: async () => ({ data: { id: 'role-1', name: 'user', description: 'User' }, error: null }) }),
+        }),
+      } as any);
+
+    const result = await getCurrentUserRole();
+    expect(result?.name).toBe('user');
+
+    (supabase as any).rpc = originalRpc;
+  });
+
+  it('getCurrentUserRole prioriza perfil activo más reciente', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({ data: null, error: new Error('rpc fail') });
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } as any } as any,
+      error: null,
+    } as any);
+
+    const roleEq = vi.fn().mockReturnValue({
+      single: vi.fn().mockResolvedValueOnce({ data: { id: 'role-admin', name: 'admin', description: 'Admin' }, error: null }),
+    });
+
+    vi.mocked(supabase.from)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: async () => ({
+            data: [
+              { role_id: 'role-user', status: 'active', updated_at: '2020-01-01T00:00:00.000Z' },
+              { role_id: 'role-admin', status: 'active', updated_at: '2026-01-01T00:00:00.000Z' },
+            ],
+            error: null,
+          }),
+        }),
+      } as any)
+      .mockReturnValueOnce({
+        select: () => ({
+          eq: roleEq,
+        }),
+      } as any);
+
+    const result = await getCurrentUserRole();
+    expect(result?.name).toBe('admin');
+    expect(roleEq).toHaveBeenCalledWith('id', 'role-admin');
+  });
+
+  it('getCurrentUserProfile retorna null cuando no hay user', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({ data: { user: null } as any, error: null } as any);
+    await expect(getCurrentUserProfile()).resolves.toBeNull();
+  });
+
+  it('getCurrentUserProfile retorna null cuando query no trae data', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-123' } as any } as any,
+      error: null,
+    } as any);
+
+    vi.mocked(supabase.from).mockReturnValueOnce({
+      select: () => ({
+        eq: () => ({ single: async () => ({ data: null, error: null }) }),
+      }),
+    } as any);
+
+    await expect(getCurrentUserProfile()).resolves.toBeNull();
+  });
+
+  it('listAllUsers usa fallback exitoso cuando RPC falla', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'list_users_admin') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          select: () => ({
+            order: async () => ({
+              data: [{ id: 'p1', user_id: 'u1', role_id: 'r1', status: 'active', created_at: 'x', updated_at: 'x', roles: { name: 'user' } }],
+              error: null,
+            }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    const users = await listAllUsers();
+    expect(users).toHaveLength(1);
+  });
+
+  it('listAllUsers fallback retorna arreglo vacío cuando data es null y sin error', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'list_users_admin') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') {
+        return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          select: () => ({
+            order: async () => ({ data: null, error: null }),
+          }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    const users = await listAllUsers();
+    expect(users).toEqual([]);
+  });
+
+  it('assignAdminRole fallback lanza si falla update de perfil', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+
+      if (table === 'roles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { id: 'admin-role' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          update: () => ({ eq: async () => ({ error: new Error('update profile fail') }) }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(assignAdminRole('user-1')).rejects.toThrow('update profile fail');
+  });
+
+  it('removeAdminRole fallback exitoso actualiza role_id', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    const updateEq = vi.fn().mockResolvedValue({ error: null });
+    const updateMock = vi.fn().mockReturnValue({ eq: updateEq });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+
+      if (table === 'roles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { id: 'user-role-id' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          update: updateMock,
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(removeAdminRole('user-1')).resolves.toBeUndefined();
+    expect(updateEq).toHaveBeenCalledWith('user_id', 'user-1');
+  });
+
+  it('removeAdminRole fallback lanza si update de perfil falla', async () => {
+    (vi.mocked(supabase.rpc) as any).mockImplementation(async (fn: string) => {
+      if (fn === 'get_my_role') return { data: [{ role_name: 'admin' }], error: null };
+      if (fn === 'admin_update_user_profile') return { data: null, error: new Error('rpc fail') };
+      return { data: null, error: null };
+    });
+
+    vi.mocked(supabase.from).mockImplementation((table: string) => {
+      if (table === 'activity_logs') return { insert: vi.fn().mockResolvedValue({ error: null }) } as any;
+
+      if (table === 'roles') {
+        return {
+          select: () => ({
+            eq: () => ({
+              single: async () => ({ data: { id: 'user-role-id' }, error: null }),
+            }),
+          }),
+        } as any;
+      }
+
+      if (table === 'user_profiles') {
+        return {
+          update: () => ({ eq: async () => ({ error: new Error('remove update fail') }) }),
+        } as any;
+      }
+
+      return { select: vi.fn(), update: vi.fn(), insert: vi.fn() } as any;
+    });
+
+    await expect(removeAdminRole('user-1')).rejects.toThrow('remove update fail');
+  });
+
+  it('approveUserRegistration propaga error y entra en catch', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({ data: [{ role_name: 'user' }], error: null });
+
+    await expect(approveUserRegistration('user-1')).rejects.toThrow('Ya no tienes permisos de administrador');
+  });
+
+  it('rejectUserRegistration propaga error y entra en catch', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({ data: [{ role_name: 'user' }], error: null });
+
+    await expect(rejectUserRegistration('user-1')).rejects.toThrow('Ya no tienes permisos de administrador');
+  });
+
+  it('getCurrentUserRole retorna null si ocurre excepción inesperada', async () => {
+    (vi.mocked(supabase.rpc) as any).mockResolvedValueOnce({ data: null, error: new Error('rpc fail') });
+    vi.mocked(supabase.auth.getUser).mockRejectedValueOnce(new Error('boom') as any);
+
+    await expect(getCurrentUserRole()).resolves.toBeNull();
   });
 });

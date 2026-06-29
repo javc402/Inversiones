@@ -84,6 +84,31 @@ describe('auth service', () => {
     await expect(signUpWithEmail('nuevo@correo.com', '123456')).rejects.toThrow('no se pudo crear la cuenta')
   })
 
+  it('signUpWithEmail no rompe si falla createUserProfile', async () => {
+    const data = { session: null, user: { id: 'user-123' } }
+    authMocks.signUp.mockResolvedValueOnce({ data, error: null })
+
+    const mockSelect = vi.fn().mockReturnThis()
+    const mockEq = vi.fn().mockReturnThis()
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('role error') })
+
+    authMocks.from.mockReturnValueOnce({ select: mockSelect })
+    mockSelect.mockReturnValueOnce({ eq: mockEq })
+    mockEq.mockReturnValueOnce({ single: mockSingle })
+
+    await expect(signUpWithEmail('nuevo@correo.com', '123456')).resolves.toEqual(data)
+  })
+
+  it('signUpWithEmail retorna data si no hay user en respuesta', async () => {
+    const data = { session: null, user: null }
+    authMocks.signUp.mockResolvedValueOnce({ data, error: null })
+
+    const result = await signUpWithEmail('nuevo@correo.com', '123456')
+
+    expect(result).toEqual(data)
+    expect(authMocks.from).not.toHaveBeenCalled()
+  })
+
   it('createUserProfile crea perfil con rol user y estado pending', async () => {
     const mockSelect = vi.fn().mockReturnThis()
     const mockEq = vi.fn().mockReturnThis()
@@ -116,6 +141,34 @@ describe('auth service', () => {
       role_id: 'role-1',
       status: 'pending',
     })
+  })
+
+  it('createUserProfile lanza error si falla obtener rol', async () => {
+    const mockSelect = vi.fn().mockReturnThis()
+    const mockEq = vi.fn().mockReturnThis()
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('role fail') })
+
+    authMocks.from.mockReturnValueOnce({ select: mockSelect })
+    mockSelect.mockReturnValueOnce({ eq: mockEq })
+    mockEq.mockReturnValueOnce({ single: mockSingle })
+
+    await expect(createUserProfile('user-123', 'admin')).rejects.toThrow('role fail')
+  })
+
+  it('createUserProfile lanza error si falla insertar perfil', async () => {
+    const mockSelect = vi.fn().mockReturnThis()
+    const mockEq = vi.fn().mockReturnThis()
+    const mockSingle = vi.fn().mockResolvedValueOnce({ data: { id: 'role-1' }, error: null })
+    const mockInsert = vi.fn().mockResolvedValueOnce({ error: new Error('insert fail') })
+
+    authMocks.from
+      .mockReturnValueOnce({ select: mockSelect })
+      .mockReturnValueOnce({ insert: mockInsert })
+
+    mockSelect.mockReturnValueOnce({ eq: mockEq })
+    mockEq.mockReturnValueOnce({ single: mockSingle })
+
+    await expect(createUserProfile('user-123', 'user')).rejects.toThrow('insert fail')
   })
 
   it('signOut completa correctamente', async () => {
