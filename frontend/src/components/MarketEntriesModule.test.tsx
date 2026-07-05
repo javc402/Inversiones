@@ -674,6 +674,40 @@ describe('MarketEntriesModule', () => {
     });
   });
 
+  it('should prevent duplicate create submit on double click', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    let resolveCreate: (() => void) | undefined;
+    vi.mocked(marketEntriesService.createMarketEntriesForAccounts).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = () => resolve([] as never);
+        }) as never
+    );
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
+    const selects = screen.getAllByRole('combobox');
+    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+      target: { value: 'No setup válido' },
+    });
+
+    const saveButton = screen.getByRole('button', { name: 'Guardar entradas' });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(marketEntriesService.createMarketEntriesForAccounts).toHaveBeenCalledTimes(1);
+
+    resolveCreate?.();
+  });
+
   it('should show create error message when submit fails', async () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,

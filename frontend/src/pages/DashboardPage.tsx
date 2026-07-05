@@ -55,6 +55,44 @@ export function loadStoredDashboardTab(): DashboardTab {
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+interface DistributionSlice {
+  name: 'Ganadas' | 'Perdidas' | 'Breakeven';
+  value: number;
+  operations: number;
+  totalAmount: number;
+  averageAmount: number;
+  color: string;
+}
+
+function distributionAmountLabel(value: number): string {
+  if (value > 0) return `+${formatCurrency(value)}`;
+  if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
+  return formatCurrency(0);
+}
+
+function DistributionTooltip({
+  active,
+  payload,
+}: {
+  active?: boolean;
+  payload?: Array<{ payload: DistributionSlice }>;
+}) {
+  if (!active || !payload || payload.length === 0) return null;
+
+  const item = payload[0]?.payload;
+  if (!item) return null;
+
+  return (
+    <div className="distribution-tooltip">
+      <p><strong>{item.name}</strong></p>
+      <p>{item.value.toFixed(1)}%</p>
+      <p>{item.operations} operaciones</p>
+      <p>Total: {distributionAmountLabel(item.totalAmount)}</p>
+      <p>Promedio: {distributionAmountLabel(item.averageAmount)}</p>
+    </div>
+  );
+}
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
   noticias: 'Noticias',
@@ -112,15 +150,25 @@ interface DashboardSummaryContentProps {
   monthlyProfit: number;
   filteredEntries: MarketEntry[];
   winRate: number;
+  winTotal: number;
+  lossRate: number;
+  lossTotal: number;
   openRisk: number;
   monthlyProfitData: Array<{
     month: string;
     amount: number;
   }>;
   distributionData: Array<{
-    name: string;
+    name: 'Ganadas' | 'Perdidas' | 'Breakeven';
     value: number;
+    operations: number;
+    totalAmount: number;
+    averageAmount: number;
+    color: string;
   }>;
+  netResult: number;
+  profitFactor: string;
+  winLossRatio: string;
   recentTrades: Array<{
     date: string;
     pair: string;
@@ -137,9 +185,15 @@ function DashboardSummaryContent({
   monthlyProfit,
   filteredEntries,
   winRate,
+  winTotal,
+  lossRate,
+  lossTotal,
   openRisk,
   monthlyProfitData,
   distributionData,
+  netResult,
+  profitFactor,
+  winLossRatio,
   recentTrades,
 }: Readonly<DashboardSummaryContentProps>) {
   return (
@@ -170,7 +224,12 @@ function DashboardSummaryContent({
         <article className="kpi-card">
           <h2>Tasa de exito</h2>
           <p className="kpi-value">{winRate.toFixed(1)}%</p>
-          <span className="kpi-trend neutral">Sobre operaciones cerradas</span>
+          <span className="kpi-trend positive">Total ganado: {formatCurrency(winTotal)}</span>
+        </article>
+        <article className="kpi-card">
+          <h2>Tasa de perdida</h2>
+          <p className="kpi-value">{lossRate.toFixed(1)}%</p>
+          <span className="kpi-trend negative">Total perdido: {formatCurrency(lossTotal)}</span>
         </article>
         <article className="kpi-card">
           <h2>Riesgo abierto</h2>
@@ -197,26 +256,57 @@ function DashboardSummaryContent({
 
         <article className="chart-card">
           <h2>Distribucion de operaciones</h2>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distributionData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  innerRadius={56}
-                >
-                  {distributionData.map((item, index) => (
-                    <Cell key={item.name} fill={pieColors[index % pieColors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="chart-distribution-layout">
+            <div className="chart-wrapper chart-wrapper-distribution">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distributionData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={110}
+                    innerRadius={64}
+                  >
+                    {distributionData.map((item) => (
+                      <Cell key={item.name} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip content={<DistributionTooltip />} />
+                  <Legend formatter={(value) => {
+                    const item = distributionData.find((entry) => entry.name === value);
+                    return item ? `${value} ${item.value.toFixed(1)}%` : value;
+                  }} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="distribution-details" aria-label="Resumen de distribución de operaciones">
+              {distributionData.map((item) => (
+                <article key={item.name} className="distribution-row">
+                  <h3 style={{ color: item.color }}>{item.name}</h3>
+                  <p>{item.value.toFixed(1)}% · {item.operations} operaciones</p>
+                  <p>Total: {distributionAmountLabel(item.totalAmount)}</p>
+                  <p>Promedio: {distributionAmountLabel(item.averageAmount)}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="distribution-summary" aria-label="Métricas de desempeño">
+            <article>
+              <h3>Neto del periodo</h3>
+              <p className={netResult >= 0 ? 'positive' : 'negative'}>{distributionAmountLabel(netResult)}</p>
+            </article>
+            <article>
+              <h3>Profit Factor</h3>
+              <p>{profitFactor}</p>
+            </article>
+            <article>
+              <h3>Win/Loss ratio</h3>
+              <p>{winLossRatio}</p>
+            </article>
           </div>
         </article>
       </section>
@@ -529,6 +619,25 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return (wins / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
+  const lossRate = useMemo(() => {
+    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
+    if (entriesWithResult.length === 0) return 0;
+    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
+    return (losses / entriesWithResult.length) * 100;
+  }, [filteredEntries]);
+
+  const winTotal = useMemo(() => {
+    return filteredEntries
+      .filter((entry) => (entry.resultR ?? 0) > 0)
+      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+  }, [filteredEntries]);
+
+  const lossTotal = useMemo(() => {
+    return filteredEntries
+      .filter((entry) => (entry.resultR ?? 0) < 0)
+      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+  }, [filteredEntries]);
+
   const openRisk = useMemo(() => {
     return filteredEntries
       .filter((entry) => entry.status === 'planned' || entry.status === 'open')
@@ -571,26 +680,72 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     }));
   }, [filteredEntries]);
 
-  const distributionData = useMemo(() => {
+  const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) {
       return [
-        { name: 'Ganadas', value: 0 },
-        { name: 'Perdidas', value: 0 },
-        { name: 'Breakeven', value: 0 },
+        { name: 'Ganadas', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[0] },
+        { name: 'Perdidas', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[1] },
+        { name: 'Breakeven', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[2] },
       ];
     }
 
-    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
-    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
-    const breakeven = entriesWithResult.length - wins - losses;
+    const winningEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0);
+    const losingEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0);
+    const breakevenEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) === 0);
+
+    const wins = winningEntries.length;
+    const losses = losingEntries.length;
+    const breakeven = breakevenEntries.length;
+
+    const winsTotal = winningEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+    const lossesTotal = losingEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+    const breakevenTotal = 0;
 
     return [
-      { name: 'Ganadas', value: Number(((wins / entriesWithResult.length) * 100).toFixed(1)) },
-      { name: 'Perdidas', value: Number(((losses / entriesWithResult.length) * 100).toFixed(1)) },
-      { name: 'Breakeven', value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)) },
+      {
+        name: 'Ganadas',
+        value: Number(((wins / entriesWithResult.length) * 100).toFixed(1)),
+        operations: wins,
+        totalAmount: winsTotal,
+        averageAmount: wins === 0 ? 0 : winsTotal / wins,
+        color: pieColors[0],
+      },
+      {
+        name: 'Perdidas',
+        value: Number(((losses / entriesWithResult.length) * 100).toFixed(1)),
+        operations: losses,
+        totalAmount: lossesTotal,
+        averageAmount: losses === 0 ? 0 : lossesTotal / losses,
+        color: pieColors[1],
+      },
+      {
+        name: 'Breakeven',
+        value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)),
+        operations: breakeven,
+        totalAmount: breakevenTotal,
+        averageAmount: 0,
+        color: pieColors[2],
+      },
     ];
   }, [filteredEntries]);
+
+  const netResult = useMemo(() => winTotal + lossTotal, [winTotal, lossTotal]);
+
+  const profitFactor = useMemo(() => {
+    const absoluteLoss = Math.abs(lossTotal);
+    if (absoluteLoss === 0) {
+      return winTotal > 0 ? '∞' : '0.00';
+    }
+
+    return (winTotal / absoluteLoss).toFixed(2);
+  }, [winTotal, lossTotal]);
+
+  const winLossRatio = useMemo(() => {
+    const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
+    const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
+    return `${wins}:${losses}`;
+  }, [distributionData]);
 
   const recentTrades = useMemo(() => {
     return filteredEntries.slice(0, 8).map((entry) => {
@@ -613,9 +768,15 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       monthlyProfit={monthlyProfit}
       filteredEntries={filteredEntries}
       winRate={winRate}
+      winTotal={winTotal}
+      lossRate={lossRate}
+      lossTotal={lossTotal}
       openRisk={openRisk}
       monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
+      netResult={netResult}
+      profitFactor={profitFactor}
+      winLossRatio={winLossRatio}
       recentTrades={recentTrades}
     />
   );

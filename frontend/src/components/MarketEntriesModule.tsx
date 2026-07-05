@@ -401,6 +401,7 @@ interface MarketEntriesCreateFormProps {
   removeAccountRow: (index: number) => void;
   canAddMoreAccounts: boolean;
   error: string;
+  isSubmitting: boolean;
   closeModal: () => void;
   handleCreateSubmit: (event: FormEvent) => Promise<void>;
 }
@@ -422,6 +423,7 @@ function MarketEntriesCreateForm({
   removeAccountRow,
   canAddMoreAccounts,
   error,
+  isSubmitting,
   closeModal,
   handleCreateSubmit,
 }: Readonly<MarketEntriesCreateFormProps>) {
@@ -714,8 +716,8 @@ function MarketEntriesCreateForm({
       {error && <p className="entries-form-error">{error}</p>}
 
       <div className="entries-form-actions entries-form-span-2">
-        <button type="button" className="secondary-btn" onClick={closeModal}>Cancelar</button>
-        <button type="submit" className="primary-btn">Guardar entradas</button>
+        <button type="button" className="secondary-btn" onClick={closeModal} disabled={isSubmitting}>Cancelar</button>
+        <button type="submit" className="primary-btn" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar entradas'}</button>
       </div>
     </form>
   );
@@ -728,6 +730,7 @@ interface MarketEntriesEditFormProps {
   applyCommonToGroup: boolean;
   setApplyCommonToGroup: Dispatch<SetStateAction<boolean>>;
   error: string;
+  isSubmitting: boolean;
   closeModal: () => void;
   handleEditSubmit: (event: FormEvent) => Promise<void>;
 }
@@ -739,6 +742,7 @@ function MarketEntriesEditForm({
   applyCommonToGroup,
   setApplyCommonToGroup,
   error,
+  isSubmitting,
   closeModal,
   handleEditSubmit,
 }: Readonly<MarketEntriesEditFormProps>) {
@@ -810,8 +814,8 @@ function MarketEntriesEditForm({
       {error && <p className="entries-form-error">{error}</p>}
 
       <div className="entries-form-actions entries-form-span-2">
-        <button type="button" className="secondary-btn" onClick={closeModal}>Cancelar</button>
-        <button type="submit" className="primary-btn">Guardar cambios</button>
+        <button type="button" className="secondary-btn" onClick={closeModal} disabled={isSubmitting}>Cancelar</button>
+        <button type="submit" className="primary-btn" disabled={isSubmitting}>{isSubmitting ? 'Guardando...' : 'Guardar cambios'}</button>
       </div>
     </form>
   );
@@ -835,6 +839,10 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [perAccountRows, setPerAccountRows] = useState<AccountRowForm[]>([createAccountRow()]);
   const [editForm, setEditForm] = useState<EditForm>(defaultEditForm);
   const [applyCommonToGroup, setApplyCommonToGroup] = useState(false);
+  const [isCreateSubmitting, setIsCreateSubmitting] = useState(false);
+  const [isEditSubmitting, setIsEditSubmitting] = useState(false);
+  const createSubmitLockRef = useRef(false);
+  const editSubmitLockRef = useRef(false);
 
   const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
   const isCompletedOnCreate = commonForm.status === 'closed';
@@ -990,6 +998,10 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
   async function handleCreateSubmit(event: FormEvent) {
     event.preventDefault();
+    if (createSubmitLockRef.current) return;
+
+    createSubmitLockRef.current = true;
+    setIsCreateSubmitting(true);
     setError('');
 
     try {
@@ -1018,12 +1030,19 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       closeModal();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'No se pudo guardar la entrada.');
+    } finally {
+      createSubmitLockRef.current = false;
+      setIsCreateSubmitting(false);
     }
   }
 
   async function handleEditSubmit(event: FormEvent) {
     event.preventDefault();
     if (!editingEntry) return;
+    if (editSubmitLockRef.current) return;
+
+    editSubmitLockRef.current = true;
+    setIsEditSubmitting(true);
 
     setError('');
 
@@ -1062,6 +1081,9 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       closeModal();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'No se pudo actualizar la entrada.');
+    } finally {
+      editSubmitLockRef.current = false;
+      setIsEditSubmitting(false);
     }
   }
 
@@ -1119,6 +1141,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 removeAccountRow={removeAccountRow}
                 canAddMoreAccounts={canAddMoreAccounts}
                 error={error}
+                isSubmitting={isCreateSubmitting}
                 closeModal={closeModal}
                 handleCreateSubmit={handleCreateSubmit}
               />
@@ -1130,6 +1153,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 applyCommonToGroup={applyCommonToGroup}
                 setApplyCommonToGroup={setApplyCommonToGroup}
                 error={error}
+                isSubmitting={isEditSubmitting}
                 closeModal={closeModal}
                 handleEditSubmit={handleEditSubmit}
               />

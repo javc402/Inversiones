@@ -242,6 +242,35 @@ describe('NewsModule', () => {
     });
   });
 
+  it('should prevent duplicate create submit on double click', async () => {
+    let resolveCreate: (() => void) | undefined;
+    vi.mocked(newsService.createNewsArticle).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = () => resolve(undefined as never);
+        }) as never
+    );
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    fireEvent.change(screen.getByPlaceholderText('Ej. Mercado abre con sesgo alcista'), { target: { value: 'Articulo nuevo' } });
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'articulo-nuevo' } });
+    fireEvent.change(screen.getAllByPlaceholderText('https://...')[0], { target: { value: 'https://source.com' } });
+    const textareas = screen.getAllByRole('textbox').filter((el) => el.tagName.toLowerCase() === 'textarea');
+    fireEvent.change(textareas[0], { target: { value: 'Resumen prueba' } });
+    fireEvent.change(textareas[1], { target: { value: 'Contenido prueba' } });
+
+    const saveButton = screen.getByRole('button', { name: 'Guardar noticia' });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(newsService.createNewsArticle).toHaveBeenCalledTimes(1);
+
+    resolveCreate?.();
+  });
+
   it('should open edit modal and update article', async () => {
     const article = {
       id: 'n1',

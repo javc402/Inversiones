@@ -219,6 +219,7 @@ describe('DashboardPage', () => {
 
     const usdValues = await screen.findAllByText((content) => content.includes('USD'))
     expect(usdValues.length).toBeGreaterThan(0)
+    expect(screen.getByText('Tasa de perdida')).toBeInTheDocument()
   })
 
   it('calcula ganancia correcta del mes cuando hay operaciones cerradas', async () => {
@@ -355,7 +356,8 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText(/0\.0%|0%/)).toBeInTheDocument()
+    const zeroRates = await screen.findAllByText(/0\.0%|0%/)
+    expect(zeroRates.length).toBeGreaterThan(0)
   })
 
   it('calcula riesgo abierto solo de operaciones abiertas', async () => {

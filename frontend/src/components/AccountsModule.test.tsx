@@ -110,6 +110,41 @@ describe('AccountsModule', () => {
     });
   });
 
+  it('bloquea doble submit al guardar cuenta', async () => {
+    vi.mocked(accountsService.listTradingAccounts)
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    let resolveCreate: (() => void) | undefined;
+    vi.mocked(accountsService.createTradingAccount).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          resolveCreate = () => resolve(undefined);
+        })
+    );
+
+    render(<AccountsModule />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+
+    const textboxes = screen.getAllByRole('textbox');
+    fireEvent.change(textboxes[0], { target: { value: 'Cuenta Nueva' } });
+    fireEvent.change(textboxes[2], { target: { value: 'Broker X' } });
+    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '1200' } });
+
+    const saveButton = screen.getByRole('button', { name: 'Guardar cuenta' });
+    fireEvent.click(saveButton);
+    fireEvent.click(saveButton);
+
+    expect(accountsService.createTradingAccount).toHaveBeenCalledTimes(1);
+
+    resolveCreate?.();
+
+    await waitFor(() => {
+      expect(accountsService.listTradingAccounts).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it('filtra cuentas por búsqueda', async () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       {
