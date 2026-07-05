@@ -65,33 +65,54 @@ interface DistributionSlice {
   color: string;
 }
 
-function distributionAmountLabel(value: number): string {
+export function distributionAmountLabel(value: number): string {
   if (value > 0) return `+${formatCurrency(value)}`;
   if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
   return formatCurrency(0);
 }
 
-function DistributionTooltip({
-  active,
-  payload,
-}: {
-  active?: boolean;
-  payload?: Array<{ payload: DistributionSlice }>;
-}) {
-  if (!active || !payload || payload.length === 0) return null;
+export function calculateProfitFactor(winAmount: number, lossAmount: number): string {
+  const absoluteLoss = Math.abs(lossAmount);
+  if (absoluteLoss === 0) {
+    return winAmount > 0 ? '∞' : '0.00';
+  }
 
-  const item = payload[0]?.payload;
-  if (!item) return null;
+  return (winAmount / absoluteLoss).toFixed(2);
+}
 
-  return (
-    <div className="distribution-tooltip">
-      <p><strong>{item.name}</strong></p>
-      <p>{item.value.toFixed(1)}%</p>
-      <p>{item.operations} operaciones</p>
-      <p>Total: {distributionAmountLabel(item.totalAmount)}</p>
-      <p>Promedio: {distributionAmountLabel(item.averageAmount)}</p>
-    </div>
-  );
+export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: Date = new Date()): Array<{ month: string; amount: number }> {
+  const recentMonths = Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    return {
+      key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+      month: monthLabels[monthDate.getMonth()],
+    };
+  });
+
+  const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceDate = new Date(entry.updatedAt || entry.createdAt);
+    if (Number.isNaN(referenceDate.getTime())) {
+      continue;
+    }
+
+    const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
+    if (!totalsByMonth.has(monthKey)) {
+      continue;
+    }
+
+    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
+  }
+
+  return recentMonths.map((item) => ({
+    month: item.month,
+    amount: totalsByMonth.get(item.key) ?? 0,
+  }));
 }
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
@@ -273,11 +294,13 @@ function DashboardSummaryContent({
                       <Cell key={item.name} fill={item.color} />
                     ))}
                   </Pie>
-                  <Tooltip content={<DistributionTooltip />} />
-                  <Legend formatter={(value) => {
-                    const item = distributionData.find((entry) => entry.name === value);
-                    return item ? `${value} ${item.value.toFixed(1)}%` : value;
-                  }} />
+                  <Tooltip
+                    formatter={(value, _name, props) => {
+                      const item = props.payload as DistributionSlice;
+                      return [`${Number(value).toFixed(1)}% · ${item.operations} ops · ${distributionAmountLabel(item.totalAmount)}`, item.name];
+                    }}
+                  />
+                  <Legend formatter={(value) => `${value} ${(distributionData.find((entry) => entry.name === value)?.value ?? 0).toFixed(1)}%`} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -644,41 +667,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       .reduce((sum, entry) => sum + entry.riskAmount, 0);
   }, [filteredEntries]);
 
-  const monthlyProfitData = useMemo(() => {
-    const now = new Date();
-    const recentMonths = Array.from({ length: 6 }, (_, index) => {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-      return {
-        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
-        month: monthLabels[monthDate.getMonth()],
-      };
-    });
-
-    const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
-
-    for (const entry of filteredEntries) {
-      if (entry.resultR === null) {
-        continue;
-      }
-
-      const referenceDate = new Date(entry.updatedAt || entry.createdAt);
-      if (Number.isNaN(referenceDate.getTime())) {
-        continue;
-      }
-
-      const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
-      if (!totalsByMonth.has(monthKey)) {
-        continue;
-      }
-
-      totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
-    }
-
-    return recentMonths.map((item) => ({
-      month: item.month,
-      amount: totalsByMonth.get(item.key) ?? 0,
-    }));
-  }, [filteredEntries]);
+  const monthlyProfitData = useMemo(() => calculateMonthlyProfitData(filteredEntries), [filteredEntries]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
@@ -733,12 +722,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const netResult = useMemo(() => winTotal + lossTotal, [winTotal, lossTotal]);
 
   const profitFactor = useMemo(() => {
-    const absoluteLoss = Math.abs(lossTotal);
-    if (absoluteLoss === 0) {
-      return winTotal > 0 ? '∞' : '0.00';
-    }
-
-    return (winTotal / absoluteLoss).toFixed(2);
+    return calculateProfitFactor(winTotal, lossTotal);
   }, [winTotal, lossTotal]);
 
   const winLossRatio = useMemo(() => {

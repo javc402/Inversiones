@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
-import DashboardPage from './DashboardPage'
+import DashboardPage, {
+  calculateMonthlyProfitData,
+  calculateProfitFactor,
+  distributionAmountLabel,
+  formatDate,
+  roleNameLabel,
+  statusLabel,
+  tradeResultClass,
+} from './DashboardPage'
 
 const getCurrentUserRoleMock = vi.hoisted(() => vi.fn())
 const listTradingAccountsMock = vi.hoisted(() => vi.fn())
@@ -601,6 +609,118 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+  })
+
+  it('calcula profit factor con ramas de pérdida cero y normal', () => {
+    expect(calculateProfitFactor(100, 0)).toBe('∞')
+    expect(calculateProfitFactor(0, 0)).toBe('0.00')
+    expect(calculateProfitFactor(200, -100)).toBe('2.00')
+  })
+
+  it('calcula la serie mensual con entradas sin resultado, fecha invalida y fuera de rango', () => {
+    const fixedNow = new Date('2026-06-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-1',
+          groupId: 'group-1',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1,
+          takeProfit: 1.2,
+          riskAmount: 100,
+          investmentPercent: 1,
+          resultR: null,
+          note: '',
+          status: 'open',
+          plannedAt: 'invalid-date',
+          createdAt: 'invalid-date',
+          updatedAt: 'invalid-date',
+        },
+        {
+          id: 'entry-2',
+          groupId: 'group-2',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'GBPUSD',
+          marketContext: 'NFP',
+          setup: 'Pullback',
+          session: 'LONDON',
+          direction: 'sell',
+          entryPrice: 1.3,
+          stopLoss: 1.31,
+          takeProfit: 1.28,
+          riskAmount: 50,
+          investmentPercent: 1,
+          resultR: 2,
+          note: '',
+          status: 'closed',
+          plannedAt: '2025-12-20T10:00:00.000Z',
+          createdAt: '2025-12-20T10:00:00.000Z',
+          updatedAt: '2025-12-20T10:00:00.000Z',
+        },
+        {
+          id: 'entry-3',
+          groupId: 'group-3',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'USDJPY',
+          marketContext: 'FOMC',
+          setup: 'Reversal',
+          session: 'LONDON',
+          direction: 'buy',
+          entryPrice: 140,
+          stopLoss: 139,
+          takeProfit: 141,
+          riskAmount: 75,
+          investmentPercent: 1,
+          resultR: -1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-05T10:00:00.000Z',
+          createdAt: '2026-06-05T10:00:00.000Z',
+          updatedAt: '2026-06-05T10:00:00.000Z',
+        },
+      ],
+      fixedNow,
+    )
+
+    expect(monthlyData).toHaveLength(6)
+    expect(monthlyData.some((item) => item.amount !== 0)).toBe(true)
+    expect(monthlyData[0]).toHaveProperty('month')
+  })
+
+  it('formatea montos de distribución con signo', () => {
+    expect(distributionAmountLabel(50)).toMatch(/^\+/)
+    expect(distributionAmountLabel(-50)).toMatch(/^-/)
+    expect(distributionAmountLabel(0)).not.toMatch(/^[+-]/)
+  })
+
+  it('cubre helpers de etiquetas y formato con múltiples ramas', () => {
+    expect(statusLabel('planned')).toBe('Planeada')
+    expect(statusLabel('open')).toBe('Abierta')
+    expect(statusLabel('closed')).toBe('Completada')
+    expect(statusLabel('no_entry')).toBe('Sin entrada')
+    expect(statusLabel('cancelled')).toBe('Cancelada')
+
+    expect(roleNameLabel('admin')).toBe('Administrador')
+    expect(roleNameLabel('user')).toBe('Usuario')
+    expect(roleNameLabel(null)).toBe('Sin rol')
+
+    expect(tradeResultClass('-USD 10.00')).toBe('negative')
+    expect(tradeResultClass('N/A')).toBe('neutral')
+    expect(tradeResultClass('USD 10.00')).toBe('positive')
+
+    expect(formatDate('invalid-date')).toBe('invalid-date')
   })
 
 })
