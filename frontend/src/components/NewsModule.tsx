@@ -236,6 +236,8 @@ function NewsCard({ article, onEdit, onDelete, onTogglePublish, onPublishNow }: 
 export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
   const [articles, setArticles] = useState<NewsArticle[]>([]);
   const [query, setQuery] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const submitLockRef = useRef(false);
   const [statusFilter, setStatusFilter] = useState<'all' | NewsStatus>('all');
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [editingArticle, setEditingArticle] = useState<NewsArticle | null>(null);
@@ -313,6 +315,10 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
 
   async function handleSubmit(event: FormEvent) {
     event.preventDefault();
+    if (submitLockRef.current) return;
+
+    submitLockRef.current = true;
+    setIsSubmitting(true);
     setError('');
 
     try {
@@ -340,6 +346,9 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
       closeModal();
     } catch (submitError) {
       setError(submitError instanceof Error ? submitError.message : 'No se pudo guardar la noticia.');
+    } finally {
+      submitLockRef.current = false;
+      setIsSubmitting(false);
     }
   }
 
@@ -481,11 +490,11 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
               {error && <p className="news-form-error">{error}</p>}
 
               <div className="news-form-actions news-form-span-2">
-                <button type="button" className="secondary-btn" onClick={closeModal}>
+                <button type="button" className="secondary-btn" onClick={closeModal} disabled={isSubmitting}>
                   Cancelar
                 </button>
-                <button type="submit" className="primary-btn">
-                  {modalMode === 'create' ? 'Guardar noticia' : 'Actualizar noticia'}
+                <button type="submit" className="primary-btn" disabled={isSubmitting}>
+                  {isSubmitting ? 'Guardando...' : modalMode === 'create' ? 'Guardar noticia' : 'Actualizar noticia'}
                 </button>
               </div>
             </form>

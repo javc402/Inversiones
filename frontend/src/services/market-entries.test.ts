@@ -609,7 +609,7 @@ describe('market-entries service', () => {
     ).rejects.toThrow('El setup/estrategia es obligatorio.');
   });
 
-  it('valida create: resultado R obligatorio cuando status es closed', async () => {
+  it('valida create: valor de cierre obligatorio cuando status es closed', async () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
@@ -622,6 +622,7 @@ describe('market-entries service', () => {
           entryPrice: 1.1,
           stopLoss: 1.09,
           takeProfit: 1.12,
+          closePrice: null,
           resultR: null,
           note: '',
           plannedAt: '2026-06-29T10:00',
@@ -629,7 +630,7 @@ describe('market-entries service', () => {
         },
         perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
       })
-    ).rejects.toThrow('El Resultado R es obligatorio para entradas completadas.');
+    ).rejects.toThrow('El valor de cierre es obligatorio para entradas completadas.');
   });
 
   it('valida create: riesgo e inversión por cuenta mayores a 0', async () => {

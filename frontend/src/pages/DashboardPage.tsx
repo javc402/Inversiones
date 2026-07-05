@@ -55,6 +55,65 @@ export function loadStoredDashboardTab(): DashboardTab {
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+
+interface DistributionSlice {
+  name: 'Ganadas' | 'Perdidas' | 'Breakeven';
+  value: number;
+  operations: number;
+  totalAmount: number;
+  averageAmount: number;
+  color: string;
+}
+
+export function distributionAmountLabel(value: number): string {
+  if (value > 0) return `+${formatCurrency(value)}`;
+  if (value < 0) return `-${formatCurrency(Math.abs(value))}`;
+  return formatCurrency(0);
+}
+
+export function calculateProfitFactor(winAmount: number, lossAmount: number): string {
+  const absoluteLoss = Math.abs(lossAmount);
+  if (absoluteLoss === 0) {
+    return winAmount > 0 ? '∞' : '0.00';
+  }
+
+  return (winAmount / absoluteLoss).toFixed(2);
+}
+
+export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: Date = new Date()): Array<{ month: string; amount: number }> {
+  const recentMonths = Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    return {
+      key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+      month: monthLabels[monthDate.getMonth()],
+    };
+  });
+
+  const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceDate = new Date(entry.updatedAt || entry.createdAt);
+    if (Number.isNaN(referenceDate.getTime())) {
+      continue;
+    }
+
+    const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
+    if (!totalsByMonth.has(monthKey)) {
+      continue;
+    }
+
+    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
+  }
+
+  return recentMonths.map((item) => ({
+    month: item.month,
+    amount: totalsByMonth.get(item.key) ?? 0,
+  }));
+}
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
   noticias: 'Noticias',
@@ -112,15 +171,25 @@ interface DashboardSummaryContentProps {
   monthlyProfit: number;
   filteredEntries: MarketEntry[];
   winRate: number;
+  winTotal: number;
+  lossRate: number;
+  lossTotal: number;
   openRisk: number;
   monthlyProfitData: Array<{
     month: string;
     amount: number;
   }>;
   distributionData: Array<{
-    name: string;
+    name: 'Ganadas' | 'Perdidas' | 'Breakeven';
     value: number;
+    operations: number;
+    totalAmount: number;
+    averageAmount: number;
+    color: string;
   }>;
+  netResult: number;
+  profitFactor: string;
+  winLossRatio: string;
   recentTrades: Array<{
     date: string;
     pair: string;
@@ -128,7 +197,17 @@ interface DashboardSummaryContentProps {
     result: string;
     status: string;
   }>;
+  selectedYear: string;
+  setSelectedYear: (value: string) => void;
 }
+
+type RecentTradeFilters = {
+  date: string;
+  pair: string;
+  type: string;
+  result: string;
+  status: string;
+};
 
 function DashboardSummaryContent({
   selectedAccountId,
@@ -137,11 +216,55 @@ function DashboardSummaryContent({
   monthlyProfit,
   filteredEntries,
   winRate,
+  winTotal,
+  lossRate,
+  lossTotal,
   openRisk,
   monthlyProfitData,
   distributionData,
+  netResult,
+  profitFactor,
+  winLossRatio,
   recentTrades,
+  selectedYear,
+  setSelectedYear,
 }: Readonly<DashboardSummaryContentProps>) {
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const entry of filteredEntries) {
+      const date = new Date(entry.updatedAt || entry.createdAt);
+      if (!Number.isNaN(date.getTime())) {
+        years.add(date.getFullYear());
+      }
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  }, [filteredEntries]);
+  const [tableFilters, setTableFilters] = useState<RecentTradeFilters>({
+    date: '',
+    pair: '',
+    type: '',
+    result: '',
+    status: '',
+  });
+
+  const filteredRecentTrades = useMemo(() => {
+    const normalized = {
+      date: tableFilters.date.toLowerCase().trim(),
+      pair: tableFilters.pair.toLowerCase().trim(),
+      type: tableFilters.type.toLowerCase().trim(),
+      result: tableFilters.result.toLowerCase().trim(),
+      status: tableFilters.status.toLowerCase().trim(),
+    };
+
+    return recentTrades.filter((trade) => {
+      if (normalized.date && !trade.date.toLowerCase().includes(normalized.date)) return false;
+      if (normalized.pair && !trade.pair.toLowerCase().includes(normalized.pair)) return false;
+      if (normalized.type && !trade.type.toLowerCase().includes(normalized.type)) return false;
+      if (normalized.result && !trade.result.toLowerCase().includes(normalized.result)) return false;
+      if (normalized.status && !trade.status.toLowerCase().includes(normalized.status)) return false;
+      return true;
+    });
+  }, [recentTrades, tableFilters]);
   return (
     <>
       <section className="dashboard-summary-toolbar">
@@ -157,6 +280,19 @@ function DashboardSummaryContent({
             <option key={account.id} value={account.id}>{account.alias || account.name}</option>
           ))}
         </select>
+
+        <label htmlFor="dashboard-year-filter" className="dashboard-summary-filter-label">Filtrar por año</label>
+        <select
+          id="dashboard-year-filter"
+          className="dashboard-summary-filter"
+          value={selectedYear}
+          onChange={(event) => setSelectedYear(event.target.value)}
+        >
+          <option value="all">Todos los años</option>
+          {availableYears.map((year) => (
+            <option key={year} value={year}>{year}</option>
+          ))}
+        </select>
       </section>
 
       <section className="kpi-grid">
@@ -170,7 +306,12 @@ function DashboardSummaryContent({
         <article className="kpi-card">
           <h2>Tasa de exito</h2>
           <p className="kpi-value">{winRate.toFixed(1)}%</p>
-          <span className="kpi-trend neutral">Sobre operaciones cerradas</span>
+          <span className="kpi-trend positive">Total ganado: {formatCurrency(winTotal)}</span>
+        </article>
+        <article className="kpi-card">
+          <h2>Tasa de perdida</h2>
+          <p className="kpi-value">{lossRate.toFixed(1)}%</p>
+          <span className="kpi-trend negative">Total perdido: {formatCurrency(lossTotal)}</span>
         </article>
         <article className="kpi-card">
           <h2>Riesgo abierto</h2>
@@ -197,26 +338,59 @@ function DashboardSummaryContent({
 
         <article className="chart-card">
           <h2>Distribucion de operaciones</h2>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={distributionData}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  outerRadius={90}
-                  innerRadius={56}
-                >
-                  {distributionData.map((item, index) => (
-                    <Cell key={item.name} fill={pieColors[index % pieColors.length]} />
-                  ))}
-                </Pie>
-                <Tooltip />
-                <Legend />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="chart-distribution-layout">
+            <div className="chart-wrapper chart-wrapper-distribution">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={distributionData}
+                    dataKey="value"
+                    nameKey="name"
+                    cx="50%"
+                    cy="50%"
+                    outerRadius={110}
+                    innerRadius={64}
+                  >
+                    {distributionData.map((item) => (
+                      <Cell key={item.name} fill={item.color} />
+                    ))}
+                  </Pie>
+                  <Tooltip
+                    formatter={(value, _name, props) => {
+                      const item = props.payload as DistributionSlice;
+                      return [`${Number(value).toFixed(1)}% · ${item.operations} ops · ${distributionAmountLabel(item.totalAmount)}`, item.name];
+                    }}
+                  />
+                  <Legend formatter={(value) => `${value} ${(distributionData.find((entry) => entry.name === value)?.value ?? 0).toFixed(1)}%`} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+
+            <div className="distribution-details" aria-label="Resumen de distribución de operaciones">
+              {distributionData.map((item) => (
+                <article key={item.name} className="distribution-row">
+                  <h3 style={{ color: item.color }}>{item.name}</h3>
+                  <p>{item.value.toFixed(1)}% · {item.operations} operaciones</p>
+                  <p>Total: {distributionAmountLabel(item.totalAmount)}</p>
+                  <p>Promedio: {distributionAmountLabel(item.averageAmount)}</p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="distribution-summary" aria-label="Métricas de desempeño">
+            <article>
+              <h3>Neto del periodo</h3>
+              <p className={netResult >= 0 ? 'positive' : 'negative'}>{distributionAmountLabel(netResult)}</p>
+            </article>
+            <article>
+              <h3>Profit Factor</h3>
+              <p>{profitFactor}</p>
+            </article>
+            <article>
+              <h3>Win/Loss ratio</h3>
+              <p>{winLossRatio}</p>
+            </article>
           </div>
         </article>
       </section>
@@ -233,22 +407,70 @@ function DashboardSummaryContent({
                 <th>Resultado</th>
                 <th>Estado</th>
               </tr>
+              <tr className="table-filter-row">
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar fecha"
+                    className="table-filter-input"
+                    value={tableFilters.date}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, date: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar par"
+                    className="table-filter-input"
+                    value={tableFilters.pair}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, pair: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar tipo"
+                    className="table-filter-input"
+                    value={tableFilters.type}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, type: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar resultado"
+                    className="table-filter-input"
+                    value={tableFilters.result}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, result: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar estado"
+                    className="table-filter-input"
+                    value={tableFilters.status}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, status: event.target.value }))}
+                  />
+                </td>
+              </tr>
             </thead>
             <tbody>
-              {recentTrades.length === 0 ? (
+              {filteredRecentTrades.length === 0 ? (
                 <tr>
                   <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
-                recentTrades.map((trade) => (
-                  <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
-                    <td>{trade.date}</td>
-                    <td>{trade.pair}</td>
-                    <td>{trade.type}</td>
-                    <td className={tradeResultClass(trade.result)}>{trade.result}</td>
-                    <td>{trade.status}</td>
-                  </tr>
-                ))
+                filteredRecentTrades
+                  .map((trade) => (
+                    <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                      <td>{trade.date}</td>
+                      <td>{trade.pair}</td>
+                      <td>{trade.type}</td>
+                      <td className={tradeResultClass(trade.result)}>{trade.result}</td>
+                      <td>{trade.status}</td>
+                    </tr>
+                  ))
               )}
             </tbody>
           </table>
@@ -414,6 +636,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
   const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
   const isAdmin = userRole?.name === 'admin';
   const roleLabel = roleNameLabel(userRole?.name);
   const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
@@ -504,9 +727,22 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [selectedAccountId, summaryAccounts]);
 
   const filteredEntries = useMemo(() => {
-    if (selectedAccountId === 'all') return summaryEntries;
-    return summaryEntries.filter((entry) => entry.accountId === selectedAccountId);
-  }, [selectedAccountId, summaryEntries]);
+    let entries = summaryEntries;
+    
+    if (selectedAccountId !== 'all') {
+      entries = entries.filter((entry) => entry.accountId === selectedAccountId);
+    }
+    
+    if (selectedYear !== 'all') {
+      const year = parseInt(selectedYear, 10);
+      entries = entries.filter((entry) => {
+        const entryDate = new Date(entry.updatedAt || entry.createdAt);
+        return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
+      });
+    }
+    
+    return entries;
+  }, [selectedAccountId, selectedYear, summaryEntries]);
 
   const monthlyProfit = useMemo(() => {
     const now = new Date();
@@ -529,80 +765,113 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return (wins / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
+  const lossRate = useMemo(() => {
+    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
+    if (entriesWithResult.length === 0) return 0;
+    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
+    return (losses / entriesWithResult.length) * 100;
+  }, [filteredEntries]);
+
+  const winTotal = useMemo(() => {
+    return filteredEntries
+      .filter((entry) => (entry.resultR ?? 0) > 0)
+      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+  }, [filteredEntries]);
+
+  const lossTotal = useMemo(() => {
+    return filteredEntries
+      .filter((entry) => (entry.resultR ?? 0) < 0)
+      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+  }, [filteredEntries]);
+
   const openRisk = useMemo(() => {
     return filteredEntries
       .filter((entry) => entry.status === 'planned' || entry.status === 'open')
       .reduce((sum, entry) => sum + entry.riskAmount, 0);
   }, [filteredEntries]);
 
-  const monthlyProfitData = useMemo(() => {
-    const now = new Date();
-    const recentMonths = Array.from({ length: 6 }, (_, index) => {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-      return {
-        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
-        month: monthLabels[monthDate.getMonth()],
-      };
-    });
+  const monthlyProfitData = useMemo(() => calculateMonthlyProfitData(filteredEntries), [filteredEntries]);
 
-    const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
-
-    for (const entry of filteredEntries) {
-      if (entry.resultR === null) {
-        continue;
-      }
-
-      const referenceDate = new Date(entry.updatedAt || entry.createdAt);
-      if (Number.isNaN(referenceDate.getTime())) {
-        continue;
-      }
-
-      const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
-      if (!totalsByMonth.has(monthKey)) {
-        continue;
-      }
-
-      totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
-    }
-
-    return recentMonths.map((item) => ({
-      month: item.month,
-      amount: totalsByMonth.get(item.key) ?? 0,
-    }));
-  }, [filteredEntries]);
-
-  const distributionData = useMemo(() => {
+  const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) {
       return [
-        { name: 'Ganadas', value: 0 },
-        { name: 'Perdidas', value: 0 },
-        { name: 'Breakeven', value: 0 },
+        { name: 'Ganadas', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[0] },
+        { name: 'Perdidas', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[1] },
+        { name: 'Breakeven', value: 0, operations: 0, totalAmount: 0, averageAmount: 0, color: pieColors[2] },
       ];
     }
 
-    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
-    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
-    const breakeven = entriesWithResult.length - wins - losses;
+    const winningEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0);
+    const losingEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0);
+    const breakevenEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) === 0);
+
+    const wins = winningEntries.length;
+    const losses = losingEntries.length;
+    const breakeven = breakevenEntries.length;
+
+    const winsTotal = winningEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+    const lossesTotal = losingEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+    const breakevenTotal = 0;
 
     return [
-      { name: 'Ganadas', value: Number(((wins / entriesWithResult.length) * 100).toFixed(1)) },
-      { name: 'Perdidas', value: Number(((losses / entriesWithResult.length) * 100).toFixed(1)) },
-      { name: 'Breakeven', value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)) },
+      {
+        name: 'Ganadas',
+        value: Number(((wins / entriesWithResult.length) * 100).toFixed(1)),
+        operations: wins,
+        totalAmount: winsTotal,
+        averageAmount: wins === 0 ? 0 : winsTotal / wins,
+        color: pieColors[0],
+      },
+      {
+        name: 'Perdidas',
+        value: Number(((losses / entriesWithResult.length) * 100).toFixed(1)),
+        operations: losses,
+        totalAmount: lossesTotal,
+        averageAmount: losses === 0 ? 0 : lossesTotal / losses,
+        color: pieColors[1],
+      },
+      {
+        name: 'Breakeven',
+        value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)),
+        operations: breakeven,
+        totalAmount: breakevenTotal,
+        averageAmount: 0,
+        color: pieColors[2],
+      },
     ];
   }, [filteredEntries]);
 
+  const netResult = useMemo(() => winTotal + lossTotal, [winTotal, lossTotal]);
+
+  const profitFactor = useMemo(() => {
+    return calculateProfitFactor(winTotal, lossTotal);
+  }, [winTotal, lossTotal]);
+
+  const winLossRatio = useMemo(() => {
+    const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
+    const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
+    return `${wins}:${losses}`;
+  }, [distributionData]);
+
   const recentTrades = useMemo(() => {
-    return filteredEntries.slice(0, 8).map((entry) => {
-      const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
-      return {
-        date: formatDate(entry.updatedAt || entry.createdAt),
-        pair: entry.symbol,
-        type: entry.direction.toUpperCase(),
-        result: resultValue,
-        status: statusLabel(entry.status),
-      };
-    });
+    return filteredEntries
+      .sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+        const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 8)
+      .map((entry) => {
+        const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
+        return {
+          date: formatDate(entry.updatedAt || entry.createdAt),
+          pair: entry.symbol,
+          type: entry.direction.toUpperCase(),
+          result: resultValue,
+          status: statusLabel(entry.status),
+        };
+      });
   }, [filteredEntries]);
 
   const mainContent = (
@@ -613,10 +882,18 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       monthlyProfit={monthlyProfit}
       filteredEntries={filteredEntries}
       winRate={winRate}
+      winTotal={winTotal}
+      lossRate={lossRate}
+      lossTotal={lossTotal}
       openRisk={openRisk}
       monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
+      netResult={netResult}
+      profitFactor={profitFactor}
+      winLossRatio={winLossRatio}
       recentTrades={recentTrades}
+      selectedYear={selectedYear}
+      setSelectedYear={setSelectedYear}
     />
   );
 

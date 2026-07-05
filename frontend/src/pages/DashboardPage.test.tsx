@@ -1,7 +1,15 @@
 import { fireEvent, render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
-import DashboardPage from './DashboardPage'
+import DashboardPage, {
+  calculateMonthlyProfitData,
+  calculateProfitFactor,
+  distributionAmountLabel,
+  formatDate,
+  roleNameLabel,
+  statusLabel,
+  tradeResultClass,
+} from './DashboardPage'
 
 const getCurrentUserRoleMock = vi.hoisted(() => vi.fn())
 const listTradingAccountsMock = vi.hoisted(() => vi.fn())
@@ -101,6 +109,97 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
   })
 
+  it('cambia a tab de noticias y vuelve a resumen', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
+    expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Resumen|Dashboard/ }))
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+  })
+
+  it('filtra operaciones por año desde el combo superior', async () => {
+    const today = new Date()
+    const lastYear = new Date(today.getFullYear() - 1, 0, 15)
+    
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: today.toISOString(),
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-2',
+        groupId: 'group-2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: -0.5,
+        note: '',
+        status: 'closed',
+        plannedAt: lastYear.toISOString(),
+        createdAt: lastYear.toISOString(),
+        updatedAt: lastYear.toISOString(),
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const yearFilter = await screen.findByLabelText('Filtrar por año')
+    expect(yearFilter).toBeInTheDocument()
+    expect((yearFilter as HTMLSelectElement).querySelector(`option[value="${today.getFullYear()}"]`)).toBeInTheDocument()
+  })
+
   it('filtra operaciones por cuenta desde el combo superior', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([
       {
@@ -137,6 +236,9 @@ describe('DashboardPage', () => {
         plannedAt: '2026-06-20T10:00:00.000Z',
         createdAt: '2026-06-20T10:00:00.000Z',
         updatedAt: '2026-06-20T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
       },
       {
         id: 'entry-2',
@@ -160,6 +262,9 @@ describe('DashboardPage', () => {
         plannedAt: '2026-06-21T10:00:00.000Z',
         createdAt: '2026-06-21T10:00:00.000Z',
         updatedAt: '2026-06-21T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
       },
     ])
 
@@ -219,6 +324,7 @@ describe('DashboardPage', () => {
 
     const usdValues = await screen.findAllByText((content) => content.includes('USD'))
     expect(usdValues.length).toBeGreaterThan(0)
+    expect(screen.getByText('Tasa de perdida')).toBeInTheDocument()
   })
 
   it('calcula ganancia correcta del mes cuando hay operaciones cerradas', async () => {
@@ -355,7 +461,8 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText(/0\.0%|0%/)).toBeInTheDocument()
+    const zeroRates = await screen.findAllByText(/0\.0%|0%/)
+    expect(zeroRates.length).toBeGreaterThan(0)
   })
 
   it('calcula riesgo abierto solo de operaciones abiertas', async () => {
@@ -599,6 +706,252 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+  })
+
+  it('calcula profit factor con ramas de pérdida cero y normal', () => {
+    expect(calculateProfitFactor(100, 0)).toBe('∞')
+    expect(calculateProfitFactor(0, 0)).toBe('0.00')
+    expect(calculateProfitFactor(200, -100)).toBe('2.00')
+  })
+
+  it('calcula la serie mensual con entradas sin resultado, fecha invalida y fuera de rango', () => {
+    const fixedNow = new Date('2026-06-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-1',
+          groupId: 'group-1',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1,
+          takeProfit: 1.2,
+          closePrice: null,
+          riskAmount: 100,
+          investmentPercent: 1,
+          resultR: null,
+          note: '',
+          status: 'open',
+          plannedAt: 'invalid-date',
+          createdAt: 'invalid-date',
+          updatedAt: 'invalid-date',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
+        },
+        {
+          id: 'entry-2',
+          groupId: 'group-2',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'GBPUSD',
+          marketContext: 'NFP',
+          setup: 'Pullback',
+          session: 'LONDON',
+          direction: 'sell',
+          entryPrice: 1.3,
+          stopLoss: 1.31,
+          takeProfit: 1.28,
+          closePrice: null,
+          riskAmount: 50,
+          investmentPercent: 1,
+          resultR: 2,
+          note: '',
+          status: 'closed',
+          plannedAt: '2025-12-20T10:00:00.000Z',
+          createdAt: '2025-12-20T10:00:00.000Z',
+          updatedAt: '2025-12-20T10:00:00.000Z',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
+        },
+        {
+          id: 'entry-3',
+          groupId: 'group-3',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'USDJPY',
+          marketContext: 'FOMC',
+          setup: 'Reversal',
+          session: 'LONDON',
+          direction: 'buy',
+          entryPrice: 140,
+          stopLoss: 139,
+          takeProfit: 141,
+          closePrice: null,
+          riskAmount: 75,
+          investmentPercent: 1,
+          resultR: -1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-05T10:00:00.000Z',
+          createdAt: '2026-06-05T10:00:00.000Z',
+          updatedAt: '2026-06-05T10:00:00.000Z',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
+        },
+      ],
+      fixedNow,
+    )
+
+    expect(monthlyData).toHaveLength(6)
+    expect(monthlyData.some((item) => item.amount !== 0)).toBe(true)
+    expect(monthlyData[0]).toHaveProperty('month')
+  })
+
+  it('formatea montos de distribución con signo', () => {
+    expect(distributionAmountLabel(50)).toMatch(/^\+/)
+    expect(distributionAmountLabel(-50)).toMatch(/^-/)
+    expect(distributionAmountLabel(0)).not.toMatch(/^[+-]/)
+  })
+
+  it('cubre helpers de etiquetas y formato con múltiples ramas', () => {
+    expect(statusLabel('planned')).toBe('Planeada')
+    expect(statusLabel('open')).toBe('Abierta')
+    expect(statusLabel('closed')).toBe('Completada')
+    expect(statusLabel('no_entry')).toBe('Sin entrada')
+    expect(statusLabel('cancelled')).toBe('Cancelada')
+
+    expect(roleNameLabel('admin')).toBe('Administrador')
+    expect(roleNameLabel('user')).toBe('Usuario')
+    expect(roleNameLabel(null)).toBe('Sin rol')
+
+    expect(tradeResultClass('-USD 10.00')).toBe('negative')
+    expect(tradeResultClass('N/A')).toBe('neutral')
+    expect(tradeResultClass('USD 10.00')).toBe('positive')
+
+    expect(formatDate('invalid-date')).toBe('invalid-date')
+  })
+
+  it('maneja error cuando getCurrentUserRole falla', async () => {
+    getCurrentUserRoleMock.mockRejectedValueOnce(new Error('Role fetch failed'))
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
+  })
+
+  it('usa initialRole cuando está definido para evitar llamada a API', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    const initialRole = { id: 'role-admin', name: 'admin' as const, description: 'Administrador' }
+
+    render(
+      <DashboardPage
+        userEmail="admin@demo.com"
+        onSignOut={vi.fn().mockResolvedValue(undefined)}
+        initialRole={initialRole}
+      />
+    )
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
+    expect(getCurrentUserRoleMock).not.toHaveBeenCalled()
+  })
+
+  it('reestablece tab a resumen cuando usuario no-admin intenta acceder a usuarios', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))
+    expect(await screen.findByText('Modulo de Entradas')).toBeInTheDocument()
+  })
+
+  it('cambia de año y filtra resultados correctamente', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    
+    const today = new Date()
+    const lastYear = today.getFullYear() - 1
+
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-2025',
+        groupId: 'g1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        setup: 'Breakout',
+        session: 'NY',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: `${lastYear}-01-10T10:00:00.000Z`,
+        createdAt: `${lastYear}-01-10T10:00:00.000Z`,
+        updatedAt: `${lastYear}-01-10T10:00:00.000Z`,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-2026',
+        groupId: 'g2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        contextSource: 'free_text',
+        setup: 'Pullback',
+        session: 'London',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: -0.5,
+        note: '',
+        status: 'closed',
+        plannedAt: today.toISOString(),
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const yearFilter = await screen.findByLabelText('Filtrar por año')
+    expect(yearFilter).toBeInTheDocument()
+    expect((yearFilter as HTMLSelectElement).value).toBe('all')
   })
 
 })

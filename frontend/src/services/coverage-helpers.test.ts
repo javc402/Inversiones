@@ -221,6 +221,7 @@ describe('coverage helpers', () => {
       entryPrice: '1.1',
       stopLoss: '1.09',
       takeProfit: '1.12',
+      closePrice: '1.12',
       resultR: '',
       noEntryReason: '',
       note: '',
@@ -228,9 +229,8 @@ describe('coverage helpers', () => {
       status: 'closed',
     } satisfies Parameters<typeof buildCreateMarketEntryRequest>[0];
 
-    expect(() =>
-      buildCreateMarketEntryRequest(common, [], false, true)
-    ).toThrow('Debes indicar Resultado R');
+    const completedRequest = buildCreateMarketEntryRequest(common, [], false, true);
+    expect(completedRequest.createInput.common.resultR).toBe(2);
 
     const request = buildCreateMarketEntryRequest(
       { ...common, status: 'no_entry', noEntryReason: 'No setup', resultR: '1.2' },
@@ -303,8 +303,9 @@ describe('coverage helpers', () => {
           session: 'NY',
           direction: 'buy',
           entryPrice: '1.1',
-          stopLoss: '1.09',
+          stopLoss: '1.1',
           takeProfit: '1.12',
+          closePrice: '1.12',
           resultR: '',
           noEntryReason: '',
           note: '',
@@ -315,7 +316,7 @@ describe('coverage helpers', () => {
         false,
         true
       )
-    ).toThrow('Debes indicar Resultado R');
+    ).toThrow('No se pudo calcular Resultado R');
   });
 
   it('market buildDefaultAccountRows usa cuenta por defecto', () => {

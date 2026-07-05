@@ -20,6 +20,7 @@ export interface MarketEntry {
   entryPrice: number;
   stopLoss: number;
   takeProfit: number;
+  closePrice?: number | null;
   riskAmount: number;
   investmentPercent: number;
   resultR: number | null;
@@ -42,6 +43,7 @@ export interface MarketEntryCommonInput {
   entryPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
+  closePrice?: number | null;
   resultR?: number | null;
   noEntryReason?: string;
   note: string;
@@ -65,6 +67,7 @@ interface UpdateMarketEntryInput {
   status: MarketEntryStatus;
   riskAmount: number;
   investmentPercent: number;
+  closePrice?: number | null;
   resultR: number | null;
   note: string;
   noEntryReason?: string;
@@ -95,6 +98,7 @@ interface MarketEntryRow {
   entry_price: number | null;
   stop_loss: number | null;
   take_profit: number | null;
+  close_price: number | null;
   risk_amount: number | null;
   investment_percent: number | null;
   result_r: number | null;
@@ -136,6 +140,7 @@ function mapRowToEntry(row: MarketEntryRow): MarketEntry {
     entryPrice: row.entry_price === null ? 0 : Number(row.entry_price),
     stopLoss: row.stop_loss === null ? 0 : Number(row.stop_loss),
     takeProfit: row.take_profit === null ? 0 : Number(row.take_profit),
+    closePrice: row.close_price === null ? null : Number(row.close_price),
     riskAmount: row.risk_amount === null ? 0 : Number(row.risk_amount),
     investmentPercent: row.investment_percent === null ? 0 : Number(row.investment_percent),
     resultR: row.result_r,
@@ -185,6 +190,9 @@ function validateCommonInput(common: MarketEntryCommonInput): void {
   if (!Number.isFinite(common.entryPrice) || (common.entryPrice ?? 0) <= 0) throw new Error('Precio de entrada inválido.');
   if (!Number.isFinite(common.stopLoss) || (common.stopLoss ?? 0) <= 0) throw new Error('Stop loss inválido.');
   if (!Number.isFinite(common.takeProfit) || (common.takeProfit ?? 0) <= 0) throw new Error('Take profit inválido.');
+  if (common.status === 'closed' && (!Number.isFinite(common.closePrice) || (common.closePrice ?? 0) <= 0)) {
+    throw new Error('El valor de cierre es obligatorio para entradas completadas.');
+  }
   if (common.status === 'closed' && (common.resultR === null || common.resultR === undefined || !Number.isFinite(common.resultR))) {
     throw new Error('El Resultado R es obligatorio para entradas completadas.');
   }
@@ -250,6 +258,7 @@ function buildMarketEntryUpdatePayload(
       status: next.status,
       note: trimmedNote,
       no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
+      close_price: null,
       updated_at: timestamp,
     };
   }
@@ -258,6 +267,7 @@ function buildMarketEntryUpdatePayload(
     status: next.status,
     risk_amount: next.riskAmount,
     investment_percent: next.investmentPercent,
+    close_price: next.closePrice ?? null,
     result_r: next.resultR,
     note: trimmedNote,
     no_entry_reason: null,
@@ -335,6 +345,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         entry_price: null,
         stop_loss: null,
         take_profit: null,
+        close_price: null,
         risk_amount: null,
         investment_percent: null,
         result_r: null,
@@ -360,6 +371,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         entry_price: input.common.entryPrice,
         stop_loss: input.common.stopLoss,
         take_profit: input.common.takeProfit,
+        close_price: input.common.closePrice ?? null,
         risk_amount: item.riskAmount,
         investment_percent: item.investmentPercent,
         result_r: input.common.resultR ?? null,
@@ -450,6 +462,7 @@ export async function updateMarketEntryById(
       riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
       investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
       resultR: isNoEntryFlow ? updated.resultR : next.resultR,
+      closePrice: isNoEntryFlow ? updated.closePrice : (next.closePrice ?? null),
       note: trimmedNote,
       noEntryReason: next.status === 'no_entry' ? (next.noEntryReason as string).trim() : null,
     },

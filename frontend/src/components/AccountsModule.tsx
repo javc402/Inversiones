@@ -360,6 +360,8 @@ export default function AccountsModule() {
   const [modalMode, setModalMode] = useState<ModalMode>('create');
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_FORM);
+  const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const saveAccountLockRef = useRef(false);
 
   useEffect(() => {
     void loadAccounts();
@@ -558,6 +560,10 @@ export default function AccountsModule() {
 
   async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saveAccountLockRef.current) return;
+
+    saveAccountLockRef.current = true;
+    setIsSavingAccount(true);
     setError(null);
 
     try {
@@ -574,6 +580,9 @@ export default function AccountsModule() {
     } catch (requestError) {
       setError('No fue posible guardar la cuenta. Revisa los datos e intenta nuevamente.');
       console.error(requestError);
+    } finally {
+      saveAccountLockRef.current = false;
+      setIsSavingAccount(false);
     }
   }
 
@@ -894,11 +903,11 @@ export default function AccountsModule() {
               </label>
 
               <div className="accounts-form-actions">
-                <button type="button" className="secondary-btn" onClick={closeModal}>
+                <button type="button" className="secondary-btn" onClick={closeModal} disabled={isSavingAccount}>
                   Cancelar
                 </button>
-                <button type="submit" className="primary-btn">
-                  Guardar cuenta
+                <button type="submit" className="primary-btn" disabled={isSavingAccount}>
+                  {isSavingAccount ? 'Guardando...' : 'Guardar cuenta'}
                 </button>
               </div>
             </form>
