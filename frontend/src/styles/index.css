@@ -715,6 +715,30 @@ th {
   font-weight: 600;
 }
 
+.table-filter-row td {
+  padding: 8px;
+  border-bottom: 2px solid #d8e2ef;
+}
+
+.table-filter-input {
+  width: 100%;
+  border: 1px solid #c6d9f2;
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  color: #183a61;
+}
+
+.table-filter-input:focus {
+  outline: none;
+  border-color: #1e5ba8;
+  box-shadow: 0 0 0 3px rgba(30, 91, 168, 0.1);
+}
+
+.table-filter-input::placeholder {
+  color: #a0b1c7;
+}
+
 @media (max-width: 640px) {
   .dashboard-shell {
     padding: 10px;

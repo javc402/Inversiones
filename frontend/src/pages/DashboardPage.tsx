@@ -197,6 +197,8 @@ interface DashboardSummaryContentProps {
     result: string;
     status: string;
   }>;
+  selectedYear: string;
+  setSelectedYear: (value: string) => void;
 }
 
 function DashboardSummaryContent({
@@ -216,7 +218,20 @@ function DashboardSummaryContent({
   profitFactor,
   winLossRatio,
   recentTrades,
+  selectedYear,
+  setSelectedYear,
 }: Readonly<DashboardSummaryContentProps>) {
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const entry of filteredEntries) {
+      const date = new Date(entry.updatedAt || entry.createdAt);
+      if (!Number.isNaN(date.getTime())) {
+        years.add(date.getFullYear());
+      }
+    }
+    return Array.from(years).sort((a, b) => b - a);
+  }, [filteredEntries]);
+  const [tableSearchFilter, setTableSearchFilter] = useState<string>('');
   return (
     <>
       <section className="dashboard-summary-toolbar">
@@ -230,6 +245,19 @@ function DashboardSummaryContent({
           <option value="all">Todas las cuentas</option>
           {summaryAccounts.map((account) => (
             <option key={account.id} value={account.id}>{account.alias || account.name}</option>
+          ))}
+        </select>
+
+        <label htmlFor="dashboard-year-filter" className="dashboard-summary-filter-label">Filtrar por año</label>
+        <select
+          id="dashboard-year-filter"
+          className="dashboard-summary-filter"
+          value={selectedYear}
+          onChange={(event) => setSelectedYear(event.target.value)}
+        >
+          <option value="all">Todos los años</option>
+          {availableYears.map((year) => (
+            <option key={year} value={year}>{year}</option>
           ))}
         </select>
       </section>
@@ -346,22 +374,41 @@ function DashboardSummaryContent({
                 <th>Resultado</th>
                 <th>Estado</th>
               </tr>
+              <tr className="table-filter-row">
+                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
+                <td><input type="text" placeholder="Buscar..." className="table-filter-input" onChange={(e) => setTableSearchFilter(e.target.value.toLowerCase())} /></td>
+                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
+                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
+                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
+              </tr>
             </thead>
             <tbody>
-              {recentTrades.length === 0 ? (
+              {recentTrades.filter((trade) =>
+                trade.pair.toLowerCase().includes(tableSearchFilter) ||
+                trade.type.toLowerCase().includes(tableSearchFilter) ||
+                trade.result.toLowerCase().includes(tableSearchFilter) ||
+                trade.status.toLowerCase().includes(tableSearchFilter)
+              ).length === 0 ? (
                 <tr>
                   <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
-                recentTrades.map((trade) => (
-                  <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
-                    <td>{trade.date}</td>
-                    <td>{trade.pair}</td>
-                    <td>{trade.type}</td>
-                    <td className={tradeResultClass(trade.result)}>{trade.result}</td>
-                    <td>{trade.status}</td>
-                  </tr>
-                ))
+                recentTrades
+                  .filter((trade) =>
+                    trade.pair.toLowerCase().includes(tableSearchFilter) ||
+                    trade.type.toLowerCase().includes(tableSearchFilter) ||
+                    trade.result.toLowerCase().includes(tableSearchFilter) ||
+                    trade.status.toLowerCase().includes(tableSearchFilter)
+                  )
+                  .map((trade) => (
+                    <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                      <td>{trade.date}</td>
+                      <td>{trade.pair}</td>
+                      <td>{trade.type}</td>
+                      <td className={tradeResultClass(trade.result)}>{trade.result}</td>
+                      <td>{trade.status}</td>
+                    </tr>
+                  ))
               )}
             </tbody>
           </table>
@@ -527,6 +574,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
   const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
   const isAdmin = userRole?.name === 'admin';
   const roleLabel = roleNameLabel(userRole?.name);
   const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
@@ -617,9 +665,22 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [selectedAccountId, summaryAccounts]);
 
   const filteredEntries = useMemo(() => {
-    if (selectedAccountId === 'all') return summaryEntries;
-    return summaryEntries.filter((entry) => entry.accountId === selectedAccountId);
-  }, [selectedAccountId, summaryEntries]);
+    let entries = summaryEntries;
+    
+    if (selectedAccountId !== 'all') {
+      entries = entries.filter((entry) => entry.accountId === selectedAccountId);
+    }
+    
+    if (selectedYear !== 'all') {
+      const year = parseInt(selectedYear, 10);
+      entries = entries.filter((entry) => {
+        const entryDate = new Date(entry.updatedAt || entry.createdAt);
+        return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
+      });
+    }
+    
+    return entries;
+  }, [selectedAccountId, selectedYear, summaryEntries]);
 
   const monthlyProfit = useMemo(() => {
     const now = new Date();
@@ -732,16 +793,23 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [distributionData]);
 
   const recentTrades = useMemo(() => {
-    return filteredEntries.slice(0, 8).map((entry) => {
-      const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
-      return {
-        date: formatDate(entry.updatedAt || entry.createdAt),
-        pair: entry.symbol,
-        type: entry.direction.toUpperCase(),
-        result: resultValue,
-        status: statusLabel(entry.status),
-      };
-    });
+    return filteredEntries
+      .sort((a, b) => {
+        const dateA = new Date(a.updatedAt || a.createdAt).getTime();
+        const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+        return dateB - dateA;
+      })
+      .slice(0, 8)
+      .map((entry) => {
+        const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
+        return {
+          date: formatDate(entry.updatedAt || entry.createdAt),
+          pair: entry.symbol,
+          type: entry.direction.toUpperCase(),
+          result: resultValue,
+          status: statusLabel(entry.status),
+        };
+      });
   }, [filteredEntries]);
 
   const mainContent = (
@@ -762,6 +830,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       profitFactor={profitFactor}
       winLossRatio={winLossRatio}
       recentTrades={recentTrades}
+      selectedYear={selectedYear}
+      setSelectedYear={setSelectedYear}
     />
   );
 

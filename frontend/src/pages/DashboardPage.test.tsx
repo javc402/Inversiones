@@ -109,6 +109,97 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
   })
 
+  it('cambia a tab de noticias y vuelve a resumen', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
+    expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: /Resumen|Dashboard/ }))
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+  })
+
+  it('filtra operaciones por año desde el combo superior', async () => {
+    const today = new Date()
+    const lastYear = new Date(today.getFullYear() - 1, 0, 15)
+    
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: today.toISOString(),
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-2',
+        groupId: 'group-2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: -0.5,
+        note: '',
+        status: 'closed',
+        plannedAt: lastYear.toISOString(),
+        createdAt: lastYear.toISOString(),
+        updatedAt: lastYear.toISOString(),
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const yearFilter = await screen.findByLabelText('Filtrar por año')
+    expect(yearFilter).toBeInTheDocument()
+    expect((yearFilter as HTMLSelectElement).querySelector(`option[value="${today.getFullYear()}"]`)).toBeInTheDocument()
+  })
+
   it('filtra operaciones por cuenta desde el combo superior', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([
       {
@@ -145,6 +236,9 @@ describe('DashboardPage', () => {
         plannedAt: '2026-06-20T10:00:00.000Z',
         createdAt: '2026-06-20T10:00:00.000Z',
         updatedAt: '2026-06-20T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
       },
       {
         id: 'entry-2',
@@ -168,6 +262,9 @@ describe('DashboardPage', () => {
         plannedAt: '2026-06-21T10:00:00.000Z',
         createdAt: '2026-06-21T10:00:00.000Z',
         updatedAt: '2026-06-21T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
       },
     ])
 
@@ -643,6 +740,9 @@ describe('DashboardPage', () => {
           plannedAt: 'invalid-date',
           createdAt: 'invalid-date',
           updatedAt: 'invalid-date',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
         },
         {
           id: 'entry-2',
@@ -666,6 +766,9 @@ describe('DashboardPage', () => {
           plannedAt: '2025-12-20T10:00:00.000Z',
           createdAt: '2025-12-20T10:00:00.000Z',
           updatedAt: '2025-12-20T10:00:00.000Z',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
         },
         {
           id: 'entry-3',
@@ -689,6 +792,9 @@ describe('DashboardPage', () => {
           plannedAt: '2026-06-05T10:00:00.000Z',
           createdAt: '2026-06-05T10:00:00.000Z',
           updatedAt: '2026-06-05T10:00:00.000Z',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          noEntryReason: null,
         },
       ],
       fixedNow,
