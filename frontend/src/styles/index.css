@@ -558,7 +558,7 @@ body {
 
 .kpi-grid {
   display: grid;
-  gap: 14px;
+  gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
 }
 
@@ -608,7 +608,7 @@ body {
 
 .chart-grid {
   display: grid;
-  gap: 14px;
+  gap: 20px;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
 }
 
