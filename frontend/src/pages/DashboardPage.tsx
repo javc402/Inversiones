@@ -53,22 +53,8 @@ export function loadStoredDashboardTab(): DashboardTab {
   return 'resumen';
 }
 
-const monthlyProfitData = [
-  { month: 'Ene', amount: 1800 },
-  { month: 'Feb', amount: 2600 },
-  { month: 'Mar', amount: 2400 },
-  { month: 'Abr', amount: 3100 },
-  { month: 'May', amount: 2950 },
-  { month: 'Jun', amount: 3600 },
-];
-
-const distributionData = [
-  { name: 'Ganadas', value: 69.5 },
-  { name: 'Perdidas', value: 21.5 },
-  { name: 'Breakeven', value: 9 },
-];
-
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
+const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
   noticias: 'Noticias',
@@ -127,6 +113,14 @@ interface DashboardSummaryContentProps {
   filteredEntries: MarketEntry[];
   winRate: number;
   openRisk: number;
+  monthlyProfitData: Array<{
+    month: string;
+    amount: number;
+  }>;
+  distributionData: Array<{
+    name: string;
+    value: number;
+  }>;
   recentTrades: Array<{
     date: string;
     pair: string;
@@ -144,6 +138,8 @@ function DashboardSummaryContent({
   filteredEntries,
   winRate,
   openRisk,
+  monthlyProfitData,
+  distributionData,
   recentTrades,
 }: Readonly<DashboardSummaryContentProps>) {
   return (
@@ -539,6 +535,63 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       .reduce((sum, entry) => sum + entry.riskAmount, 0);
   }, [filteredEntries]);
 
+  const monthlyProfitData = useMemo(() => {
+    const now = new Date();
+    const recentMonths = Array.from({ length: 6 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+
+    const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
+
+    for (const entry of filteredEntries) {
+      if (entry.resultR === null) {
+        continue;
+      }
+
+      const referenceDate = new Date(entry.updatedAt || entry.createdAt);
+      if (Number.isNaN(referenceDate.getTime())) {
+        continue;
+      }
+
+      const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
+      if (!totalsByMonth.has(monthKey)) {
+        continue;
+      }
+
+      totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
+    }
+
+    return recentMonths.map((item) => ({
+      month: item.month,
+      amount: totalsByMonth.get(item.key) ?? 0,
+    }));
+  }, [filteredEntries]);
+
+  const distributionData = useMemo(() => {
+    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
+    if (entriesWithResult.length === 0) {
+      return [
+        { name: 'Ganadas', value: 0 },
+        { name: 'Perdidas', value: 0 },
+        { name: 'Breakeven', value: 0 },
+      ];
+    }
+
+    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
+    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
+    const breakeven = entriesWithResult.length - wins - losses;
+
+    return [
+      { name: 'Ganadas', value: Number(((wins / entriesWithResult.length) * 100).toFixed(1)) },
+      { name: 'Perdidas', value: Number(((losses / entriesWithResult.length) * 100).toFixed(1)) },
+      { name: 'Breakeven', value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)) },
+    ];
+  }, [filteredEntries]);
+
   const recentTrades = useMemo(() => {
     return filteredEntries.slice(0, 8).map((entry) => {
       const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
@@ -561,6 +614,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       filteredEntries={filteredEntries}
       winRate={winRate}
       openRisk={openRisk}
+      monthlyProfitData={monthlyProfitData}
+      distributionData={distributionData}
       recentTrades={recentTrades}
     />
   );

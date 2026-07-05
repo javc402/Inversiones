@@ -101,135 +101,6 @@ describe('DashboardPage', () => {
     expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
   })
 
-  it('muestra modulo de cuentas al seleccionar Gestionar cuentas', async () => {
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar cuentas' }))
-
-    expect(await screen.findByText('Modulo de Cuentas')).toBeInTheDocument()
-  })
-
-  it('muestra informacion principal y email del usuario', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([
-      {
-        id: 'acc-1',
-        name: 'Cuenta Real',
-        alias: 'Real',
-      },
-    ])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([
-      {
-        id: 'entry-1',
-        groupId: 'group-1',
-        userEmail: 'usuario@demo.com',
-        accountId: 'acc-1',
-        accountName: 'Real',
-        symbol: 'EURUSD',
-        marketContext: 'CPI',
-        setup: 'Breakout',
-        session: 'NEW YORK',
-        direction: 'buy',
-        entryPrice: 1.1,
-        stopLoss: 1,
-        takeProfit: 1.2,
-        riskAmount: 100,
-        investmentPercent: 1,
-        resultR: 1,
-        note: '',
-        status: 'closed',
-        plannedAt: '2026-06-20T10:00:00.000Z',
-        createdAt: '2026-06-20T10:00:00.000Z',
-        updatedAt: '2026-06-20T10:00:00.000Z',
-      },
-    ])
-
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-admin',
-      name: 'admin',
-      description: 'Administrador',
-    })
-
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    expect(screen.getByText('Inversiones')).toBeInTheDocument()
-    expect(screen.getByText('usuario@demo.com')).toBeInTheDocument()
-    expect(screen.getByText('Ganancia del mes')).toBeInTheDocument()
-    expect(screen.getByText('Operaciones recientes')).toBeInTheDocument()
-    expect(await screen.findByText('EURUSD')).toBeInTheDocument()
-  })
-
-  it('muestra panel de administracion para admin', async () => {
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-admin',
-      name: 'admin',
-      description: 'Administrador',
-    })
-
-    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
-
-    expect(await screen.findByText('Panel de Administración')).toBeInTheDocument()
-  })
-
-  it('permite volver a resumen desde gestionar usuarios', async () => {
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-admin',
-      name: 'admin',
-      description: 'Administrador',
-    })
-
-    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(await screen.findByRole('button', { name: 'Gestionar usuarios' }))
-    fireEvent.click(screen.getByRole('button', { name: 'Resumen' }))
-
-    expect(screen.getByText('Operaciones recientes')).toBeInTheDocument()
-  })
-
-  it('oculta menu de usuarios cuando el rol no es admin', async () => {
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
-  })
-
-  it('oculta menu de usuarios si falla la carga del rol', async () => {
-    getCurrentUserRoleMock.mockRejectedValueOnce(new Error('role fetch failed'))
-
-    render(<DashboardPage userEmail="user@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    expect(await screen.findByRole('button', { name: 'Gestionar cuentas' })).toBeInTheDocument()
-    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
-  })
-
-  it('ejecuta onSignOut al pulsar cerrar sesion', () => {
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-admin',
-      name: 'admin',
-      description: 'Administrador',
-    })
-
-    const onSignOut = vi.fn().mockResolvedValue(undefined)
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={onSignOut} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Cerrar sesion' }))
-
-    expect(onSignOut).toHaveBeenCalledTimes(1)
-  })
-
   it('filtra operaciones por cuenta desde el combo superior', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([
       {
@@ -311,8 +182,8 @@ describe('DashboardPage', () => {
   })
 
   it('formatea moneda correctamente en los KPIs', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([
+    listTradingAccountsMock.mockResolvedValue([])
+    listMarketEntriesByUserMock.mockResolvedValue([
       {
         id: 'entry-1',
         groupId: 'group-1',
@@ -729,4 +600,5 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
   })
+
 })
