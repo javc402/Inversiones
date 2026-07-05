@@ -126,6 +126,22 @@ export function toNumberOrNull(value: string): number | null {
   return Number(trimmed);
 }
 
+export function calculateResultR(
+  direction: MarketEntryDirection,
+  entryPrice: number,
+  stopLoss: number,
+  takeProfit: number
+): number | null {
+  const risk = direction === 'buy' ? entryPrice - stopLoss : stopLoss - entryPrice;
+  const reward = direction === 'buy' ? takeProfit - entryPrice : entryPrice - takeProfit;
+
+  if (!Number.isFinite(risk) || !Number.isFinite(reward) || risk <= 0 || reward <= 0) {
+    return null;
+  }
+
+  return reward / risk;
+}
+
 export function entryDeletionLabel(entry: MarketEntry): string {
   if (entry.status !== 'no_entry') {
     return `entrada de ${entry.accountName} para ${entry.symbol}`;
@@ -175,10 +191,17 @@ export function buildCreateMarketEntryRequest(
   isNoEntryOnCreate: boolean,
   isCompletedOnCreate: boolean
 ) {
-  const resultRValue = toNumberOrNull(commonForm.resultR);
+  const resultRValue = isCompletedOnCreate && !isNoEntryOnCreate
+    ? calculateResultR(
+      commonForm.direction,
+      toNumber(commonForm.entryPrice),
+      toNumber(commonForm.stopLoss),
+      toNumber(commonForm.takeProfit)
+    )
+    : null;
 
   if (isCompletedOnCreate && resultRValue === null) {
-    throw new Error('Debes indicar Resultado R para una entrada completada.');
+    throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y TP.');
   }
 
   return {
@@ -632,14 +655,19 @@ function MarketEntriesCreateForm({
 
       {isCompletedOnCreate && (
         <label>
-          <EntryFieldLabel text="Resultado R" help="Resultado final en múltiplos de riesgo para registrar la operación ya cerrada." />
+          <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL, TP y Dirección cuando el estado es Completada." />
           <input
-            type="number"
-            step="0.01"
-            value={commonForm.resultR}
-            onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
-            placeholder="Ej: 1.5"
-            required={isCompletedOnCreate}
+            value={(() => {
+              const calculated = calculateResultR(
+                commonForm.direction,
+                toNumber(commonForm.entryPrice),
+                toNumber(commonForm.stopLoss),
+                toNumber(commonForm.takeProfit)
+              );
+
+              return calculated === null ? 'No calculable' : calculated.toFixed(2);
+            })()}
+            disabled
           />
         </label>
       )}
@@ -746,6 +774,10 @@ function MarketEntriesEditForm({
   closeModal,
   handleEditSubmit,
 }: Readonly<MarketEntriesEditFormProps>) {
+  const calculatedEditResultR = editingEntry && editForm.status === 'closed'
+    ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, editingEntry.takeProfit)
+    : null;
+
   return (
     <form className="entries-form" onSubmit={handleEditSubmit}>
       <label>
@@ -790,10 +822,12 @@ function MarketEntriesEditForm({
             <input type="number" step="0.01" min="0" value={editForm.investmentPercent} onChange={(event) => setEditForm((prev) => ({ ...prev, investmentPercent: event.target.value }))} required />
           </label>
 
-          <label>
-            <EntryFieldLabel text="Resultado R" help="Resultado medido en múltiplos de riesgo; opcional hasta cierre." />
-            <input type="number" step="0.01" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} placeholder="Opcional" />
-          </label>
+          {editForm.status === 'closed' && (
+            <label>
+              <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL, TP y Dirección de esta entrada." />
+              <input value={calculatedEditResultR === null ? 'No calculable' : calculatedEditResultR.toFixed(2)} disabled />
+            </label>
+          )}
         </>
       )}
 
@@ -1047,11 +1081,19 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setError('');
 
     try {
+      const calculatedResultR = editForm.status === 'closed'
+        ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, editingEntry.takeProfit)
+        : null;
+
+      if (editForm.status === 'closed' && calculatedResultR === null) {
+        throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y TP.');
+      }
+
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
-        resultR: toNumberOrNull(editForm.resultR),
+        resultR: editForm.status === 'closed' ? calculatedResultR : toNumberOrNull(editForm.resultR),
         noEntryReason: editForm.noEntryReason,
         note: editForm.note,
       }, {
