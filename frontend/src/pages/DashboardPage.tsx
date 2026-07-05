@@ -201,6 +201,14 @@ interface DashboardSummaryContentProps {
   setSelectedYear: (value: string) => void;
 }
 
+type RecentTradeFilters = {
+  date: string;
+  pair: string;
+  type: string;
+  result: string;
+  status: string;
+};
+
 function DashboardSummaryContent({
   selectedAccountId,
   setSelectedAccountId,
@@ -231,7 +239,32 @@ function DashboardSummaryContent({
     }
     return Array.from(years).sort((a, b) => b - a);
   }, [filteredEntries]);
-  const [tableSearchFilter, setTableSearchFilter] = useState<string>('');
+  const [tableFilters, setTableFilters] = useState<RecentTradeFilters>({
+    date: '',
+    pair: '',
+    type: '',
+    result: '',
+    status: '',
+  });
+
+  const filteredRecentTrades = useMemo(() => {
+    const normalized = {
+      date: tableFilters.date.toLowerCase().trim(),
+      pair: tableFilters.pair.toLowerCase().trim(),
+      type: tableFilters.type.toLowerCase().trim(),
+      result: tableFilters.result.toLowerCase().trim(),
+      status: tableFilters.status.toLowerCase().trim(),
+    };
+
+    return recentTrades.filter((trade) => {
+      if (normalized.date && !trade.date.toLowerCase().includes(normalized.date)) return false;
+      if (normalized.pair && !trade.pair.toLowerCase().includes(normalized.pair)) return false;
+      if (normalized.type && !trade.type.toLowerCase().includes(normalized.type)) return false;
+      if (normalized.result && !trade.result.toLowerCase().includes(normalized.result)) return false;
+      if (normalized.status && !trade.status.toLowerCase().includes(normalized.status)) return false;
+      return true;
+    });
+  }, [recentTrades, tableFilters]);
   return (
     <>
       <section className="dashboard-summary-toolbar">
@@ -375,31 +408,60 @@ function DashboardSummaryContent({
                 <th>Estado</th>
               </tr>
               <tr className="table-filter-row">
-                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
-                <td><input type="text" placeholder="Buscar..." className="table-filter-input" onChange={(e) => setTableSearchFilter(e.target.value.toLowerCase())} /></td>
-                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
-                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
-                <td><input type="text" placeholder="Buscar..." className="table-filter-input" disabled style={{ cursor: 'not-allowed', opacity: 0.5 }} /></td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar fecha"
+                    className="table-filter-input"
+                    value={tableFilters.date}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, date: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar par"
+                    className="table-filter-input"
+                    value={tableFilters.pair}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, pair: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar tipo"
+                    className="table-filter-input"
+                    value={tableFilters.type}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, type: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar resultado"
+                    className="table-filter-input"
+                    value={tableFilters.result}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, result: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar estado"
+                    className="table-filter-input"
+                    value={tableFilters.status}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, status: event.target.value }))}
+                  />
+                </td>
               </tr>
             </thead>
             <tbody>
-              {recentTrades.filter((trade) =>
-                trade.pair.toLowerCase().includes(tableSearchFilter) ||
-                trade.type.toLowerCase().includes(tableSearchFilter) ||
-                trade.result.toLowerCase().includes(tableSearchFilter) ||
-                trade.status.toLowerCase().includes(tableSearchFilter)
-              ).length === 0 ? (
+              {filteredRecentTrades.length === 0 ? (
                 <tr>
                   <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
-                recentTrades
-                  .filter((trade) =>
-                    trade.pair.toLowerCase().includes(tableSearchFilter) ||
-                    trade.type.toLowerCase().includes(tableSearchFilter) ||
-                    trade.result.toLowerCase().includes(tableSearchFilter) ||
-                    trade.status.toLowerCase().includes(tableSearchFilter)
-                  )
+                filteredRecentTrades
                   .map((trade) => (
                     <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
                       <td>{trade.date}</td>

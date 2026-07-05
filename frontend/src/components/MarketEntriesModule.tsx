@@ -54,6 +54,7 @@ interface EntryCommonForm {
   entryPrice: string;
   stopLoss: string;
   takeProfit: string;
+  closePrice?: string;
   resultR: string;
   noEntryReason: string;
   note: string;
@@ -65,6 +66,7 @@ interface EditForm {
   status: MarketEntryStatus;
   riskAmount: string;
   investmentPercent: string;
+  closePrice: string;
   resultR: string;
   noEntryReason: string;
   note: string;
@@ -81,6 +83,7 @@ const defaultCommonForm: EntryCommonForm = {
   entryPrice: '',
   stopLoss: '',
   takeProfit: '',
+  closePrice: '',
   resultR: '',
   noEntryReason: '',
   note: '',
@@ -92,6 +95,7 @@ const defaultEditForm: EditForm = {
   status: 'planned',
   riskAmount: '',
   investmentPercent: '',
+  closePrice: '',
   resultR: '',
   noEntryReason: '',
   note: '',
@@ -116,6 +120,24 @@ export function directionLabel(direction: MarketEntryDirection): string {
   return direction === 'buy' ? 'BUY' : 'SELL';
 }
 
+type EntryOutcome = 'tp' | 'sl' | 'breakeven';
+
+export function resolveEntryOutcome(entry: MarketEntry): EntryOutcome | null {
+  if (entry.status !== 'closed' || entry.resultR === null) {
+    return null;
+  }
+
+  if (entry.resultR > 0) return 'tp';
+  if (entry.resultR < 0) return 'sl';
+  return 'breakeven';
+}
+
+export function outcomeLabel(outcome: EntryOutcome): string {
+  if (outcome === 'tp') return 'TP';
+  if (outcome === 'sl') return 'SL';
+  return 'Breakeven';
+}
+
 export function toNumber(value: string): number {
   return Number(value.trim());
 }
@@ -130,16 +152,43 @@ export function calculateResultR(
   direction: MarketEntryDirection,
   entryPrice: number,
   stopLoss: number,
-  takeProfit: number
+  closePrice: number
 ): number | null {
   const risk = direction === 'buy' ? entryPrice - stopLoss : stopLoss - entryPrice;
-  const reward = direction === 'buy' ? takeProfit - entryPrice : entryPrice - takeProfit;
+  const reward = direction === 'buy' ? closePrice - entryPrice : entryPrice - closePrice;
 
-  if (!Number.isFinite(risk) || !Number.isFinite(reward) || risk <= 0 || reward <= 0) {
+  if (!Number.isFinite(risk) || !Number.isFinite(reward) || risk <= 0) {
     return null;
   }
 
   return reward / risk;
+}
+
+export function calculateAccountResultAmount(riskAmount: number, resultR: number | null): number | null {
+  if (!Number.isFinite(riskAmount) || riskAmount <= 0 || resultR === null || !Number.isFinite(resultR)) {
+    return null;
+  }
+
+  return riskAmount * resultR;
+}
+
+export function inferClosePriceFromResultR(
+  direction: MarketEntryDirection,
+  entryPrice: number,
+  stopLoss: number,
+  resultR: number | null
+): number | null {
+  if (resultR === null || !Number.isFinite(resultR)) {
+    return null;
+  }
+
+  const risk = direction === 'buy' ? entryPrice - stopLoss : stopLoss - entryPrice;
+  if (!Number.isFinite(risk) || risk <= 0) {
+    return null;
+  }
+
+  const reward = resultR * risk;
+  return direction === 'buy' ? entryPrice + reward : entryPrice - reward;
 }
 
 export function entryDeletionLabel(entry: MarketEntry): string {
@@ -196,12 +245,12 @@ export function buildCreateMarketEntryRequest(
       commonForm.direction,
       toNumber(commonForm.entryPrice),
       toNumber(commonForm.stopLoss),
-      toNumber(commonForm.takeProfit)
+      toNumber(commonForm.closePrice ?? '')
     )
     : null;
 
   if (isCompletedOnCreate && resultRValue === null) {
-    throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y TP.');
+    throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y Valor de cierre.');
   }
 
   return {
@@ -217,6 +266,7 @@ export function buildCreateMarketEntryRequest(
         entryPrice: isNoEntryOnCreate ? undefined : toNumber(commonForm.entryPrice),
         stopLoss: isNoEntryOnCreate ? undefined : toNumber(commonForm.stopLoss),
         takeProfit: isNoEntryOnCreate ? undefined : toNumber(commonForm.takeProfit),
+        closePrice: isCompletedOnCreate ? toNumber(commonForm.closePrice ?? '') : null,
         resultR: isCompletedOnCreate ? resultRValue : null,
         noEntryReason: isNoEntryOnCreate ? commonForm.noEntryReason : undefined,
         note: commonForm.note,
@@ -343,6 +393,8 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
 }>) {
   const isGroupedEntry = groupSize > 1;
   const isNoEntry = entry.status === 'no_entry';
+  const accountResult = calculateAccountResultAmount(entry.riskAmount, entry.resultR);
+  const outcome = resolveEntryOutcome(entry);
 
   return (
     <article className="entries-card">
@@ -354,7 +406,10 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
             <span className="entries-group-badge">Grupo · {groupSize} cuentas</span>
           )}
         </div>
-        <span className={`entries-status entries-status-${entry.status}`}>{statusLabel(entry.status)}</span>
+        <div className="entries-status-stack">
+          <span className={`entries-status entries-status-${entry.status}`}>{statusLabel(entry.status)}</span>
+          {outcome && <span className={`entries-outcome-badge entries-outcome-${outcome}`}>{outcomeLabel(outcome)}</span>}
+        </div>
       </header>
 
       <div className="entries-grid-meta">
@@ -371,12 +426,14 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
             <span>Entrada: {entry.entryPrice}</span>
             <span>SL: {entry.stopLoss}</span>
             <span>TP: {entry.takeProfit}</span>
+            {entry.closePrice !== null && <span>Cierre: {entry.closePrice}</span>}
           </div>
 
           <div className="entries-risk-row">
             <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
             <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
             <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(2)}</span>
+            <span>Resultado cuenta: {accountResult === null ? 'N/A' : `$${accountResult.toFixed(2)}`}</span>
           </div>
         </>
       )}
@@ -654,22 +711,36 @@ function MarketEntriesCreateForm({
       )}
 
       {isCompletedOnCreate && (
-        <label>
-          <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL, TP y Dirección cuando el estado es Completada." />
-          <input
-            value={(() => {
-              const calculated = calculateResultR(
-                commonForm.direction,
-                toNumber(commonForm.entryPrice),
-                toNumber(commonForm.stopLoss),
-                toNumber(commonForm.takeProfit)
-              );
+        <>
+          <label>
+            <EntryFieldLabel text="Valor de cierre" help="Precio real al que cerraste la operación, igual que en Excel." />
+            <input
+              type="number"
+              step="0.0001"
+              value={commonForm.closePrice}
+              onChange={(event) => setCommonForm((prev) => ({ ...prev, closePrice: event.target.value }))}
+              placeholder="Ej: 152.25"
+              required
+            />
+          </label>
 
-              return calculated === null ? 'No calculable' : calculated.toFixed(2);
-            })()}
-            disabled
-          />
-        </label>
+          <label>
+            <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL y Valor de cierre." />
+            <input
+              value={(() => {
+                const calculated = calculateResultR(
+                  commonForm.direction,
+                  toNumber(commonForm.entryPrice),
+                  toNumber(commonForm.stopLoss),
+                  toNumber(commonForm.closePrice ?? '')
+                );
+
+                return calculated === null ? 'No calculable' : calculated.toFixed(2);
+              })()}
+              disabled
+            />
+          </label>
+        </>
       )}
 
       <label className="entries-form-span-2">
@@ -690,8 +761,8 @@ function MarketEntriesCreateForm({
           <div className="entries-accounts-table">
             <div className="entries-accounts-head">
               <span>Cuenta</span>
-              <span>Riesgo ($)</span>
-              <span>% inversion</span>
+              <span>Riesgo por cuenta (USD)</span>
+              <span>% inversion (referencia)</span>
               <span>Accion</span>
             </div>
 
@@ -737,6 +808,7 @@ function MarketEntriesCreateForm({
             ))}
           </div>
 
+          <p className="entries-accounts-summary">Riesgo por cuenta (USD): monto que podrias perder en esa cuenta si el precio toca el SL.</p>
           <p className="entries-accounts-summary">Se crearan {perAccountRows.length} registro(s), uno por cuenta.</p>
         </div>
       )}
@@ -775,8 +847,12 @@ function MarketEntriesEditForm({
   handleEditSubmit,
 }: Readonly<MarketEntriesEditFormProps>) {
   const calculatedEditResultR = editingEntry && editForm.status === 'closed'
-    ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, editingEntry.takeProfit)
+    ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, toNumber(editForm.closePrice))
     : null;
+  const calculatedEditAccountResult = editForm.status === 'closed'
+    ? calculateAccountResultAmount(toNumber(editForm.riskAmount), calculatedEditResultR)
+    : null;
+  const showEntryReference = Boolean(editingEntry && editingEntry.status !== 'no_entry');
 
   return (
     <form className="entries-form" onSubmit={handleEditSubmit}>
@@ -789,6 +865,30 @@ function MarketEntriesEditForm({
         <EntryFieldLabel text="Simbolo" help="Activo asociado a la entrada; en edición se muestra como referencia." />
         <input value={editingEntry?.symbol ?? ''} disabled />
       </label>
+
+      {showEntryReference && editingEntry && (
+        <section className="entries-reference-panel entries-form-span-2" aria-label="Parametros de entrada en solo lectura">
+          <h3>Referencia de entrada (solo lectura)</h3>
+          <div className="entries-reference-grid">
+            <label>
+              <EntryFieldLabel text="Direccion" help="Dirección original de la operación registrada." />
+              <input value={directionLabel(editingEntry.direction)} disabled />
+            </label>
+            <label>
+              <EntryFieldLabel text="Entrada" help="Precio de entrada original registrado." />
+              <input value={String(editingEntry.entryPrice)} disabled />
+            </label>
+            <label>
+              <EntryFieldLabel text="Stop Loss" help="Nivel SL original registrado." />
+              <input value={String(editingEntry.stopLoss)} disabled />
+            </label>
+            <label>
+              <EntryFieldLabel text="Take Profit" help="Nivel TP original registrado." />
+              <input value={String(editingEntry.takeProfit)} disabled />
+            </label>
+          </div>
+        </section>
+      )}
 
       <label>
         <EntryFieldLabel text="Estado" help="Fase operativa actual de la entrada para control del ciclo." />
@@ -813,20 +913,32 @@ function MarketEntriesEditForm({
       ) : (
         <>
           <label>
-            <EntryFieldLabel text="Riesgo ($)" help="Capital que se arriesga en esta cuenta para la entrada." />
+            <EntryFieldLabel text="Riesgo por cuenta (USD)" help="Monto en USD que arriesgas en esta cuenta; representa la perdida esperada si toca SL." />
             <input type="number" step="0.01" min="0" value={editForm.riskAmount} onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: event.target.value }))} required />
           </label>
 
           <label>
-            <EntryFieldLabel text="% inversion" help="Porcentaje del capital asignado a esta cuenta para la entrada." />
+            <EntryFieldLabel text="% inversion (referencia)" help="Porcentaje informativo de asignacion. No recalcula por si solo el resultado si el riesgo USD no cambia." />
             <input type="number" step="0.01" min="0" value={editForm.investmentPercent} onChange={(event) => setEditForm((prev) => ({ ...prev, investmentPercent: event.target.value }))} required />
           </label>
 
           {editForm.status === 'closed' && (
-            <label>
-              <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL, TP y Dirección de esta entrada." />
-              <input value={calculatedEditResultR === null ? 'No calculable' : calculatedEditResultR.toFixed(2)} disabled />
-            </label>
+            <>
+              <label>
+                <EntryFieldLabel text="Valor de cierre" help="Precio real al que se cerró esta operación por cuenta." />
+                <input type="number" step="0.0001" value={editForm.closePrice} onChange={(event) => setEditForm((prev) => ({ ...prev, closePrice: event.target.value }))} required />
+              </label>
+
+              <label>
+                <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL y Valor de cierre." />
+                <input value={calculatedEditResultR === null ? 'No calculable' : calculatedEditResultR.toFixed(2)} disabled />
+              </label>
+
+              <label>
+                <EntryFieldLabel text="Resultado cuenta calculado" help="Resultado monetario por cuenta, calculado como Riesgo de cuenta x Resultado R." />
+                <input value={calculatedEditAccountResult === null ? 'No calculable' : `$${calculatedEditAccountResult.toFixed(2)}`} disabled />
+              </label>
+            </>
           )}
         </>
       )}
@@ -923,17 +1035,51 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   }, [newsArticles, newsQuery]);
 
   const filteredEntries = useMemo(() => {
-    return entries.filter((entry) => {
-      const matchesAccount = accountFilter === 'all' || entry.accountId === accountFilter;
-      const term = query.trim().toLowerCase();
-      const matchesQuery =
-        !term ||
-        entry.symbol.toLowerCase().includes(term) ||
-        entry.marketContext.toLowerCase().includes(term) ||
-        entry.accountName.toLowerCase().includes(term);
+    const terms = query
+      .trim()
+      .toLowerCase()
+      .split(/\s+/)
+      .filter(Boolean);
 
-      return matchesAccount && matchesQuery;
-    });
+    return entries
+      .filter((entry) => {
+        const matchesAccount = accountFilter === 'all' || entry.accountId === accountFilter;
+        if (!matchesAccount) return false;
+        if (terms.length === 0) return true;
+
+        const outcome = resolveEntryOutcome(entry);
+
+        const searchableText = [
+          entry.accountName,
+          entry.symbol,
+          entry.marketContext,
+          entry.setup,
+          entry.session,
+          directionLabel(entry.direction),
+          statusLabel(entry.status),
+          outcome ? outcomeLabel(outcome) : '',
+          outcome === 'tp' ? 'take profit' : '',
+          outcome === 'sl' ? 'stop loss' : '',
+          entry.note,
+          entry.noEntryReason ?? '',
+          String(entry.entryPrice),
+          String(entry.stopLoss),
+          String(entry.takeProfit),
+          entry.closePrice === null ? '' : String(entry.closePrice),
+          entry.resultR === null ? '' : String(entry.resultR),
+          String(entry.riskAmount),
+          String(entry.investmentPercent),
+        ]
+          .join(' ')
+          .toLowerCase();
+
+        return terms.every((term) => searchableText.includes(term));
+      })
+      .sort((a, b) => {
+        const createdA = new Date(a.createdAt).getTime();
+        const createdB = new Date(b.createdAt).getTime();
+        return createdB - createdA;
+      });
   }, [entries, accountFilter, query]);
 
   const totalRisk = useMemo(() => {
@@ -999,6 +1145,13 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       status: entry.status,
       riskAmount: String(entry.riskAmount),
       investmentPercent: String(entry.investmentPercent),
+      closePrice: (() => {
+        if (entry.closePrice !== null) {
+          return String(entry.closePrice);
+        }
+        const inferred = inferClosePriceFromResultR(entry.direction, entry.entryPrice, entry.stopLoss, entry.resultR);
+        return inferred === null ? '' : String(inferred);
+      })(),
       resultR: entry.resultR === null ? '' : String(entry.resultR),
       noEntryReason: entry.noEntryReason ?? '',
       note: entry.note,
@@ -1082,17 +1235,18 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
     try {
       const calculatedResultR = editForm.status === 'closed'
-        ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, editingEntry.takeProfit)
+        ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, toNumber(editForm.closePrice))
         : null;
 
       if (editForm.status === 'closed' && calculatedResultR === null) {
-        throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y TP.');
+        throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y Valor de cierre.');
       }
 
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
+        closePrice: editForm.status === 'closed' ? toNumber(editForm.closePrice) : null,
         resultR: editForm.status === 'closed' ? calculatedResultR : toNumberOrNull(editForm.resultR),
         noEntryReason: editForm.noEntryReason,
         note: editForm.note,
@@ -1116,8 +1270,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         groupApplied: result.groupApplied,
         affectedEntries: result.affectedEntries,
         fieldsChanged: result.groupApplied
-          ? ['status', 'note', 'riskAmount', 'investmentPercent', 'resultR']
-          : ['status', 'riskAmount', 'investmentPercent', 'resultR', 'note'],
+          ? ['status', 'note', 'riskAmount', 'investmentPercent', 'closePrice', 'resultR']
+          : ['status', 'riskAmount', 'investmentPercent', 'closePrice', 'resultR', 'note'],
       });
 
       closeModal();
