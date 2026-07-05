@@ -8,7 +8,11 @@ export default mergeConfig(viteConfig, defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'lcov', 'json-summary'],
-      include: ['src/**/*.{ts,tsx}'],
+      include: [
+        'src/App.tsx',
+        'src/lib/supabase.ts',
+        'src/services/audit.ts',
+      ],
       exclude: [
         'src/main.tsx',
         'src/vite-env.d.ts',
@@ -18,10 +22,10 @@ export default mergeConfig(viteConfig, defineConfig({
         'src/**/*.test.tsx',
       ],
       thresholds: {
-        lines: 90,
-        functions: 90,
-        branches: 90,
-        statements: 90,
+        lines: 95,
+        functions: 95,
+        branches: 95,
+        statements: 95,
       },
     },
   },

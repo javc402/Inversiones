@@ -11,8 +11,8 @@ if (!fs.existsSync(summaryPath)) {
 const summary = JSON.parse(fs.readFileSync(summaryPath, 'utf8'));
 const metrics = ['statements', 'lines', 'branches', 'functions'];
 
-const GLOBAL_MIN = 90;
-const FILE_MIN = 80;
+const GLOBAL_MIN = 95;
+const FILE_MIN = 95;
 
 const failures = [];
 

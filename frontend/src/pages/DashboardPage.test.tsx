@@ -829,4 +829,126 @@ describe('DashboardPage', () => {
     expect(formatDate('invalid-date')).toBe('invalid-date')
   })
 
+  it('maneja error cuando getCurrentUserRole falla', async () => {
+    getCurrentUserRoleMock.mockRejectedValueOnce(new Error('Role fetch failed'))
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
+  })
+
+  it('usa initialRole cuando está definido para evitar llamada a API', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    const initialRole = { id: 'role-admin', name: 'admin' as const, description: 'Administrador' }
+
+    render(
+      <DashboardPage
+        userEmail="admin@demo.com"
+        onSignOut={vi.fn().mockResolvedValue(undefined)}
+        initialRole={initialRole}
+      />
+    )
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
+    expect(getCurrentUserRoleMock).not.toHaveBeenCalled()
+  })
+
+  it('reestablece tab a resumen cuando usuario no-admin intenta acceder a usuarios', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))
+    expect(await screen.findByText('Modulo de Entradas')).toBeInTheDocument()
+  })
+
+  it('cambia de año y filtra resultados correctamente', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    
+    const today = new Date()
+    const lastYear = today.getFullYear() - 1
+
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-2025',
+        groupId: 'g1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        setup: 'Breakout',
+        session: 'NY',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: `${lastYear}-01-10T10:00:00.000Z`,
+        createdAt: `${lastYear}-01-10T10:00:00.000Z`,
+        updatedAt: `${lastYear}-01-10T10:00:00.000Z`,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-2026',
+        groupId: 'g2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        contextSource: 'free_text',
+        setup: 'Pullback',
+        session: 'London',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: -0.5,
+        note: '',
+        status: 'closed',
+        plannedAt: today.toISOString(),
+        createdAt: today.toISOString(),
+        updatedAt: today.toISOString(),
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const yearFilter = await screen.findByLabelText('Filtrar por año')
+    expect(yearFilter).toBeInTheDocument()
+    expect((yearFilter as HTMLSelectElement).value).toBe('all')
+  })
+
 })
