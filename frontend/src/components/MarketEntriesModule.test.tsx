@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import MarketEntriesModule from './MarketEntriesModule';
 import * as marketEntriesService from '@services/market-entries';
@@ -660,10 +660,9 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
 
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
 
-    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
       target: { value: 'No setup válido' },
     });
 
@@ -693,9 +692,8 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
-    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
+    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
       target: { value: 'No setup válido' },
     });
 
@@ -720,9 +718,8 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    const selects = screen.getAllByRole('combobox');
-    fireEvent.change(selects[2], { target: { value: 'no_entry' } });
-    fireEvent.change(screen.getByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
+    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
       target: { value: 'No setup válido' },
     });
 
@@ -733,10 +730,10 @@ describe('MarketEntriesModule', () => {
   });
 
   it('should save edited entry from modal', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
-    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([
       {
         id: 'entry-1',
         groupId: 'group-1',
@@ -772,6 +769,7 @@ describe('MarketEntriesModule', () => {
 
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
+    await screen.findByText('Breakout');
     fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
@@ -781,7 +779,7 @@ describe('MarketEntriesModule', () => {
   });
 
   it('should open and close help popover in modal', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
     vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
@@ -857,7 +855,7 @@ describe('MarketEntriesModule', () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
-    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([
       {
         id: 'entry-1',
         groupId: 'group-1',

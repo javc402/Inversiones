@@ -3,6 +3,8 @@ import { supabase } from '@lib/supabase';
 export type MarketEntryDirection = 'buy' | 'sell';
 export type MarketEntryStatus = 'planned' | 'open' | 'closed' | 'cancelled' | 'no_entry';
 export type MarketContextSource = 'free_text' | 'news';
+export type MarketNewsImpact = 'high' | 'medium' | 'low';
+export type CandleProtocol = 'ob' | 'fvg' | 'no';
 
 export interface MarketEntry {
   id: string;
@@ -11,16 +13,20 @@ export interface MarketEntry {
   accountId: string;
   accountName: string;
   symbol: string;
+  symbolDetail: string | null;
   marketContext: string;
   contextSource: MarketContextSource;
   newsArticleId: string | null;
+  newsImpact: MarketNewsImpact | null;
   setup: string;
   session: string;
+  candleProtocol: CandleProtocol | null;
   direction: MarketEntryDirection;
-  entryPrice: number;
-  stopLoss: number;
-  takeProfit: number;
+  entryPrice?: number | null;
+  stopLoss?: number | null;
+  takeProfit?: number | null;
   closePrice?: number | null;
+  operationLink: string | null;
   riskAmount: number;
   investmentPercent: number;
   resultR: number | null;
@@ -34,16 +40,20 @@ export interface MarketEntry {
 
 export interface MarketEntryCommonInput {
   symbol?: string;
+  symbolDetail?: string | null;
   marketContext: string;
   contextSource: MarketContextSource;
   newsArticleId?: string | null;
+  newsImpact?: MarketNewsImpact | null;
   setup?: string;
   session?: string;
+  candleProtocol?: CandleProtocol;
   direction?: MarketEntryDirection;
   entryPrice?: number;
   stopLoss?: number;
   takeProfit?: number;
   closePrice?: number | null;
+  operationLink?: string;
   resultR?: number | null;
   noEntryReason?: string;
   note: string;
@@ -69,6 +79,7 @@ interface UpdateMarketEntryInput {
   investmentPercent: number;
   closePrice?: number | null;
   resultR: number | null;
+  operationLink?: string;
   note: string;
   noEntryReason?: string;
 }
@@ -89,16 +100,20 @@ interface MarketEntryRow {
   account_id: string | null;
   account_name: string | null;
   symbol: string;
+  symbol_detail?: string | null;
   market_context: string;
   context_source: MarketContextSource;
   news_article_id: string | null;
+  news_impact?: MarketNewsImpact | null;
   setup: string;
   session: string;
+  candle_protocol?: CandleProtocol | null;
   direction: MarketEntryDirection | null;
-  entry_price: number | null;
-  stop_loss: number | null;
-  take_profit: number | null;
-  close_price: number | null;
+  entry_price?: number | null;
+  stop_loss?: number | null;
+  take_profit?: number | null;
+  close_price?: number | null;
+  operation_link?: string | null;
   risk_amount: number | null;
   investment_percent: number | null;
   result_r: number | null;
@@ -131,16 +146,20 @@ function mapRowToEntry(row: MarketEntryRow): MarketEntry {
     accountId: row.account_id ?? '',
     accountName: row.account_name ?? '',
     symbol: row.symbol,
+    symbolDetail: row.symbol_detail ?? null,
     marketContext: row.market_context,
     contextSource: row.context_source,
     newsArticleId: row.news_article_id,
+    newsImpact: row.news_impact ?? null,
     setup: row.setup,
     session: row.session,
+    candleProtocol: row.candle_protocol ?? null,
     direction: row.direction ?? 'buy',
-    entryPrice: row.entry_price === null ? 0 : Number(row.entry_price),
-    stopLoss: row.stop_loss === null ? 0 : Number(row.stop_loss),
-    takeProfit: row.take_profit === null ? 0 : Number(row.take_profit),
-    closePrice: row.close_price === null ? null : Number(row.close_price),
+    entryPrice: row.entry_price === null || row.entry_price === undefined ? null : Number(row.entry_price),
+    stopLoss: row.stop_loss === null || row.stop_loss === undefined ? null : Number(row.stop_loss),
+    takeProfit: row.take_profit === null || row.take_profit === undefined ? null : Number(row.take_profit),
+    closePrice: row.close_price === null || row.close_price === undefined ? null : Number(row.close_price),
+    operationLink: row.operation_link ?? null,
     riskAmount: row.risk_amount === null ? 0 : Number(row.risk_amount),
     investmentPercent: row.investment_percent === null ? 0 : Number(row.investment_percent),
     resultR: row.result_r,
@@ -170,10 +189,40 @@ function normalizePerAccount(perAccount: MarketEntryAccountInput[]): MarketEntry
   }));
 }
 
+function validateOptionalUrl(value: string | undefined): string {
+  const trimmed = value?.trim() ?? '';
+  if (!trimmed) {
+    return '';
+  }
+
+  try {
+    return new URL(trimmed).toString();
+  } catch {
+    throw new Error('El link de la operación no es válido.');
+  }
+}
+
+function hasSingleDecimalPrecision(value: number): boolean {
+  return Number.isInteger(value * 10);
+}
+
+function validateResultR(value: number | null | undefined): void {
+  if (value === null || value === undefined || !Number.isFinite(value)) {
+    throw new Error('El Resultado R es obligatorio para entradas completadas.');
+  }
+
+  if (!hasSingleDecimalPrecision(value)) {
+    throw new Error('El Resultado R debe tener un único decimal.');
+  }
+}
+
 function validateCommonInput(common: MarketEntryCommonInput): void {
   if (!common.marketContext.trim()) throw new Error('El contexto/noticia es obligatorio.');
   if (common.contextSource === 'news' && !common.newsArticleId) {
     throw new Error('Debes seleccionar una noticia registrada.');
+  }
+  if (common.contextSource === 'news' && !common.newsImpact) {
+    throw new Error('Debes indicar el impacto de la noticia.');
   }
 
   if (common.status === 'no_entry') {
@@ -184,17 +233,15 @@ function validateCommonInput(common: MarketEntryCommonInput): void {
   }
 
   if (!common.symbol?.trim()) throw new Error('El símbolo es obligatorio.');
+  if (common.symbol.trim().toUpperCase() === 'OTRO' && !common.symbolDetail?.trim()) {
+    throw new Error('Debes indicar el símbolo cuando seleccionas Otro.');
+  }
   if (!common.setup?.trim()) throw new Error('El setup/estrategia es obligatorio.');
   if (!common.session?.trim()) throw new Error('La sesión es obligatoria.');
   if (!common.direction) throw new Error('La dirección es obligatoria.');
-  if (!Number.isFinite(common.entryPrice) || (common.entryPrice ?? 0) <= 0) throw new Error('Precio de entrada inválido.');
-  if (!Number.isFinite(common.stopLoss) || (common.stopLoss ?? 0) <= 0) throw new Error('Stop loss inválido.');
-  if (!Number.isFinite(common.takeProfit) || (common.takeProfit ?? 0) <= 0) throw new Error('Take profit inválido.');
-  if (common.status === 'closed' && (!Number.isFinite(common.closePrice) || (common.closePrice ?? 0) <= 0)) {
-    throw new Error('El valor de cierre es obligatorio para entradas completadas.');
-  }
-  if (common.status === 'closed' && (common.resultR === null || common.resultR === undefined || !Number.isFinite(common.resultR))) {
-    throw new Error('El Resultado R es obligatorio para entradas completadas.');
+  validateOptionalUrl(common.operationLink);
+  if (common.status === 'closed') {
+    validateResultR(common.resultR);
   }
 }
 
@@ -230,6 +277,8 @@ function validateUpdateMarketEntryInput(
   next: UpdateMarketEntryInput,
   isNoEntryFlow: boolean
 ): void {
+  validateOptionalUrl(next.operationLink);
+
   if (isNoEntryFlow) {
     if (next.status === 'no_entry' && !next.noEntryReason?.trim()) {
       throw new Error('Debes indicar el motivo sin entrada.');
@@ -243,6 +292,10 @@ function validateUpdateMarketEntryInput(
 
   if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
     throw new Error('El % de inversión debe ser mayor que 0.');
+  }
+
+  if (next.status === 'closed') {
+    validateResultR(next.resultR);
   }
 }
 
@@ -258,7 +311,7 @@ function buildMarketEntryUpdatePayload(
       status: next.status,
       note: trimmedNote,
       no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
-      close_price: null,
+      operation_link: next.operationLink?.trim() || null,
       updated_at: timestamp,
     };
   }
@@ -267,8 +320,8 @@ function buildMarketEntryUpdatePayload(
     status: next.status,
     risk_amount: next.riskAmount,
     investment_percent: next.investmentPercent,
-    close_price: next.closePrice ?? null,
     result_r: next.resultR,
+    operation_link: next.operationLink?.trim() || null,
     note: trimmedNote,
     no_entry_reason: null,
     updated_at: timestamp,
@@ -336,16 +389,20 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         account_id: null,
         account_name: null,
         symbol: (input.common.symbol ?? '').trim().toUpperCase(),
+        symbol_detail: input.common.symbolDetail?.trim().toUpperCase() || null,
         market_context: input.common.marketContext.trim(),
         context_source: input.common.contextSource,
         news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
+        news_impact: input.common.contextSource === 'news' ? (input.common.newsImpact ?? null) : null,
         setup: (input.common.setup ?? '').trim(),
         session: (input.common.session ?? '').trim(),
+        candle_protocol: input.common.candleProtocol ?? 'no',
         direction: null,
         entry_price: null,
         stop_loss: null,
         take_profit: null,
         close_price: null,
+        operation_link: validateOptionalUrl(input.common.operationLink) || null,
         risk_amount: null,
         investment_percent: null,
         result_r: null,
@@ -362,16 +419,20 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         account_id: item.accountId,
         account_name: item.accountName,
         symbol: (input.common.symbol ?? '').trim().toUpperCase(),
+        symbol_detail: input.common.symbolDetail?.trim().toUpperCase() || null,
         market_context: input.common.marketContext.trim(),
         context_source: input.common.contextSource,
         news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
+        news_impact: input.common.contextSource === 'news' ? (input.common.newsImpact ?? null) : null,
         setup: (input.common.setup as string).trim(),
         session: (input.common.session as string).trim(),
+        candle_protocol: input.common.candleProtocol ?? 'no',
         direction: input.common.direction,
-        entry_price: input.common.entryPrice,
-        stop_loss: input.common.stopLoss,
-        take_profit: input.common.takeProfit,
-        close_price: input.common.closePrice ?? null,
+        entry_price: null,
+        stop_loss: null,
+        take_profit: null,
+        close_price: null,
+        operation_link: validateOptionalUrl(input.common.operationLink) || null,
         risk_amount: item.riskAmount,
         investment_percent: item.investmentPercent,
         result_r: input.common.resultR ?? null,
@@ -462,7 +523,7 @@ export async function updateMarketEntryById(
       riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
       investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
       resultR: isNoEntryFlow ? updated.resultR : next.resultR,
-      closePrice: isNoEntryFlow ? updated.closePrice : (next.closePrice ?? null),
+        operationLink: next.operationLink?.trim() || null,
       note: trimmedNote,
       noEntryReason: next.status === 'no_entry' ? (next.noEntryReason as string).trim() : null,
     },

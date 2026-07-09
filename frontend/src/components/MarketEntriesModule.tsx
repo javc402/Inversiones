@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { AppIcon } from './AppIcon';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
 import {
+  CandleProtocol,
   CreateMarketEntriesInput,
   createMarketEntriesForAccounts,
   deleteMarketEntryById,
@@ -11,6 +12,7 @@ import {
   MarketContextSource,
   MarketEntry,
   MarketEntryDirection,
+  MarketNewsImpact,
   MarketEntryStatus,
   updateMarketEntryById,
 } from '../services/market-entries';
@@ -45,17 +47,17 @@ interface MarketEntriesModuleProps {
 
 interface EntryCommonForm {
   symbol: string;
+  symbolDetail: string;
   marketContext: string;
   contextSource: MarketContextSource;
   newsArticleId: string;
+  newsImpact: MarketNewsImpact | '';
   setup: string;
   session: string;
+  candleProtocol: CandleProtocol;
   direction: MarketEntryDirection;
-  entryPrice: string;
-  stopLoss: string;
-  takeProfit: string;
-  closePrice?: string;
   resultR: string;
+  operationLink: string;
   noEntryReason: string;
   note: string;
   plannedAt: string;
@@ -66,25 +68,27 @@ interface EditForm {
   status: MarketEntryStatus;
   riskAmount: string;
   investmentPercent: string;
-  closePrice: string;
   resultR: string;
+  operationLink: string;
   noEntryReason: string;
   note: string;
 }
 
+const COMMON_SYMBOL_OPTIONS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'NAS100', 'US30', 'NZDUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'OTRO'] as const;
+
 const defaultCommonForm: EntryCommonForm = {
   symbol: '',
+  symbolDetail: '',
   marketContext: '',
   contextSource: 'free_text',
   newsArticleId: '',
+  newsImpact: '',
   setup: '',
   session: 'NEW YORK',
+  candleProtocol: 'no',
   direction: 'buy',
-  entryPrice: '',
-  stopLoss: '',
-  takeProfit: '',
-  closePrice: '',
-  resultR: '',
+  resultR: '0.0',
+  operationLink: '',
   noEntryReason: '',
   note: '',
   plannedAt: new Date().toISOString().slice(0, 16),
@@ -95,8 +99,8 @@ const defaultEditForm: EditForm = {
   status: 'planned',
   riskAmount: '',
   investmentPercent: '',
-  closePrice: '',
-  resultR: '',
+  resultR: '0.0',
+  operationLink: '',
   noEntryReason: '',
   note: '',
 };
@@ -148,20 +152,12 @@ export function toNumberOrNull(value: string): number | null {
   return Number(trimmed);
 }
 
-export function calculateResultR(
-  direction: MarketEntryDirection,
-  entryPrice: number,
-  stopLoss: number,
-  closePrice: number
-): number | null {
-  const risk = direction === 'buy' ? entryPrice - stopLoss : stopLoss - entryPrice;
-  const reward = direction === 'buy' ? closePrice - entryPrice : entryPrice - closePrice;
-
-  if (!Number.isFinite(risk) || !Number.isFinite(reward) || risk <= 0) {
+export function normalizeResultR(value: number): number | null {
+  if (!Number.isFinite(value)) {
     return null;
   }
 
-  return reward / risk;
+  return Math.round(value * 10) / 10;
 }
 
 export function calculateAccountResultAmount(riskAmount: number, resultR: number | null): number | null {
@@ -172,23 +168,25 @@ export function calculateAccountResultAmount(riskAmount: number, resultR: number
   return riskAmount * resultR;
 }
 
-export function inferClosePriceFromResultR(
-  direction: MarketEntryDirection,
-  entryPrice: number,
-  stopLoss: number,
-  resultR: number | null
-): number | null {
-  if (resultR === null || !Number.isFinite(resultR)) {
-    return null;
+export function resolveEntrySymbol(entry: Pick<MarketEntry, 'symbol' | 'symbolDetail'>): string {
+  if (entry.symbol === 'OTRO') {
+    return entry.symbolDetail?.trim() || 'OTRO';
   }
 
-  const risk = direction === 'buy' ? entryPrice - stopLoss : stopLoss - entryPrice;
-  if (!Number.isFinite(risk) || risk <= 0) {
-    return null;
-  }
+  return entry.symbol;
+}
 
-  const reward = resultR * risk;
-  return direction === 'buy' ? entryPrice + reward : entryPrice - reward;
+export function candleProtocolLabel(protocol: CandleProtocol | null): string {
+  if (protocol === 'ob') return 'OB';
+  if (protocol === 'fvg') return 'FVG';
+  return 'NO';
+}
+
+export function newsImpactLabel(impact: MarketNewsImpact | null): string {
+  if (impact === 'high') return 'Alto';
+  if (impact === 'medium') return 'Medio';
+  if (impact === 'low') return 'Bajo';
+  return 'Sin impacto';
 }
 
 export function entryDeletionLabel(entry: MarketEntry): string {
@@ -241,32 +239,27 @@ export function buildCreateMarketEntryRequest(
   isCompletedOnCreate: boolean
 ) {
   const resultRValue = isCompletedOnCreate && !isNoEntryOnCreate
-    ? calculateResultR(
-      commonForm.direction,
-      toNumber(commonForm.entryPrice),
-      toNumber(commonForm.stopLoss),
-      toNumber(commonForm.closePrice ?? '')
-    )
+    ? normalizeResultR(toNumber(commonForm.resultR))
     : null;
 
   if (isCompletedOnCreate && resultRValue === null) {
-    throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y Valor de cierre.');
+    throw new Error('No se pudo interpretar el Resultado R ingresado.');
   }
 
   return {
     createInput: {
       common: {
         symbol: commonForm.symbol,
+        symbolDetail: commonForm.symbol === 'OTRO' ? commonForm.symbolDetail : null,
         marketContext: commonForm.marketContext,
         contextSource: commonForm.contextSource,
         newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
+        newsImpact: commonForm.contextSource === 'news' ? (commonForm.newsImpact || null) : null,
         setup: commonForm.setup,
         session: commonForm.session,
+        candleProtocol: commonForm.candleProtocol,
         direction: isNoEntryOnCreate ? undefined : commonForm.direction,
-        entryPrice: isNoEntryOnCreate ? undefined : toNumber(commonForm.entryPrice),
-        stopLoss: isNoEntryOnCreate ? undefined : toNumber(commonForm.stopLoss),
-        takeProfit: isNoEntryOnCreate ? undefined : toNumber(commonForm.takeProfit),
-        closePrice: isCompletedOnCreate ? toNumber(commonForm.closePrice ?? '') : null,
+        operationLink: commonForm.operationLink,
         resultR: isCompletedOnCreate ? resultRValue : null,
         noEntryReason: isNoEntryOnCreate ? commonForm.noEntryReason : undefined,
         note: commonForm.note,
@@ -395,13 +388,14 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
   const isNoEntry = entry.status === 'no_entry';
   const accountResult = calculateAccountResultAmount(entry.riskAmount, entry.resultR);
   const outcome = resolveEntryOutcome(entry);
+  const entrySymbol = resolveEntrySymbol(entry);
 
   return (
     <article className="entries-card">
       <header className="entries-card-header">
         <div>
           <p className="entries-card-account">{entry.accountName || 'Sin cuenta asociada'}</p>
-          <h3>{isNoEntry ? (entry.symbol || 'Sin entrada al mercado') : `${entry.symbol} · ${directionLabel(entry.direction)}`}</h3>
+          <h3>{isNoEntry ? (entrySymbol || 'Sin entrada al mercado') : `${entrySymbol} · ${directionLabel(entry.direction)}`}</h3>
           {isGroupedEntry && (
             <span className="entries-group-badge">Grupo · {groupSize} cuentas</span>
           )}
@@ -414,28 +408,27 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
 
       <div className="entries-grid-meta">
         <p><strong>Contexto:</strong> {entry.marketContext}</p>
+        {entry.newsArticleId && <p><strong>Impacto noticia:</strong> {newsImpactLabel(entry.newsImpact)}</p>}
         <p><strong>Setup/Estrategia:</strong> {entry.setup}</p>
+        <p><strong>Protocolo vela:</strong> {candleProtocolLabel(entry.candleProtocol)}</p>
         <p><strong>Sesion:</strong> {entry.session}</p>
         <p><strong>Fecha de ejecucion:</strong> {formatDate(entry.plannedAt)}</p>
+        {entry.operationLink && (
+          <p>
+            <strong>Link operación:</strong>{' '}
+            <a href={entry.operationLink} target="_blank" rel="noreferrer">Abrir enlace</a>
+          </p>
+        )}
         {isNoEntry && <p><strong>Motivo sin entrada:</strong> {entry.noEntryReason || 'Sin detalle'}</p>}
       </div>
 
       {!isNoEntry && (
-        <>
-          <div className="entries-prices-row">
-            <span>Entrada: {entry.entryPrice}</span>
-            <span>SL: {entry.stopLoss}</span>
-            <span>TP: {entry.takeProfit}</span>
-            {entry.closePrice !== null && <span>Cierre: {entry.closePrice}</span>}
-          </div>
-
-          <div className="entries-risk-row">
-            <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
-            <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
-            <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(2)}</span>
-            <span>Resultado cuenta: {accountResult === null ? 'N/A' : `$${accountResult.toFixed(2)}`}</span>
-          </div>
-        </>
+        <div className="entries-risk-row">
+          <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
+          <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
+          <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(1)}</span>
+          <span>Resultado cuenta: {accountResult === null ? 'N/A' : `$${accountResult.toFixed(2)}`}</span>
+        </div>
       )}
 
       <p className="entries-note">{entry.note || 'Sin notas.'}</p>
@@ -507,18 +500,36 @@ function MarketEntriesCreateForm({
   closeModal,
   handleCreateSubmit,
 }: Readonly<MarketEntriesCreateFormProps>) {
+  const isOtherSymbol = commonForm.symbol === 'OTRO';
+
   return (
     <form className="entries-form" onSubmit={handleCreateSubmit}>
       <label>
         <EntryFieldLabel text="Simbolo" help="Par de mercado o activo sobre el que vas a registrar la entrada." />
-        <input
+        <select
           value={commonForm.symbol}
-          onChange={(event) => setCommonForm((prev) => ({ ...prev, symbol: event.target.value }))}
-          placeholder="EURUSD"
+          onChange={(event) => setCommonForm((prev) => ({ ...prev, symbol: event.target.value, symbolDetail: event.target.value === 'OTRO' ? prev.symbolDetail : '' }))}
           required={!isNoEntryOnCreate}
           disabled={isNoEntryOnCreate}
-        />
+        >
+          <option value="">Selecciona símbolo</option>
+          {COMMON_SYMBOL_OPTIONS.map((symbol) => (
+            <option key={symbol} value={symbol}>{symbol === 'OTRO' ? 'Otro' : symbol}</option>
+          ))}
+        </select>
       </label>
+
+      {isOtherSymbol && !isNoEntryOnCreate && (
+        <label>
+          <EntryFieldLabel text="Otro simbolo" help="Usa este campo sólo cuando el activo no esté en la lista estándar." />
+          <input
+            value={commonForm.symbolDetail}
+            onChange={(event) => setCommonForm((prev) => ({ ...prev, symbolDetail: event.target.value.toUpperCase() }))}
+            placeholder="Ej: DE40"
+            required={isOtherSymbol}
+          />
+        </label>
+      )}
 
       <label>
         <EntryFieldLabel text="Direccion" help="Sentido de la operación: BUY para largos o SELL para cortos." />
@@ -588,6 +599,20 @@ function MarketEntriesCreateForm({
             </label>
 
             <label>
+              <EntryFieldLabel text="Impacto" help="Clasifica la noticia según su impacto esperado en la operación: alto, medio o bajo." />
+              <select
+                value={commonForm.newsImpact}
+                onChange={(event) => setCommonForm((prev) => ({ ...prev, newsImpact: event.target.value as MarketNewsImpact }))}
+                required
+              >
+                <option value="">Selecciona impacto</option>
+                <option value="high">Alto</option>
+                <option value="medium">Medio</option>
+                <option value="low">Bajo</option>
+              </select>
+            </label>
+
+            <label>
               <EntryFieldLabel text="Contexto/Noticia" help="Se completa con el titulo de la noticia seleccionada, editable si necesitas precisión adicional." />
               <input
                 value={commonForm.marketContext}
@@ -648,39 +673,16 @@ function MarketEntriesCreateForm({
       </label>
 
       <label>
-        <EntryFieldLabel text="Entrada" help="Precio objetivo para ejecutar la entrada." />
-        <input
-          type="number"
-          step="0.0001"
-          value={commonForm.entryPrice}
-          onChange={(event) => setCommonForm((prev) => ({ ...prev, entryPrice: event.target.value }))}
-          required={!isNoEntryOnCreate}
+        <EntryFieldLabel text="Protocolo vela envolvente" help="Clasifica la validación técnica de la entrada como OB, FVG o NO." />
+        <select
+          value={commonForm.candleProtocol}
+          onChange={(event) => setCommonForm((prev) => ({ ...prev, candleProtocol: event.target.value as CandleProtocol }))}
           disabled={isNoEntryOnCreate}
-        />
-      </label>
-
-      <label>
-        <EntryFieldLabel text="Stop Loss" help="Nivel de invalidación de la idea para limitar pérdida." />
-        <input
-          type="number"
-          step="0.0001"
-          value={commonForm.stopLoss}
-          onChange={(event) => setCommonForm((prev) => ({ ...prev, stopLoss: event.target.value }))}
-          required={!isNoEntryOnCreate}
-          disabled={isNoEntryOnCreate}
-        />
-      </label>
-
-      <label>
-        <EntryFieldLabel text="Take Profit" help="Objetivo de salida con beneficio para la operación." />
-        <input
-          type="number"
-          step="0.0001"
-          value={commonForm.takeProfit}
-          onChange={(event) => setCommonForm((prev) => ({ ...prev, takeProfit: event.target.value }))}
-          required={!isNoEntryOnCreate}
-          disabled={isNoEntryOnCreate}
-        />
+        >
+          <option value="ob">OB</option>
+          <option value="fvg">FVG</option>
+          <option value="no">NO</option>
+        </select>
       </label>
 
       <label>
@@ -713,35 +715,33 @@ function MarketEntriesCreateForm({
       {isCompletedOnCreate && (
         <>
           <label>
-            <EntryFieldLabel text="Valor de cierre" help="Precio real al que cerraste la operación, igual que en Excel." />
+            <EntryFieldLabel text="Resultado R" help="Usa un único decimal. -1 indica SL, 0 sin trade, 1 breakeven y valores mayores a 1 representan ganancia en R." />
             <input
               type="number"
-              step="0.0001"
-              value={commonForm.closePrice}
-              onChange={(event) => setCommonForm((prev) => ({ ...prev, closePrice: event.target.value }))}
-              placeholder="Ej: 152.25"
+              step="0.1"
+              value={commonForm.resultR}
+              onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
+              placeholder="0.0"
               required
             />
           </label>
 
           <label>
-            <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL y Valor de cierre." />
-            <input
-              value={(() => {
-                const calculated = calculateResultR(
-                  commonForm.direction,
-                  toNumber(commonForm.entryPrice),
-                  toNumber(commonForm.stopLoss),
-                  toNumber(commonForm.closePrice ?? '')
-                );
-
-                return calculated === null ? 'No calculable' : calculated.toFixed(2);
-              })()}
-              disabled
-            />
+            <EntryFieldLabel text="Resultado cuenta estimado" help="Se obtiene al multiplicar el Riesgo por cuenta por el Resultado R cuando guardes la entrada." />
+            <input value="Se calcula por cuenta al guardar" disabled />
           </label>
         </>
       )}
+
+      <label className="entries-form-span-2">
+        <EntryFieldLabel text="Link de la operación" help="Enlace a TradingView, broker o evidencia visual para consultar rápidamente la operación." />
+        <input
+          type="url"
+          value={commonForm.operationLink}
+          onChange={(event) => setCommonForm((prev) => ({ ...prev, operationLink: event.target.value }))}
+          placeholder="https://..."
+        />
+      </label>
 
       <label className="entries-form-span-2">
         <EntryFieldLabel text="Notas" help="Observaciones tácticas para seguimiento y revisión posterior." />
@@ -846,8 +846,8 @@ function MarketEntriesEditForm({
   closeModal,
   handleEditSubmit,
 }: Readonly<MarketEntriesEditFormProps>) {
-  const calculatedEditResultR = editingEntry && editForm.status === 'closed'
-    ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, toNumber(editForm.closePrice))
+  const calculatedEditResultR = editForm.status === 'closed'
+    ? normalizeResultR(toNumber(editForm.resultR))
     : null;
   const calculatedEditAccountResult = editForm.status === 'closed'
     ? calculateAccountResultAmount(toNumber(editForm.riskAmount), calculatedEditResultR)
@@ -863,7 +863,7 @@ function MarketEntriesEditForm({
 
       <label>
         <EntryFieldLabel text="Simbolo" help="Activo asociado a la entrada; en edición se muestra como referencia." />
-        <input value={editingEntry?.symbol ?? ''} disabled />
+        <input value={editingEntry ? resolveEntrySymbol(editingEntry) : ''} disabled />
       </label>
 
       {showEntryReference && editingEntry && (
@@ -875,16 +875,12 @@ function MarketEntriesEditForm({
               <input value={directionLabel(editingEntry.direction)} disabled />
             </label>
             <label>
-              <EntryFieldLabel text="Entrada" help="Precio de entrada original registrado." />
-              <input value={String(editingEntry.entryPrice)} disabled />
+              <EntryFieldLabel text="Protocolo vela" help="Clasificación técnica guardada para esta entrada." />
+              <input value={candleProtocolLabel(editingEntry.candleProtocol)} disabled />
             </label>
             <label>
-              <EntryFieldLabel text="Stop Loss" help="Nivel SL original registrado." />
-              <input value={String(editingEntry.stopLoss)} disabled />
-            </label>
-            <label>
-              <EntryFieldLabel text="Take Profit" help="Nivel TP original registrado." />
-              <input value={String(editingEntry.takeProfit)} disabled />
+              <EntryFieldLabel text="Impacto noticia" help="Impacto asociado a la noticia enlazada, cuando aplica." />
+              <input value={newsImpactLabel(editingEntry.newsImpact)} disabled />
             </label>
           </div>
         </section>
@@ -913,7 +909,7 @@ function MarketEntriesEditForm({
       ) : (
         <>
           <label>
-            <EntryFieldLabel text="Riesgo por cuenta (USD)" help="Monto en USD que arriesgas en esta cuenta; representa la perdida esperada si toca SL." />
+            <EntryFieldLabel text="Riesgo por cuenta (USD)" help="Monto en USD base para calcular el resultado monetario de la operación." />
             <input type="number" step="0.01" min="0" value={editForm.riskAmount} onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: event.target.value }))} required />
           </label>
 
@@ -925,13 +921,13 @@ function MarketEntriesEditForm({
           {editForm.status === 'closed' && (
             <>
               <label>
-                <EntryFieldLabel text="Valor de cierre" help="Precio real al que se cerró esta operación por cuenta." />
-                <input type="number" step="0.0001" value={editForm.closePrice} onChange={(event) => setEditForm((prev) => ({ ...prev, closePrice: event.target.value }))} required />
+                <EntryFieldLabel text="Resultado R" help="Usa un único decimal. -1 SL, 0 sin trade, 1 breakeven, >1 ganancia." />
+                <input type="number" step="0.1" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required />
               </label>
 
               <label>
-                <EntryFieldLabel text="Resultado R calculado" help="Se calcula automáticamente con Entrada, SL y Valor de cierre." />
-                <input value={calculatedEditResultR === null ? 'No calculable' : calculatedEditResultR.toFixed(2)} disabled />
+                <EntryFieldLabel text="Resultado R validado" help="Se normaliza con un decimal para asegurar consistencia con el cálculo del resultado." />
+                <input value={calculatedEditResultR === null ? 'No calculable' : calculatedEditResultR.toFixed(1)} disabled />
               </label>
 
               <label>
@@ -942,6 +938,11 @@ function MarketEntriesEditForm({
           )}
         </>
       )}
+
+      <label className="entries-form-span-2">
+        <EntryFieldLabel text="Link de la operación" help="Enlace operativo o evidencia visual relacionada con este registro." />
+        <input type="url" value={editForm.operationLink} onChange={(event) => setEditForm((prev) => ({ ...prev, operationLink: event.target.value }))} placeholder="https://..." />
+      </label>
 
       <label className="entries-form-span-2">
         <EntryFieldLabel text="Notas" help="Comentario operativo de seguimiento y cierre para la entrada." />
@@ -1051,10 +1052,14 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
         const searchableText = [
           entry.accountName,
+          resolveEntrySymbol(entry),
           entry.symbol,
+          entry.symbolDetail ?? '',
           entry.marketContext,
           entry.setup,
           entry.session,
+          candleProtocolLabel(entry.candleProtocol),
+          newsImpactLabel(entry.newsImpact),
           directionLabel(entry.direction),
           statusLabel(entry.status),
           outcome ? outcomeLabel(outcome) : '',
@@ -1062,10 +1067,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
           outcome === 'sl' ? 'stop loss' : '',
           entry.note,
           entry.noEntryReason ?? '',
-          String(entry.entryPrice),
-          String(entry.stopLoss),
-          String(entry.takeProfit),
-          entry.closePrice === null ? '' : String(entry.closePrice),
+          entry.operationLink ?? '',
           entry.resultR === null ? '' : String(entry.resultR),
           String(entry.riskAmount),
           String(entry.investmentPercent),
@@ -1145,14 +1147,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       status: entry.status,
       riskAmount: String(entry.riskAmount),
       investmentPercent: String(entry.investmentPercent),
-      closePrice: (() => {
-        if (entry.closePrice !== null) {
-          return String(entry.closePrice);
-        }
-        const inferred = inferClosePriceFromResultR(entry.direction, entry.entryPrice, entry.stopLoss, entry.resultR);
-        return inferred === null ? '' : String(inferred);
-      })(),
-      resultR: entry.resultR === null ? '' : String(entry.resultR),
+      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      operationLink: entry.operationLink ?? '',
       noEntryReason: entry.noEntryReason ?? '',
       note: entry.note,
     });
@@ -1205,8 +1201,12 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         targetType: 'system' as AuditTargetTypeWithSystem,
         source: 'frontend',
         symbol: commonForm.symbol,
+        symbolDetail: commonForm.symbol === 'OTRO' ? commonForm.symbolDetail : null,
         contextSource: commonForm.contextSource,
         newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
+        newsImpact: commonForm.contextSource === 'news' ? commonForm.newsImpact : null,
+        candleProtocol: commonForm.candleProtocol,
+        operationLink: commonForm.operationLink || null,
         status: commonForm.status,
         accountsCount: perAccount.length,
         accountIds: perAccount.map((item) => item.accountId),
@@ -1235,19 +1235,19 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
     try {
       const calculatedResultR = editForm.status === 'closed'
-        ? calculateResultR(editingEntry.direction, editingEntry.entryPrice, editingEntry.stopLoss, toNumber(editForm.closePrice))
+        ? normalizeResultR(toNumber(editForm.resultR))
         : null;
 
       if (editForm.status === 'closed' && calculatedResultR === null) {
-        throw new Error('No se pudo calcular Resultado R. Revisa Entrada, SL y Valor de cierre.');
+        throw new Error('No se pudo interpretar el Resultado R ingresado.');
       }
 
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
-        closePrice: editForm.status === 'closed' ? toNumber(editForm.closePrice) : null,
         resultR: editForm.status === 'closed' ? calculatedResultR : toNumberOrNull(editForm.resultR),
+        operationLink: editForm.operationLink,
         noEntryReason: editForm.noEntryReason,
         note: editForm.note,
       }, {
@@ -1270,8 +1270,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         groupApplied: result.groupApplied,
         affectedEntries: result.affectedEntries,
         fieldsChanged: result.groupApplied
-          ? ['status', 'note', 'riskAmount', 'investmentPercent', 'closePrice', 'resultR']
-          : ['status', 'riskAmount', 'investmentPercent', 'closePrice', 'resultR', 'note'],
+          ? ['status', 'note', 'riskAmount', 'investmentPercent', 'resultR', 'operationLink']
+          : ['status', 'riskAmount', 'investmentPercent', 'resultR', 'operationLink', 'note'],
       });
 
       closeModal();
