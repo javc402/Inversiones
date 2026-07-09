@@ -626,7 +626,23 @@ describe('DashboardPage', () => {
     expect(localStorage.getItem('inversiones_dashboard_active_tab')).toBe('cuentas')
   })
 
-  it('muestra noticias cuando se selecciona la pestaña de noticias', async () => {
+  it.each([
+    {
+      caseName: 'noticias',
+      buttonName: 'Mis noticias',
+      expectedContent: 'Modulo de Noticias',
+    },
+    {
+      caseName: 'entradas',
+      buttonName: 'Entradas mercado',
+      expectedContent: 'Modulo de Entradas',
+    },
+    {
+      caseName: 'configuracion',
+      buttonName: 'Configuración',
+      expectedContent: 'Modulo de Configuracion',
+    },
+  ])('muestra $caseName cuando se selecciona su pestaña', async ({ buttonName, expectedContent }) => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([])
 
@@ -638,43 +654,9 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
+    fireEvent.click(screen.getByRole('button', { name: buttonName }))
 
-    expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
-  })
-
-  it('muestra entradas al mercado cuando se selecciona la pestaña de entradas', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([])
-
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))
-
-    expect(await screen.findByText('Modulo de Entradas')).toBeInTheDocument()
-  })
-
-  it('muestra configuracion cuando se selecciona la pestaña de configuracion', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([])
-
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Configuración' }))
-
-    expect(await screen.findByText('Modulo de Configuracion')).toBeInTheDocument()
+    expect(await screen.findByText(expectedContent)).toBeInTheDocument()
   })
 
   it('maneja error cuando falla la carga de cuentas', async () => {

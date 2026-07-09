@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCreateMarketEntryRequest,
   buildCreatePerAccountSelection,
+  candleProtocolLabel,
   buildDefaultAccountRows,
   createAccountRow,
   directionLabel,
   entryDeletionLabel,
   formatDate as formatEntryDate,
   statusLabel as marketStatusLabel,
+  newsImpactLabel,
+  normalizeResultR,
+  resolveEntrySymbol,
   toNumber,
   toNumberOrNull,
 } from '@components/MarketEntriesModule';
@@ -144,6 +148,19 @@ describe('coverage helpers', () => {
     expect(toNumber(' 1.25 ')).toBe(1.25);
     expect(toNumberOrNull('')).toBeNull();
     expect(toNumberOrNull(' 2.5 ')).toBe(2.5);
+    expect(normalizeResultR(1.26)).toBe(1.3);
+    expect(normalizeResultR(Number.NaN)).toBeNull();
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: 'DE40' } as never)).toBe('DE40');
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: '' } as never)).toBe('OTRO');
+    expect(resolveEntrySymbol({ symbol: 'EURUSD', symbolDetail: null } as never)).toBe('EURUSD');
+    expect(candleProtocolLabel('ob')).toBe('OB');
+    expect(candleProtocolLabel('fvg')).toBe('FVG');
+    expect(candleProtocolLabel('no')).toBe('NO');
+    expect(candleProtocolLabel(null)).toBe('NO');
+    expect(newsImpactLabel('high')).toBe('Alto');
+    expect(newsImpactLabel('medium')).toBe('Medio');
+    expect(newsImpactLabel('low')).toBe('Bajo');
+    expect(newsImpactLabel(null)).toBe('Sin impacto');
   });
 
   it('market helpers cubren ramas adicionales', () => {
