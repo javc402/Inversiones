@@ -76,7 +76,7 @@ describe('MarketEntriesModule', () => {
 
     await waitFor(() => {
       const selects = container.querySelectorAll('.entries-accounts-row select');
-      expect(selects.length).toBe(2);
+      expect(selects).toHaveLength(2);
     });
 
     const selects = container.querySelectorAll('.entries-accounts-row select');
@@ -464,6 +464,48 @@ describe('MarketEntriesModule', () => {
 
     expect(await screen.findByText(/EURUSD/)).toBeInTheDocument();
     expect(screen.getByText(/GBPUSD/)).toBeInTheDocument();
+    expect(screen.getByText(/Tecnico: TP extendido/)).toBeInTheDocument();
+    expect(screen.getByText(/Financiero: Ganancia/)).toBeInTheDocument();
+  });
+
+  it('should classify R=1.0 as break tecnico and financial gain', async () => {
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        riskAmount: 150,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Real',
+        alias: 'Real',
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    expect(await screen.findByText(/EURUSD/)).toBeInTheDocument();
+    expect(screen.getByText(/Tecnico: Break tecnico 1:1/)).toBeInTheDocument();
+    expect(screen.getByText(/Financiero: Ganancia/)).toBeInTheDocument();
+    expect(screen.getByText(/Resultado cuenta: \$150.00/)).toBeInTheDocument();
   });
 
   it('should show error alert when loading entries fails', async () => {
@@ -601,6 +643,47 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    expect(await screen.findByText('Editar entrada por cuenta')).toBeInTheDocument();
+  });
+
+  it('should open edit modal immediately on dashboard event without refresh', async () => {
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+    await screen.findByText(/EURUSD/);
+
+    window.dispatchEvent(new CustomEvent('inversiones:open-entry-edit', { detail: { entryId: 'entry-1' } }));
+
     expect(await screen.findByText('Editar entrada por cuenta')).toBeInTheDocument();
   });
 

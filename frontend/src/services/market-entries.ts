@@ -79,6 +79,7 @@ interface UpdateMarketEntryInput {
   investmentPercent: number;
   closePrice?: number | null;
   resultR: number | null;
+  plannedAt?: string;
   operationLink?: string;
   note: string;
   noEntryReason?: string;
@@ -108,15 +109,18 @@ interface MarketEntryRow {
   setup: string;
   session: string;
   candle_protocol?: CandleProtocol | null;
+  envelope_protocol?: CandleProtocol | null;
   direction: MarketEntryDirection | null;
   entry_price?: number | null;
   stop_loss?: number | null;
   take_profit?: number | null;
   close_price?: number | null;
   operation_link?: string | null;
+  operation_url?: string | null;
   risk_amount: number | null;
   investment_percent: number | null;
   result_r: number | null;
+  risk_reward?: number | null;
   no_entry_reason: string | null;
   note: string;
   status: MarketEntryStatus;
@@ -153,16 +157,16 @@ function mapRowToEntry(row: MarketEntryRow): MarketEntry {
     newsImpact: row.news_impact ?? null,
     setup: row.setup,
     session: row.session,
-    candleProtocol: row.candle_protocol ?? null,
+    candleProtocol: row.candle_protocol ?? row.envelope_protocol ?? null,
     direction: row.direction ?? 'buy',
     entryPrice: row.entry_price === null || row.entry_price === undefined ? null : Number(row.entry_price),
     stopLoss: row.stop_loss === null || row.stop_loss === undefined ? null : Number(row.stop_loss),
     takeProfit: row.take_profit === null || row.take_profit === undefined ? null : Number(row.take_profit),
     closePrice: row.close_price === null || row.close_price === undefined ? null : Number(row.close_price),
-    operationLink: row.operation_link ?? null,
+    operationLink: row.operation_link ?? row.operation_url ?? null,
     riskAmount: row.risk_amount === null ? 0 : Number(row.risk_amount),
     investmentPercent: row.investment_percent === null ? 0 : Number(row.investment_percent),
-    resultR: row.result_r,
+    resultR: row.result_r ?? row.risk_reward ?? null,
     noEntryReason: row.no_entry_reason,
     note: row.note,
     status: row.status,
@@ -277,6 +281,13 @@ function validateUpdateMarketEntryInput(
   next: UpdateMarketEntryInput,
   isNoEntryFlow: boolean
 ): void {
+  if (next.plannedAt) {
+    const executionDate = new Date(next.plannedAt);
+    if (Number.isNaN(executionDate.getTime())) {
+      throw new TypeError('La fecha de ejecucion no es valida.');
+    }
+  }
+
   validateOptionalUrl(next.operationLink);
 
   if (isNoEntryFlow) {
@@ -309,6 +320,7 @@ function buildMarketEntryUpdatePayload(
   if (isNoEntryFlow) {
     return {
       status: next.status,
+      planned_at: next.plannedAt ?? previous.planned_at,
       note: trimmedNote,
       no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
       operation_link: next.operationLink?.trim() || null,
@@ -318,6 +330,7 @@ function buildMarketEntryUpdatePayload(
 
   return {
     status: next.status,
+    planned_at: next.plannedAt ?? previous.planned_at,
     risk_amount: next.riskAmount,
     investment_percent: next.investmentPercent,
     result_r: next.resultR,
@@ -338,7 +351,7 @@ export async function listMarketEntriesByUser(_userEmail: string): Promise<Marke
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
 
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? 'No se pudieron listar las entradas.');
 
   return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
 }
@@ -353,7 +366,7 @@ export async function listMostUsedMarketContexts(_userEmail: string, limit = 8):
     .eq('user_id', userId)
     .eq('context_source', 'free_text');
 
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? 'No se pudieron listar los contextos.');
 
   const counts = new Map<string, number>();
   for (const row of data ?? []) {
@@ -398,10 +411,6 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         session: (input.common.session ?? '').trim(),
         candle_protocol: input.common.candleProtocol ?? 'no',
         direction: null,
-        entry_price: null,
-        stop_loss: null,
-        take_profit: null,
-        close_price: null,
         operation_link: validateOptionalUrl(input.common.operationLink) || null,
         risk_amount: null,
         investment_percent: null,
@@ -428,10 +437,6 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         session: (input.common.session as string).trim(),
         candle_protocol: input.common.candleProtocol ?? 'no',
         direction: input.common.direction,
-        entry_price: null,
-        stop_loss: null,
-        take_profit: null,
-        close_price: null,
         operation_link: validateOptionalUrl(input.common.operationLink) || null,
         risk_amount: item.riskAmount,
         investment_percent: item.investmentPercent,
@@ -446,7 +451,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
 
   const { data, error } = await supabase.from('market_entries').insert(payload as never).select('*');
 
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? 'No se pudo crear la entrada en la base de datos.');
 
   return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
 }
@@ -470,7 +475,7 @@ export async function updateMarketEntryById(
     .single();
 
   if (previousError || !previousRow) {
-    throw new Error('No se encontró la entrada solicitada.');
+    throw new Error(previousError?.message ?? 'No se encontró la entrada solicitada.');
   }
 
   const previous = previousRow as MarketEntryRow;
@@ -489,7 +494,7 @@ export async function updateMarketEntryById(
     .select('*');
 
   if (updateError || !updatedRows || updatedRows.length === 0) {
-    throw new Error('No se pudo actualizar la entrada solicitada.');
+    throw new Error(updateError?.message ?? 'No se pudo actualizar la entrada solicitada.');
   }
 
   const updated = mapRowToEntry(updatedRows[0] as MarketEntryRow);
@@ -510,7 +515,7 @@ export async function updateMarketEntryById(
       .select('id');
 
     if (groupError) {
-      throw new Error('No se pudieron aplicar cambios al grupo.');
+      throw new Error(groupError.message ?? 'No se pudieron aplicar cambios al grupo.');
     }
 
     affectedEntries = groupRows?.length ?? 0;
@@ -520,6 +525,7 @@ export async function updateMarketEntryById(
     updatedEntry: {
       ...updated,
       status: next.status,
+      plannedAt: next.plannedAt ?? updated.plannedAt,
       riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
       investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
       resultR: isNoEntryFlow ? updated.resultR : next.resultR,
@@ -545,7 +551,7 @@ export async function deleteMarketEntryById(_userEmail: string, entryId: string)
     .eq('user_id', userId)
     .select('id');
 
-  if (error) throw error;
+  if (error) throw new Error(error.message ?? 'No se pudo eliminar la entrada.');
 
   if (!data || data.length === 0) {
     throw new Error('No se encontró la entrada solicitada.');

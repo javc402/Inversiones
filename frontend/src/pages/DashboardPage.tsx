@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { AppIcon } from '@components/AppIcon';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
-import { listMarketEntriesByUser, MarketEntry } from '@services/market-entries';
+import { listMarketEntriesByUser, MarketEntry, MarketEntryStatus, updateMarketEntryById } from '@services/market-entries';
 import { getCurrentUserRole, Role } from '@services/roles';
 
 const loadAdminPanelModule = () => import('@components/AdminPanel');
@@ -80,6 +80,54 @@ export function calculateProfitFactor(winAmount: number, lossAmount: number): st
   return (winAmount / absoluteLoss).toFixed(2);
 }
 
+export function getEntryExecutionDate(entry: Pick<MarketEntry, 'status' | 'plannedAt' | 'updatedAt' | 'createdAt'>): string {
+  // Regla de negocio: el dashboard usa fecha de ejecucion (plannedAt).
+  const planned = new Date(entry.plannedAt);
+  if (!Number.isNaN(planned.getTime())) {
+    return entry.plannedAt;
+  }
+
+  const updated = new Date(entry.updatedAt);
+  if (!Number.isNaN(updated.getTime())) {
+    return entry.updatedAt;
+  }
+
+  return entry.createdAt;
+}
+
+export function technicalOutcomeLabel(entry: Pick<MarketEntry, 'status' | 'resultR'>): string {
+  if (entry.status !== 'closed' || entry.resultR === null) return 'N/A';
+  if (entry.resultR < 0) return 'SL';
+  if (entry.resultR === 0) return 'Sin avance';
+  if (entry.resultR === 1) return 'Break tecnico 1:1';
+  if (entry.resultR > 1) return 'TP extendido';
+  return 'TP parcial';
+}
+
+export function financialOutcomeLabel(entry: Pick<MarketEntry, 'status' | 'resultR'>): string {
+  if (entry.status !== 'closed' || entry.resultR === null) return 'N/A';
+  if (entry.resultR < 0) return 'Perdida';
+  if (entry.resultR === 1) return 'Breakeven';
+  if (entry.resultR > 0) return 'Ganancia';
+  return 'Breakeven';
+}
+
+export function isTechnicalBreakEven(entry: Pick<MarketEntry, 'status' | 'resultR'>): boolean {
+  return entry.status === 'closed' && entry.resultR === 1;
+}
+
+export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resultR' | 'riskAmount'>): number | null {
+  if (entry.status !== 'closed' || entry.resultR === null) {
+    return null;
+  }
+
+  if (isTechnicalBreakEven(entry)) {
+    return 0;
+  }
+
+  return entry.riskAmount * entry.resultR;
+}
+
 export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: Date = new Date()): Array<{ month: string; amount: number }> {
   const recentMonths = Array.from({ length: 6 }, (_, index) => {
     const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
@@ -96,7 +144,7 @@ export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: 
       continue;
     }
 
-    const referenceDate = new Date(entry.updatedAt || entry.createdAt);
+    const referenceDate = new Date(getEntryExecutionDate(entry));
     if (Number.isNaN(referenceDate.getTime())) {
       continue;
     }
@@ -106,7 +154,8 @@ export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: 
       continue;
     }
 
-    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
+    // La serie temporal refleja el resultado monetario de la operacion por fecha de ejecucion.
+    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + (entry.riskAmount * entry.resultR));
   }
 
   return recentMonths.map((item) => ({
@@ -151,10 +200,111 @@ export function roleNameLabel(roleName: Role['name'] | null | undefined): string
   return 'Sin rol';
 }
 
-export function tradeResultClass(result: string): 'negative' | 'neutral' | 'positive' {
+export function tradeResultClass(result: string, isTechnicalBreak = false): 'negative' | 'neutral' | 'positive' | 'breakeven' {
+  if (isTechnicalBreak) return 'breakeven';
   if (result.startsWith('-')) return 'negative';
   if (result === 'N/A') return 'neutral';
   return 'positive';
+}
+
+type DashboardEditForm = {
+  status: MarketEntryStatus;
+  plannedAt: string;
+  riskAmount: string;
+  investmentPercent: string;
+  resultR: string;
+  operationLink: string;
+  note: string;
+  noEntryReason: string;
+};
+
+function toDateTimeLocalValue(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().slice(0, 16);
+  }
+
+  return parsed.toISOString().slice(0, 16);
+}
+
+function openOperationLink(operationLink: string | null) {
+  if (!operationLink) {
+    return;
+  }
+
+  window.open(operationLink, '_blank', 'noopener,noreferrer');
+}
+
+function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYear: string): Date {
+  if (filteredEntries.length > 0) {
+    const latestTimestamp = filteredEntries.reduce((latest, entry) => {
+      const current = new Date(getEntryExecutionDate(entry)).getTime();
+      if (Number.isNaN(current)) return latest;
+      return Math.max(latest, current);
+    }, Number.NEGATIVE_INFINITY);
+
+    if (Number.isFinite(latestTimestamp)) {
+      return new Date(latestTimestamp);
+    }
+  }
+
+  if (selectedYear !== 'all') {
+    const selectedYearNumber = Number.parseInt(selectedYear, 10);
+    if (Number.isFinite(selectedYearNumber)) {
+      return new Date(selectedYearNumber, 11, 1);
+    }
+  }
+
+  return new Date();
+}
+
+function parseDashboardEditValues(form: DashboardEditForm): {
+  resultRValue: number | null;
+  riskAmount: number;
+  investmentPercent: number;
+} {
+  const resultRValue = form.status === 'closed' ? Number.parseFloat(form.resultR) : null;
+
+  if (form.status === 'closed' && !Number.isFinite(resultRValue ?? Number.NaN)) {
+    throw new Error('El Resultado R debe ser valido para estado Completada.');
+  }
+
+  return {
+    resultRValue,
+    riskAmount: Number.parseFloat(form.riskAmount),
+    investmentPercent: Number.parseFloat(form.investmentPercent),
+  };
+}
+
+function filterEntriesForSummary(
+  entries: MarketEntry[],
+  selectedAccountId: string,
+  selectedYear: string,
+  selectedMonth: string,
+): MarketEntry[] {
+  let filtered = entries;
+
+  if (selectedAccountId !== 'all') {
+    filtered = filtered.filter((entry) => entry.accountId === selectedAccountId);
+  }
+
+  if (selectedYear !== 'all') {
+    const year = Number.parseInt(selectedYear, 10);
+    filtered = filtered.filter((entry) => {
+      const entryDate = new Date(getEntryExecutionDate(entry));
+      return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
+    });
+  }
+
+  if (selectedMonth !== 'all') {
+    const month = Number.parseInt(selectedMonth, 10);
+    filtered = filtered.filter((entry) => {
+      const entryDate = new Date(getEntryExecutionDate(entry));
+      return !Number.isNaN(entryDate.getTime()) && entryDate.getMonth() === month;
+    });
+  }
+
+  return filtered;
 }
 
 interface DashboardTabPanelsProps {
@@ -191,21 +341,35 @@ interface DashboardSummaryContentProps {
   profitFactor: string;
   winLossRatio: string;
   recentTrades: Array<{
+    entryId: string;
     date: string;
     pair: string;
     type: string;
+    investedAmount: string;
     result: string;
+    technicalOutcome: string;
+    financialOutcome: string;
+    isTechnicalBreak: boolean;
+    operationLink: string | null;
     status: string;
   }>;
   selectedYear: string;
   setSelectedYear: (value: string) => void;
+  selectedMonth: string;
+  setSelectedMonth: (value: string) => void;
+  availableMonths: number[];
+  onOpenEntry: (entryId: string) => void;
+  onOpenLink: (operationLink: string | null) => void;
 }
 
 type RecentTradeFilters = {
   date: string;
   pair: string;
   type: string;
+  investedAmount: string;
   result: string;
+  technicalOutcome: string;
+  financialOutcome: string;
   status: string;
 };
 
@@ -228,11 +392,16 @@ function DashboardSummaryContent({
   recentTrades,
   selectedYear,
   setSelectedYear,
+  selectedMonth,
+  setSelectedMonth,
+  availableMonths,
+  onOpenEntry,
+  onOpenLink,
 }: Readonly<DashboardSummaryContentProps>) {
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     for (const entry of filteredEntries) {
-      const date = new Date(entry.updatedAt || entry.createdAt);
+      const date = new Date(getEntryExecutionDate(entry));
       if (!Number.isNaN(date.getTime())) {
         years.add(date.getFullYear());
       }
@@ -243,7 +412,10 @@ function DashboardSummaryContent({
     date: '',
     pair: '',
     type: '',
+    investedAmount: '',
     result: '',
+    technicalOutcome: '',
+    financialOutcome: '',
     status: '',
   });
 
@@ -252,18 +424,31 @@ function DashboardSummaryContent({
       date: tableFilters.date.toLowerCase().trim(),
       pair: tableFilters.pair.toLowerCase().trim(),
       type: tableFilters.type.toLowerCase().trim(),
+      investedAmount: tableFilters.investedAmount.toLowerCase().trim(),
       result: tableFilters.result.toLowerCase().trim(),
+      technicalOutcome: tableFilters.technicalOutcome.toLowerCase().trim(),
+      financialOutcome: tableFilters.financialOutcome.toLowerCase().trim(),
       status: tableFilters.status.toLowerCase().trim(),
     };
 
-    return recentTrades.filter((trade) => {
-      if (normalized.date && !trade.date.toLowerCase().includes(normalized.date)) return false;
-      if (normalized.pair && !trade.pair.toLowerCase().includes(normalized.pair)) return false;
-      if (normalized.type && !trade.type.toLowerCase().includes(normalized.type)) return false;
-      if (normalized.result && !trade.result.toLowerCase().includes(normalized.result)) return false;
-      if (normalized.status && !trade.status.toLowerCase().includes(normalized.status)) return false;
-      return true;
-    });
+    const filterPairs: Array<[string, string]> = [
+      [normalized.date, 'date'],
+      [normalized.pair, 'pair'],
+      [normalized.type, 'type'],
+      [normalized.investedAmount, 'investedAmount'],
+      [normalized.result, 'result'],
+      [normalized.technicalOutcome, 'technicalOutcome'],
+      [normalized.financialOutcome, 'financialOutcome'],
+      [normalized.status, 'status'],
+    ];
+
+    return recentTrades.filter((trade) =>
+      filterPairs.every(([term, key]) => {
+        if (!term) return true;
+        const value = String(trade[key as keyof typeof trade]).toLowerCase();
+        return value.includes(term);
+      })
+    );
   }, [recentTrades, tableFilters]);
   return (
     <>
@@ -291,6 +476,19 @@ function DashboardSummaryContent({
           <option value="all">Todos los años</option>
           {availableYears.map((year) => (
             <option key={year} value={year}>{year}</option>
+          ))}
+        </select>
+
+        <label htmlFor="dashboard-month-filter" className="dashboard-summary-filter-label">Filtrar por mes</label>
+        <select
+          id="dashboard-month-filter"
+          className="dashboard-summary-filter"
+          value={selectedMonth}
+          onChange={(event) => setSelectedMonth(event.target.value)}
+        >
+          <option value="all">Todos los meses</option>
+          {availableMonths.map((month) => (
+            <option key={month} value={month}>{monthLabels[month]}</option>
           ))}
         </select>
       </section>
@@ -404,8 +602,12 @@ function DashboardSummaryContent({
                 <th>Fecha</th>
                 <th>Par</th>
                 <th>Tipo</th>
+                <th>Invertido</th>
                 <th>Resultado</th>
+                <th>Tecnico</th>
+                <th>Financiero</th>
                 <th>Estado</th>
+                <th>Accion</th>
               </tr>
               <tr className="table-filter-row">
                 <td>
@@ -438,10 +640,37 @@ function DashboardSummaryContent({
                 <td>
                   <input
                     type="text"
+                    placeholder="Filtrar invertido"
+                    className="table-filter-input"
+                    value={tableFilters.investedAmount}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, investedAmount: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
                     placeholder="Filtrar resultado"
                     className="table-filter-input"
                     value={tableFilters.result}
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, result: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar tecnico"
+                    className="table-filter-input"
+                    value={tableFilters.technicalOutcome}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, technicalOutcome: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
+                    placeholder="Filtrar financiero"
+                    className="table-filter-input"
+                    value={tableFilters.financialOutcome}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, financialOutcome: event.target.value }))}
                   />
                 </td>
                 <td>
@@ -453,22 +682,49 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, status: event.target.value }))}
                   />
                 </td>
+                <td aria-label="Sin filtro de acciones" />
               </tr>
             </thead>
             <tbody>
               {filteredRecentTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
+                  <td colSpan={9}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
                 filteredRecentTrades
                   .map((trade) => (
-                    <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                    <tr key={trade.entryId}>
                       <td>{trade.date}</td>
                       <td>{trade.pair}</td>
                       <td>{trade.type}</td>
-                      <td className={tradeResultClass(trade.result)}>{trade.result}</td>
+                      <td>{trade.investedAmount}</td>
+                      <td className={tradeResultClass(trade.result, trade.isTechnicalBreak)}>{trade.result}</td>
+                      <td>{trade.technicalOutcome}</td>
+                      <td>{trade.financialOutcome}</td>
                       <td>{trade.status}</td>
+                      <td>
+                        <div className="table-actions-group">
+                          <button
+                            type="button"
+                            className="table-action-btn"
+                            onClick={() => onOpenEntry(trade.entryId)}
+                            aria-label={`Editar entrada ${trade.pair}`}
+                            title="Ver y editar entrada"
+                          >
+                            <AppIcon name="eye" />
+                          </button>
+                          <button
+                            type="button"
+                            className="table-action-btn"
+                            onClick={() => onOpenLink(trade.operationLink)}
+                            aria-label={`Abrir link de ${trade.pair}`}
+                            title="Abrir link de operación"
+                            disabled={!trade.operationLink}
+                          >
+                            <AppIcon name="link" />
+                          </button>
+                        </div>
+                      </td>
                     </tr>
                   ))
               )}
@@ -625,46 +881,37 @@ function useDashboardModulePrefetch(isAdmin: boolean): void {
   }, [isAdmin]);
 }
 
-export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) {
-  const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
-  const [userRole, setUserRole] = useState<Role | null>(initialRole ?? null);
-  const [collapsedSections, setCollapsedSections] = useState({
-    principal: false,
-    gestion: false,
-    cuenta: false,
-  });
-  const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
-  const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
-  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
-  const isAdmin = userRole?.name === 'admin';
-  const roleLabel = roleNameLabel(userRole?.name);
-  const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
-  const pageTitle = pageTitleByTab[activeTab];
-
-  useDashboardModulePrefetch(isAdmin);
-
-  function toggleSidebarSection(section: 'principal' | 'gestion' | 'cuenta') {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  }
-
+function useEnsureSelectedAccountExists(
+  selectedAccountId: string,
+  summaryAccounts: TradingAccount[],
+  setSelectedAccountId: (value: string) => void,
+): void {
   useEffect(() => {
-    if (activeTab === 'usuarios' && !isAdmin) {
-      setActiveTab('resumen');
+    if (selectedAccountId === 'all') return;
+    if (!summaryAccounts.some((account) => account.id === selectedAccountId)) {
+      setSelectedAccountId('all');
     }
-  }, [activeTab, isAdmin]);
+  }, [selectedAccountId, summaryAccounts, setSelectedAccountId]);
+}
 
+function useEnsureSelectedMonthExists(
+  selectedMonth: string,
+  availableMonths: number[],
+  setSelectedMonth: (value: string) => void,
+): void {
   useEffect(() => {
-    try {
-      localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
-    } catch {
-      // ignore
+    if (selectedMonth === 'all') return;
+    const month = Number.parseInt(selectedMonth, 10);
+    if (!availableMonths.includes(month)) {
+      setSelectedMonth('all');
     }
-  }, [activeTab]);
+  }, [selectedMonth, availableMonths, setSelectedMonth]);
+}
 
+function useResolvedUserRole(
+  initialRole: Role | null | undefined,
+  setUserRole: (role: Role | null) => void,
+): void {
   useEffect(() => {
     if (initialRole !== undefined) {
       setUserRole(initialRole);
@@ -691,14 +938,21 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return () => {
       isMounted = false;
     };
-  }, [initialRole]);
+  }, [initialRole, setUserRole]);
+}
 
+function useSummaryData(
+  activeTab: DashboardTab,
+  userEmail: string,
+  setSummaryAccounts: (accounts: TradingAccount[]) => void,
+  setSummaryEntries: (entries: MarketEntry[]) => void,
+): void {
   useEffect(() => {
     if (activeTab !== 'resumen') return;
 
     let isMounted = true;
 
-    async function loadSummaryData() {
+    async function loadSummaryDataInternal() {
       try {
         const accounts = await listTradingAccounts();
         if (!isMounted) return;
@@ -712,76 +966,127 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       }
     }
 
-    void loadSummaryData();
+    void loadSummaryDataInternal();
 
     return () => {
       isMounted = false;
     };
-  }, [activeTab, userEmail]);
+  }, [activeTab, userEmail, setSummaryAccounts, setSummaryEntries]);
+}
 
+function useEnsureAdminTabAccess(
+  activeTab: DashboardTab,
+  isAdmin: boolean,
+  setActiveTab: (tab: DashboardTab) => void,
+): void {
   useEffect(() => {
-    if (selectedAccountId === 'all') return;
-    if (!summaryAccounts.some((account) => account.id === selectedAccountId)) {
-      setSelectedAccountId('all');
+    if (activeTab === 'usuarios' && !isAdmin) {
+      setActiveTab('resumen');
     }
-  }, [selectedAccountId, summaryAccounts]);
+  }, [activeTab, isAdmin, setActiveTab]);
+}
+
+function usePersistDashboardTab(activeTab: DashboardTab): void {
+  useEffect(() => {
+    try {
+      localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+}
+
+export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) { // NOSONAR
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
+  const [userRole, setUserRole] = useState<Role | null>(initialRole ?? null);
+  const [collapsedSections, setCollapsedSections] = useState({
+    principal: false,
+    gestion: false,
+    cuenta: false,
+  });
+  const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
+  const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
+  const [editingEntry, setEditingEntry] = useState<MarketEntry | null>(null);
+  const [dashboardEditForm, setDashboardEditForm] = useState<DashboardEditForm | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const isAdmin = userRole?.name === 'admin';
+  const roleLabel = roleNameLabel(userRole?.name);
+  const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
+  const pageTitle = pageTitleByTab[activeTab];
+
+  const editModalOpen = editingEntry !== null && dashboardEditForm !== null;
+
+  useDashboardModulePrefetch(isAdmin);
+  useEnsureSelectedAccountExists(selectedAccountId, summaryAccounts, setSelectedAccountId);
+  useResolvedUserRole(initialRole, setUserRole);
+  useSummaryData(activeTab, userEmail, setSummaryAccounts, setSummaryEntries);
+  useEnsureAdminTabAccess(activeTab, isAdmin, setActiveTab);
+  usePersistDashboardTab(activeTab);
+
+  function toggleSidebarSection(section: 'principal' | 'gestion' | 'cuenta') {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  }
 
   const filteredEntries = useMemo(() => {
-    let entries = summaryEntries;
-    
-    if (selectedAccountId !== 'all') {
-      entries = entries.filter((entry) => entry.accountId === selectedAccountId);
-    }
-    
-    if (selectedYear !== 'all') {
-      const year = parseInt(selectedYear, 10);
-      entries = entries.filter((entry) => {
-        const entryDate = new Date(entry.updatedAt || entry.createdAt);
-        return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
-      });
-    }
-    
-    return entries;
+    return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, selectedMonth);
+  }, [selectedAccountId, selectedYear, selectedMonth, summaryEntries]);
+
+  const monthSelectorEntries = useMemo(() => {
+    return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, 'all');
   }, [selectedAccountId, selectedYear, summaryEntries]);
 
-  const monthlyProfit = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const availableMonths = useMemo(() => {
+    const months = new Set<number>();
+    for (const entry of monthSelectorEntries) {
+      const date = new Date(getEntryExecutionDate(entry));
+      if (!Number.isNaN(date.getTime())) {
+        months.add(date.getMonth());
+      }
+    }
 
+    return Array.from(months).sort((a, b) => a - b);
+  }, [monthSelectorEntries]);
+
+  useEnsureSelectedMonthExists(selectedMonth, availableMonths, setSelectedMonth);
+
+  const monthlyProfit = useMemo(() => {
     return filteredEntries
-      .filter((entry) => {
-        if (entry.resultR === null) return false;
-        const updatedAt = new Date(entry.updatedAt);
-        return updatedAt.getMonth() === currentMonth && updatedAt.getFullYear() === currentYear;
-      })
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .filter((entry) => entry.resultR !== null)
+      .reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
   }, [filteredEntries]);
 
   const winRate = useMemo(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) return 0;
-    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
+    const wins = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
     return (wins / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
   const lossRate = useMemo(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) return 0;
-    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
+    const losses = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
     return (losses / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
   const winTotal = useMemo(() => {
     return filteredEntries
-      .filter((entry) => (entry.resultR ?? 0) > 0)
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .reduce((sum, entry) => sum + Math.max(financialResultAmount(entry) ?? 0, 0), 0);
   }, [filteredEntries]);
 
   const lossTotal = useMemo(() => {
     return filteredEntries
-      .filter((entry) => (entry.resultR ?? 0) < 0)
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .reduce((sum, entry) => {
+        const value = financialResultAmount(entry) ?? 0;
+        return value < 0 ? sum + value : sum;
+      }, 0);
   }, [filteredEntries]);
 
   const openRisk = useMemo(() => {
@@ -790,7 +1095,9 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       .reduce((sum, entry) => sum + entry.riskAmount, 0);
   }, [filteredEntries]);
 
-  const monthlyProfitData = useMemo(() => calculateMonthlyProfitData(filteredEntries), [filteredEntries]);
+  const monthlyProfitData = useMemo(() => {
+    return calculateMonthlyProfitData(filteredEntries, resolveMonthlyReferenceDate(filteredEntries, selectedYear));
+  }, [filteredEntries, selectedYear]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
@@ -802,17 +1109,17 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       ];
     }
 
-    const winningEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0);
-    const losingEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0);
-    const breakevenEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) === 0);
+    const winningEntries = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia');
+    const losingEntries = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida');
+    const breakevenEntries = entriesWithResult.filter((entry) => isTechnicalBreakEven(entry));
 
     const wins = winningEntries.length;
     const losses = losingEntries.length;
     const breakeven = breakevenEntries.length;
 
-    const winsTotal = winningEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
-    const lossesTotal = losingEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
-    const breakevenTotal = 0;
+    const winsTotal = winningEntries.reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
+    const lossesTotal = losingEntries.reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
+    const breakevenTotal = breakevenEntries.reduce((sum, entry) => sum + (entry.riskAmount * (entry.resultR ?? 0)), 0);
 
     return [
       {
@@ -836,7 +1143,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)),
         operations: breakeven,
         totalAmount: breakevenTotal,
-        averageAmount: 0,
+        averageAmount: breakeven === 0 ? 0 : breakevenTotal / breakeven,
         color: pieColors[2],
       },
     ];
@@ -855,24 +1162,92 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [distributionData]);
 
   const recentTrades = useMemo(() => {
-    return filteredEntries
-      .sort((a, b) => {
-        const dateA = new Date(a.updatedAt || a.createdAt).getTime();
-        const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+    const sortedEntries = [...filteredEntries].sort((a, b) => {
+        const dateA = new Date(getEntryExecutionDate(a)).getTime();
+        const dateB = new Date(getEntryExecutionDate(b)).getTime();
         return dateB - dateA;
-      })
+      });
+
+    return sortedEntries
       .slice(0, 8)
       .map((entry) => {
         const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
         return {
-          date: formatDate(entry.updatedAt || entry.createdAt),
+          entryId: entry.id,
+          date: formatDate(getEntryExecutionDate(entry)),
           pair: entry.symbol,
           type: entry.direction.toUpperCase(),
+          investedAmount: formatCurrency(entry.riskAmount),
           result: resultValue,
+          technicalOutcome: technicalOutcomeLabel(entry),
+          financialOutcome: financialOutcomeLabel(entry),
+          isTechnicalBreak: isTechnicalBreakEven(entry),
+          operationLink: entry.operationLink,
           status: statusLabel(entry.status),
         };
       });
   }, [filteredEntries]);
+
+  function openEditEntryModal(entry: MarketEntry) {
+    setEditingEntry(entry);
+    setDashboardEditForm({
+      status: entry.status,
+      plannedAt: toDateTimeLocalValue(entry.plannedAt),
+      riskAmount: String(entry.riskAmount),
+      investmentPercent: String(entry.investmentPercent),
+      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      operationLink: entry.operationLink ?? '',
+      note: entry.note,
+      noEntryReason: entry.noEntryReason ?? '',
+    });
+    setEditError('');
+  }
+
+  function closeEditEntryModal() {
+    setEditingEntry(null);
+    setDashboardEditForm(null);
+    setEditError('');
+  }
+
+  function openEntryFromSummary(entryId: string) {
+    const entry = summaryEntries.find((item) => item.id === entryId);
+    if (!entry) {
+      return;
+    }
+
+    openEditEntryModal(entry);
+  }
+
+  async function saveEntryFromDashboard() {
+    if (!editingEntry || !dashboardEditForm || isSavingEdit) {
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError('');
+
+    try {
+      const { resultRValue, riskAmount, investmentPercent } = parseDashboardEditValues(dashboardEditForm);
+
+      await updateMarketEntryById(userEmail, editingEntry.id, {
+        status: dashboardEditForm.status,
+        plannedAt: dashboardEditForm.plannedAt,
+        riskAmount,
+        investmentPercent,
+        resultR: dashboardEditForm.status === 'closed' ? resultRValue : null,
+        operationLink: dashboardEditForm.operationLink,
+        noEntryReason: dashboardEditForm.noEntryReason,
+        note: dashboardEditForm.note,
+      });
+
+      setSummaryEntries(await listMarketEntriesByUser(userEmail));
+      closeEditEntryModal();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'No se pudo actualizar la entrada.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
 
   const mainContent = (
     <DashboardSummaryContent
@@ -894,6 +1269,11 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       recentTrades={recentTrades}
       selectedYear={selectedYear}
       setSelectedYear={setSelectedYear}
+      selectedMonth={selectedMonth}
+      setSelectedMonth={setSelectedMonth}
+      availableMonths={availableMonths}
+      onOpenEntry={openEntryFromSummary}
+      onOpenLink={openOperationLink}
     />
   );
 
@@ -1033,6 +1413,115 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
 
         <DashboardTabPanels activeTab={activeTab} mainContent={mainContent} userEmail={userEmail} isAdmin={isAdmin} />
       </section>
+
+      {editModalOpen && dashboardEditForm && (
+        <dialog className="dashboard-edit-overlay" open aria-labelledby="dashboard-edit-title">
+          <div className="dashboard-edit-modal">
+            <header className="dashboard-edit-header">
+              <h2 id="dashboard-edit-title">Editar entrada</h2>
+              <button type="button" className="dashboard-edit-close" onClick={closeEditEntryModal} aria-label="Cerrar modal">
+                <AppIcon name="close" />
+              </button>
+            </header>
+
+            <div className="dashboard-edit-grid">
+              <label>
+                <span>Estado</span>
+                <select
+                  value={dashboardEditForm.status}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, status: event.target.value as MarketEntryStatus } : prev)}
+                >
+                  <option value="planned">Planificada</option>
+                  <option value="open">Abierta</option>
+                  <option value="closed">Completada</option>
+                  <option value="no_entry">Sin entrada</option>
+                  <option value="cancelled">Cancelada</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Fecha de ejecución</span>
+                <input
+                  type="datetime-local"
+                  value={dashboardEditForm.plannedAt}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                />
+              </label>
+
+              <label>
+                <span>Riesgo por cuenta (USD)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={dashboardEditForm.riskAmount}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: event.target.value } : prev)}
+                />
+              </label>
+
+              <label>
+                <span>% inversión</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={dashboardEditForm.investmentPercent}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, investmentPercent: event.target.value } : prev)}
+                />
+              </label>
+
+              <label>
+                <span>Resultado R</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={dashboardEditForm.resultR}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, resultR: event.target.value } : prev)}
+                  disabled={dashboardEditForm.status !== 'closed'}
+                />
+              </label>
+
+              <label>
+                <span>Link de operación</span>
+                <input
+                  type="url"
+                  value={dashboardEditForm.operationLink}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, operationLink: event.target.value } : prev)}
+                  placeholder="https://..."
+                />
+              </label>
+
+              {dashboardEditForm.status === 'no_entry' && (
+                <label className="dashboard-edit-span-2">
+                  <span>Motivo sin entrada</span>
+                  <input
+                    value={dashboardEditForm.noEntryReason}
+                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, noEntryReason: event.target.value } : prev)}
+                  />
+                </label>
+              )}
+
+              <label className="dashboard-edit-span-2">
+                <span>Notas</span>
+                <textarea
+                  rows={3}
+                  value={dashboardEditForm.note}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, note: event.target.value } : prev)}
+                />
+              </label>
+            </div>
+
+            {editError && <p className="dashboard-edit-error">{editError}</p>}
+
+            <footer className="dashboard-edit-actions">
+              <button type="button" className="secondary-btn" onClick={closeEditEntryModal} disabled={isSavingEdit}>Cancelar</button>
+              <button type="button" className="primary-btn" onClick={() => void saveEntryFromDashboard()} disabled={isSavingEdit}>
+                {isSavingEdit ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </footer>
+          </div>
+        </dialog>
+      )}
     </main>
   );
 }

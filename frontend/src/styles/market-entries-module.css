@@ -301,7 +301,9 @@
   border: 1px solid #d4deec;
 }
 
-.entries-outcome-tp {
+.entries-outcome-tp_partial,
+.entries-outcome-tp_1_1,
+.entries-outcome-tp_extended {
   background: #edfdf5;
   border-color: #bbf7d0;
   color: #1f6b46;
@@ -313,10 +315,32 @@
   color: #991b1b;
 }
 
-.entries-outcome-breakeven {
+.entries-outcome-flat {
   background: #fefce8;
   border-color: #fde68a;
   color: #854d0e;
+}
+
+.entries-outcome-financial {
+  border-style: dashed;
+}
+
+.entries-outcome-financial-profit {
+  background: #eefbf3;
+  border-color: #86efac;
+  color: #166534;
+}
+
+.entries-outcome-financial-loss {
+  background: #fff1f2;
+  border-color: #fda4af;
+  color: #9f1239;
+}
+
+.entries-outcome-financial-breakeven {
+  background: #f8fafc;
+  border-color: #cbd5e1;
+  color: #334155;
 }
 
 .entries-status-planned {

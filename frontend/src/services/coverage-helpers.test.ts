@@ -2,16 +2,18 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCreateMarketEntryRequest,
   buildCreatePerAccountSelection,
-  candleProtocolLabel,
   buildDefaultAccountRows,
   createAccountRow,
   directionLabel,
   entryDeletionLabel,
+  financialOutcomeLabel,
   formatDate as formatEntryDate,
+  outcomeLabel,
+  resolveFinancialOutcome,
+  resolveEntryOutcome,
+  resolveTechnicalOutcome,
   statusLabel as marketStatusLabel,
-  newsImpactLabel,
-  normalizeResultR,
-  resolveEntrySymbol,
+  technicalOutcomeLabel,
   toNumber,
   toNumberOrNull,
 } from '@components/MarketEntriesModule';
@@ -148,19 +150,18 @@ describe('coverage helpers', () => {
     expect(toNumber(' 1.25 ')).toBe(1.25);
     expect(toNumberOrNull('')).toBeNull();
     expect(toNumberOrNull(' 2.5 ')).toBe(2.5);
-    expect(normalizeResultR(1.26)).toBe(1.3);
-    expect(normalizeResultR(Number.NaN)).toBeNull();
-    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: 'DE40' } as never)).toBe('DE40');
-    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: '' } as never)).toBe('OTRO');
-    expect(resolveEntrySymbol({ symbol: 'EURUSD', symbolDetail: null } as never)).toBe('EURUSD');
-    expect(candleProtocolLabel('ob')).toBe('OB');
-    expect(candleProtocolLabel('fvg')).toBe('FVG');
-    expect(candleProtocolLabel('no')).toBe('NO');
-    expect(candleProtocolLabel(null)).toBe('NO');
-    expect(newsImpactLabel('high')).toBe('Alto');
-    expect(newsImpactLabel('medium')).toBe('Medio');
-    expect(newsImpactLabel('low')).toBe('Bajo');
-    expect(newsImpactLabel(null)).toBe('Sin impacto');
+    expect(resolveEntryOutcome({ status: 'closed', resultR: 1 } as never)).toBe('tp_1_1');
+    expect(resolveEntryOutcome({ status: 'closed', resultR: 1.1 } as never)).toBe('tp_extended');
+    expect(resolveEntryOutcome({ status: 'closed', resultR: -1 } as never)).toBe('sl');
+    expect(resolveTechnicalOutcome({ status: 'closed', resultR: 0.5 } as never)).toBe('tp_partial');
+    expect(resolveTechnicalOutcome({ status: 'closed', resultR: 0 } as never)).toBe('flat');
+    expect(resolveEntryOutcome({ status: 'open', resultR: 1.1 } as never)).toBeNull();
+    expect(outcomeLabel('tp_1_1')).toBe('Break tecnico 1:1');
+    expect(technicalOutcomeLabel('tp_partial')).toBe('TP parcial');
+    expect(resolveFinancialOutcome({ status: 'closed', resultR: 1 } as never)).toBe('profit');
+    expect(resolveFinancialOutcome({ status: 'closed', resultR: 0 } as never)).toBe('breakeven');
+    expect(resolveFinancialOutcome({ status: 'closed', resultR: -1 } as never)).toBe('loss');
+    expect(financialOutcomeLabel('profit')).toBe('Ganancia');
   });
 
   it('market helpers cubren ramas adicionales', () => {

@@ -27,7 +27,10 @@ export type AppIconName =
   | 'check'
   | 'shield'
   | 'article'
-  | 'entry';
+  | 'entry'
+  | 'eye'
+  | 'close'
+  | 'link';
 
 interface AppIconProps extends HTMLAttributes<HTMLSpanElement> {
   name: AppIconName;
@@ -61,6 +64,9 @@ const iconNames: Record<AppIconName, string> = {
   shield: 'shield',
   article: 'article',
   entry: 'playlist_add_check_circle',
+  eye: 'visibility',
+  close: 'close',
+  link: 'open_in_new',
 };
 
 export function AppIcon({ name, className, ...props }: Readonly<AppIconProps>) {

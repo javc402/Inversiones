@@ -66,6 +66,7 @@ interface EntryCommonForm {
 
 interface EditForm {
   status: MarketEntryStatus;
+  plannedAt: string;
   riskAmount: string;
   investmentPercent: string;
   resultR: string;
@@ -97,6 +98,7 @@ const defaultCommonForm: EntryCommonForm = {
 
 const defaultEditForm: EditForm = {
   status: 'planned',
+  plannedAt: new Date().toISOString().slice(0, 16),
   riskAmount: '',
   investmentPercent: '',
   resultR: '0.0',
@@ -104,6 +106,15 @@ const defaultEditForm: EditForm = {
   noEntryReason: '',
   note: '',
 };
+
+function toDateTimeLocalValue(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().slice(0, 16);
+  }
+
+  return parsed.toISOString().slice(0, 16);
+}
 
 export function formatDate(value: string): string {
   return new Intl.DateTimeFormat('es-ES', {
@@ -124,22 +135,52 @@ export function directionLabel(direction: MarketEntryDirection): string {
   return direction === 'buy' ? 'BUY' : 'SELL';
 }
 
-type EntryOutcome = 'tp' | 'sl' | 'breakeven';
+type TechnicalOutcome = 'tp_partial' | 'tp_1_1' | 'tp_extended' | 'sl' | 'flat';
+type FinancialOutcome = 'profit' | 'loss' | 'breakeven';
 
-export function resolveEntryOutcome(entry: MarketEntry): EntryOutcome | null {
+export function resolveTechnicalOutcome(entry: MarketEntry): TechnicalOutcome | null {
   if (entry.status !== 'closed' || entry.resultR === null) {
     return null;
   }
 
-  if (entry.resultR > 0) return 'tp';
   if (entry.resultR < 0) return 'sl';
+  if (entry.resultR === 0) return 'flat';
+  if (entry.resultR === 1) return 'tp_1_1';
+  if (entry.resultR > 1) return 'tp_extended';
+  return 'tp_partial';
+}
+
+export function technicalOutcomeLabel(outcome: TechnicalOutcome): string {
+  if (outcome === 'sl') return 'SL';
+  if (outcome === 'flat') return 'Sin avance';
+  if (outcome === 'tp_1_1') return 'Break tecnico 1:1';
+  if (outcome === 'tp_extended') return 'TP extendido';
+  return 'TP parcial';
+}
+
+export function resolveFinancialOutcome(entry: MarketEntry): FinancialOutcome | null {
+  if (entry.status !== 'closed' || entry.resultR === null) {
+    return null;
+  }
+
+  if (entry.resultR < 0) return 'loss';
+  if (entry.resultR > 0) return 'profit';
   return 'breakeven';
 }
 
-export function outcomeLabel(outcome: EntryOutcome): string {
-  if (outcome === 'tp') return 'TP';
-  if (outcome === 'sl') return 'SL';
+export function financialOutcomeLabel(outcome: FinancialOutcome): string {
+  if (outcome === 'profit') return 'Ganancia';
+  if (outcome === 'loss') return 'Perdida';
   return 'Breakeven';
+}
+
+// Compatibilidad para helpers ya exportados en tests y utilidades.
+export function resolveEntryOutcome(entry: MarketEntry): TechnicalOutcome | null {
+  return resolveTechnicalOutcome(entry);
+}
+
+export function outcomeLabel(outcome: TechnicalOutcome): string {
+  return technicalOutcomeLabel(outcome);
 }
 
 export function toNumber(value: string): number {
@@ -150,6 +191,23 @@ export function toNumberOrNull(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
   return Number(trimmed);
+}
+
+function toErrorMessage(error: unknown, fallback: string): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === 'object') {
+    const value = error as { message?: unknown; details?: unknown; hint?: unknown };
+    if (typeof value.message === 'string' && value.message.trim()) {
+      const details = typeof value.details === 'string' && value.details.trim() ? ` Detalle: ${value.details}` : '';
+      const hint = typeof value.hint === 'string' && value.hint.trim() ? ` Sugerencia: ${value.hint}` : '';
+      return `${value.message}${details}${hint}`.trim();
+    }
+  }
+
+  return fallback;
 }
 
 export function normalizeResultR(value: number): number | null {
@@ -387,7 +445,8 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
   const isGroupedEntry = groupSize > 1;
   const isNoEntry = entry.status === 'no_entry';
   const accountResult = calculateAccountResultAmount(entry.riskAmount, entry.resultR);
-  const outcome = resolveEntryOutcome(entry);
+  const technicalOutcome = resolveTechnicalOutcome(entry);
+  const financialOutcome = resolveFinancialOutcome(entry);
   const entrySymbol = resolveEntrySymbol(entry);
 
   return (
@@ -402,7 +461,16 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
         </div>
         <div className="entries-status-stack">
           <span className={`entries-status entries-status-${entry.status}`}>{statusLabel(entry.status)}</span>
-          {outcome && <span className={`entries-outcome-badge entries-outcome-${outcome}`}>{outcomeLabel(outcome)}</span>}
+          {technicalOutcome && (
+            <span className={`entries-outcome-badge entries-outcome-${technicalOutcome}`}>
+              Tecnico: {technicalOutcomeLabel(technicalOutcome)}
+            </span>
+          )}
+          {financialOutcome && (
+            <span className={`entries-outcome-badge entries-outcome-financial entries-outcome-financial-${financialOutcome}`}>
+              Financiero: {financialOutcomeLabel(financialOutcome)}
+            </span>
+          )}
         </div>
       </header>
 
@@ -715,7 +783,7 @@ function MarketEntriesCreateForm({
       {isCompletedOnCreate && (
         <>
           <label>
-            <EntryFieldLabel text="Resultado R" help="Usa un único decimal. -1 indica SL, 0 sin trade, 1 breakeven y valores mayores a 1 representan ganancia en R." />
+            <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
             <input
               type="number"
               step="0.1"
@@ -897,6 +965,16 @@ function MarketEntriesEditForm({
         </select>
       </label>
 
+      <label>
+        <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora de ejecucion usadas por el dashboard y reportes temporales." />
+        <input
+          type="datetime-local"
+          value={editForm.plannedAt}
+          onChange={(event) => setEditForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+          required
+        />
+      </label>
+
       {editForm.status === 'no_entry' ? (
         <label>
           <EntryFieldLabel text="Motivo sin entrada" help="Razón por la que no se ejecutó la operación." />
@@ -921,7 +999,7 @@ function MarketEntriesEditForm({
           {editForm.status === 'closed' && (
             <>
               <label>
-                <EntryFieldLabel text="Resultado R" help="Usa un único decimal. -1 SL, 0 sin trade, 1 breakeven, >1 ganancia." />
+                <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
                 <input type="number" step="0.1" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required />
               </label>
 
@@ -995,6 +1073,19 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const isCompletedOnCreate = commonForm.status === 'closed';
   const isNoEntryOnCreate = commonForm.status === 'no_entry';
   const isNewsContextMode = commonForm.contextSource === 'news';
+  const pendingEditStorageKey = 'inversiones_pending_entry_edit_id';
+
+  function openPendingEntryById(entryId: string): boolean {
+    const pendingEntry = entries.find((entry) => entry.id === entryId);
+    if (!pendingEntry) {
+      return false;
+    }
+
+    setAccountFilter('all');
+    setQuery('');
+    openEditModal(pendingEntry);
+    return true;
+  }
 
   async function loadData() {
     try {
@@ -1048,7 +1139,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         if (!matchesAccount) return false;
         if (terms.length === 0) return true;
 
-        const outcome = resolveEntryOutcome(entry);
+        const technicalOutcome = resolveTechnicalOutcome(entry);
+        const financialOutcome = resolveFinancialOutcome(entry);
 
         const searchableText = [
           entry.accountName,
@@ -1062,9 +1154,10 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
           newsImpactLabel(entry.newsImpact),
           directionLabel(entry.direction),
           statusLabel(entry.status),
-          outcome ? outcomeLabel(outcome) : '',
-          outcome === 'tp' ? 'take profit' : '',
-          outcome === 'sl' ? 'stop loss' : '',
+          technicalOutcome ? technicalOutcomeLabel(technicalOutcome) : '',
+          financialOutcome ? financialOutcomeLabel(financialOutcome) : '',
+          technicalOutcome === 'tp_partial' || technicalOutcome === 'tp_1_1' || technicalOutcome === 'tp_extended' ? 'take profit' : '',
+          technicalOutcome === 'sl' ? 'stop loss' : '',
           entry.note,
           entry.noEntryReason ?? '',
           entry.operationLink ?? '',
@@ -1145,6 +1238,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setEditingEntry(entry);
     setEditForm({
       status: entry.status,
+      plannedAt: toDateTimeLocalValue(entry.plannedAt),
       riskAmount: String(entry.riskAmount),
       investmentPercent: String(entry.investmentPercent),
       resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
@@ -1156,6 +1250,66 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setError('');
     setSuccess('');
   }
+
+  useEffect(() => {
+    if (entries.length === 0 || modalMode === 'edit') {
+      return;
+    }
+
+    let pendingId = '';
+    try {
+      pendingId = localStorage.getItem(pendingEditStorageKey) ?? '';
+    } catch {
+      pendingId = '';
+    }
+
+    if (!pendingId) {
+      return;
+    }
+
+    if (!openPendingEntryById(pendingId)) {
+      try {
+        localStorage.removeItem(pendingEditStorageKey);
+      } catch {
+        // ignore storage errors
+      }
+      return;
+    }
+
+    try {
+      localStorage.removeItem(pendingEditStorageKey);
+    } catch {
+      // ignore storage errors
+    }
+  }, [entries, modalMode]);
+
+  useEffect(() => {
+    function handleOpenEdit(event: Event) {
+      if (modalMode === 'edit') {
+        return;
+      }
+
+      const customEvent = event as CustomEvent<{ entryId?: string }>;
+      const entryId = customEvent.detail?.entryId;
+      if (!entryId) {
+        return;
+      }
+
+      const opened = openPendingEntryById(entryId);
+      if (opened) {
+        try {
+          localStorage.removeItem(pendingEditStorageKey);
+        } catch {
+          // ignore storage errors
+        }
+      }
+    }
+
+    window.addEventListener('inversiones:open-entry-edit', handleOpenEdit as EventListener);
+    return () => {
+      window.removeEventListener('inversiones:open-entry-edit', handleOpenEdit as EventListener);
+    };
+  }, [entries, modalMode]);
 
   function closeModal() {
     setModalMode(null);
@@ -1216,7 +1370,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
       closeModal();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'No se pudo guardar la entrada.');
+      setError(toErrorMessage(submitError, 'No se pudo guardar la entrada.'));
     } finally {
       createSubmitLockRef.current = false;
       setIsCreateSubmitting(false);
@@ -1244,6 +1398,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
+        plannedAt: editForm.plannedAt,
         riskAmount: toNumber(editForm.riskAmount),
         investmentPercent: toNumber(editForm.investmentPercent),
         resultR: editForm.status === 'closed' ? calculatedResultR : toNumberOrNull(editForm.resultR),
@@ -1276,7 +1431,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
       closeModal();
     } catch (submitError) {
-      setError(submitError instanceof Error ? submitError.message : 'No se pudo actualizar la entrada.');
+      setError(toErrorMessage(submitError, 'No se pudo actualizar la entrada.'));
     } finally {
       editSubmitLockRef.current = false;
       setIsEditSubmitting(false);
@@ -1301,7 +1456,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         accountId: entry.accountId,
       });
     } catch (deleteError) {
-      setError(deleteError instanceof Error ? deleteError.message : 'No se pudo eliminar la entrada.');
+      setError(toErrorMessage(deleteError, 'No se pudo eliminar la entrada.'));
     }
   }
 
@@ -1314,8 +1469,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 <p className="entries-modal-kicker">Registro operativo</p>
                 <h2 id="entries-modal-title">{modalMode === 'create' ? 'Nueva entrada al mercado' : 'Editar entrada por cuenta'}</h2>
               </div>
-              <button type="button" className="entries-modal-close" onClick={closeModal}>
-                <AppIcon name="delete" />
+              <button type="button" className="entries-modal-close" onClick={closeModal} aria-label="Cerrar modal" title="Cerrar">
+                <AppIcon name="close" />
               </button>
             </div>
 
