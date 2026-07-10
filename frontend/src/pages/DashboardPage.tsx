@@ -55,6 +55,7 @@ export function loadStoredDashboardTab(): DashboardTab {
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const weekdayLabels = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
 const monthFilterLabels = [
   'Enero',
   'Febrero',
@@ -142,32 +143,154 @@ export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resul
   return entry.riskAmount * entry.resultR;
 }
 
-export function calculateMonthlyProfitData(
-  filteredEntries: MarketEntry[],
-  now: Date = new Date(),
-  chartMode: 'recent6' | 'fullYear' | 'centered5' = 'recent6',
-): Array<{ month: string; amount: number }> {
-  let chartMonths: Array<{ key: string; month: string }>;
+export type MonthlyProfitPoint = {
+  month: string;
+  amount: number;
+  lossAmount: number;
+  breakevenAmount: number;
+};
 
+type TradingInsights = {
+  bestWeekLabel: string;
+  bestWeekAmount: number;
+  bestDayLabel: string;
+  bestDayAmount: number;
+  bestWeekdayLabel: string;
+  bestWeekdayTotal: number;
+  bestWeekdayAverage: number;
+  bestWeekdayTrades: number;
+};
+
+type TradingInsightsMode = 'month' | 'year';
+
+function emptyTradingInsights(): TradingInsights {
+  return {
+    bestWeekLabel: 'Sin datos',
+    bestWeekAmount: 0,
+    bestDayLabel: 'Sin datos',
+    bestDayAmount: 0,
+    bestWeekdayLabel: 'Sin datos',
+    bestWeekdayTotal: 0,
+    bestWeekdayAverage: 0,
+    bestWeekdayTrades: 0,
+  };
+}
+
+function weekOfPeriod(date: Date, mode: TradingInsightsMode): number {
+  if (mode === 'year') {
+    return Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  }
+
+  return Math.floor((date.getDate() - 1) / 7) + 1;
+}
+
+function dayKeyOfPeriod(date: Date, mode: TradingInsightsMode): string {
+  if (mode === 'year') {
+    return `${date.getMonth() + 1}-${date.getDate()}`;
+  }
+
+  return String(date.getDate());
+}
+
+function updateDayAggregation(
+  map: Map<string, { amount: number; day: number; month: number }>,
+  key: string,
+  day: number,
+  month: number,
+  amount: number,
+): void {
+  const previousDay = map.get(key);
+  if (!previousDay) {
+    map.set(key, { amount, day, month });
+    return;
+  }
+
+  map.set(key, { ...previousDay, amount: previousDay.amount + amount });
+}
+
+function daysInMonth(referenceDate: Date): number {
+  return new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0).getDate();
+}
+
+function calculateTradingInsights(entries: MarketEntry[], mode: TradingInsightsMode): TradingInsights {
+  const byWeek = new Map<number, number>();
+  const byDay = new Map<string, { amount: number; day: number; month: number }>();
+  const byWeekday = new Map<number, { total: number; trades: number }>();
+
+  for (const entry of entries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const amount = financialResultAmount(entry) ?? 0;
+    const executionDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(executionDate.getTime())) {
+      continue;
+    }
+
+    const week = weekOfPeriod(executionDate, mode);
+    byWeek.set(week, (byWeek.get(week) ?? 0) + amount);
+
+    const dayOfMonth = executionDate.getDate();
+    const monthOfYear = executionDate.getMonth();
+    const dayKey = dayKeyOfPeriod(executionDate, mode);
+    updateDayAggregation(byDay, dayKey, dayOfMonth, monthOfYear, amount);
+
+    const weekday = executionDate.getDay();
+    const previousWeekday = byWeekday.get(weekday) ?? { total: 0, trades: 0 };
+    byWeekday.set(weekday, { total: previousWeekday.total + amount, trades: previousWeekday.trades + 1 });
+  }
+
+  const bestWeek = [...byWeek.entries()].reduce<[number, number]>((best, current) => {
+    if (current[1] > best[1]) return current;
+    return best;
+  }, [0, Number.NEGATIVE_INFINITY]);
+
+  const bestDay = [...byDay.values()].reduce<{ amount: number; day: number; month: number }>((best, current) => {
+    if (current.amount > best.amount) return current;
+    return best;
+  }, { amount: Number.NEGATIVE_INFINITY, day: 0, month: 0 });
+
+  const bestWeekday = [...byWeekday.entries()].reduce<[number, { total: number; trades: number }]>((best, current) => {
+    const bestAverage = best[1].trades === 0 ? Number.NEGATIVE_INFINITY : best[1].total / best[1].trades;
+    const currentAverage = current[1].trades === 0 ? Number.NEGATIVE_INFINITY : current[1].total / current[1].trades;
+    if (currentAverage > bestAverage) return current;
+    return best;
+  }, [0, { total: Number.NEGATIVE_INFINITY, trades: 0 }]);
+
+  if (byWeek.size === 0) {
+    return emptyTradingInsights();
+  }
+
+  const bestDayText = `Dia ${String(bestDay.day).padStart(2, '0')}`;
+
+  return {
+    bestWeekLabel: `Semana ${bestWeek[0]}`,
+    bestWeekAmount: bestWeek[1],
+    bestDayLabel: mode === 'year'
+      ? `${bestDayText} de ${monthFilterLabels[bestDay.month] ?? ''}`
+      : bestDayText,
+    bestDayAmount: bestDay.amount,
+    bestWeekdayLabel: weekdayLabels[bestWeekday[0]] ?? 'Sin datos',
+    bestWeekdayTotal: bestWeekday[1].trades === 0 ? 0 : bestWeekday[1].total,
+    bestWeekdayAverage: bestWeekday[1].trades === 0 ? 0 : bestWeekday[1].total / bestWeekday[1].trades,
+    bestWeekdayTrades: bestWeekday[1].trades,
+  };
+}
+
+function fullMonthLabelFromShort(shortLabel: string): string {
+  const monthIndex = monthLabels.indexOf(shortLabel);
+  if (monthIndex < 0) {
+    return shortLabel;
+  }
+
+  return monthFilterLabels[monthIndex] ?? shortLabel;
+}
+
+function buildChartMonths(now: Date, chartMode: 'recent6' | 'fullYear' | 'centered5'): Array<{ key: string; month: string }> {
   if (chartMode === 'fullYear') {
-    chartMonths = Array.from({ length: 12 }, (_, index) => {
+    return Array.from({ length: 12 }, (_, index) => {
       const monthDate = new Date(now.getFullYear(), index, 1);
-      return {
-        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
-        month: monthLabels[monthDate.getMonth()],
-      };
-    });
-  } else if (chartMode === 'centered5') {
-    chartMonths = Array.from({ length: 5 }, (_, index) => {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() + (index - 2), 1);
-      return {
-        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
-        month: monthLabels[monthDate.getMonth()],
-      };
-    });
-  } else {
-    chartMonths = Array.from({ length: 6 }, (_, index) => {
-      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
       return {
         key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
         month: monthLabels[monthDate.getMonth()],
@@ -175,7 +298,35 @@ export function calculateMonthlyProfitData(
     });
   }
 
-  const totalsByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
+  if (chartMode === 'centered5') {
+    return Array.from({ length: 5 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() + (index - 2), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  }
+
+  return Array.from({ length: 6 }, (_, index) => {
+    const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+    return {
+      key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+      month: monthLabels[monthDate.getMonth()],
+    };
+  });
+}
+
+export function calculateMonthlyProfitData(
+  filteredEntries: MarketEntry[],
+  now: Date = new Date(),
+  chartMode: 'recent6' | 'fullYear' | 'centered5' = 'recent6',
+): MonthlyProfitPoint[] {
+  const chartMonths = buildChartMonths(now, chartMode);
+
+  const gainsByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
+  const lossesByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
+  const breakevenByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
 
   for (const entry of filteredEntries) {
     if (entry.resultR === null) {
@@ -188,17 +339,86 @@ export function calculateMonthlyProfitData(
     }
 
     const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
-    if (!totalsByMonth.has(monthKey)) {
+    if (!gainsByMonth.has(monthKey)) {
       continue;
     }
 
     // La serie temporal refleja el resultado monetario de la operacion por fecha de ejecucion.
-    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + (entry.riskAmount * entry.resultR));
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      breakevenByMonth.set(monthKey, (breakevenByMonth.get(monthKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount > 0) {
+      gainsByMonth.set(monthKey, (gainsByMonth.get(monthKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount < 0) {
+      lossesByMonth.set(monthKey, (lossesByMonth.get(monthKey) ?? 0) + entryAmount);
+    }
   }
 
   return chartMonths.map((item) => ({
     month: item.month,
-    amount: totalsByMonth.get(item.key) ?? 0,
+    amount: gainsByMonth.get(item.key) ?? 0,
+    lossAmount: lossesByMonth.get(item.key) ?? 0,
+    breakevenAmount: breakevenByMonth.get(item.key) ?? 0,
+  }));
+}
+
+export function calculateDailyProfitData(filteredEntries: MarketEntry[], referenceDate: Date): MonthlyProfitPoint[] {
+  const days = daysInMonth(referenceDate);
+  const chartDays = Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const dayDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), day);
+    return {
+      key: `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      dayLabel: String(day),
+    };
+  });
+
+  const gainsByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+  const lossesByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+  const breakevenByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceEntryDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(referenceEntryDate.getTime())) {
+      continue;
+    }
+
+    const dayKey = `${referenceEntryDate.getFullYear()}-${String(referenceEntryDate.getMonth() + 1).padStart(2, '0')}-${String(referenceEntryDate.getDate()).padStart(2, '0')}`;
+    if (!gainsByDay.has(dayKey)) {
+      continue;
+    }
+
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      breakevenByDay.set(dayKey, (breakevenByDay.get(dayKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount > 0) {
+      gainsByDay.set(dayKey, (gainsByDay.get(dayKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount < 0) {
+      lossesByDay.set(dayKey, (lossesByDay.get(dayKey) ?? 0) + entryAmount);
+    }
+  }
+
+  return chartDays.map((item) => ({
+    month: item.dayLabel,
+    amount: gainsByDay.get(item.key) ?? 0,
+    lossAmount: lossesByDay.get(item.key) ?? 0,
+    breakevenAmount: breakevenByDay.get(item.key) ?? 0,
   }));
 }
 const pageTitleByTab: Record<DashboardTab, string> = {
@@ -213,7 +433,15 @@ const pageTitleByTab: Record<DashboardTab, string> = {
 export function formatDate(dateValue: string): string {
   const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) return dateValue;
-  return parsed.toLocaleDateString('es-MX');
+
+  const weekday = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'][parsed.getDay()] ?? '';
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const year = parsed.getFullYear();
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+
+  return `${weekday}, ${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
 export function formatCurrency(value: number): string {
@@ -362,10 +590,11 @@ interface DashboardSummaryContentProps {
   winTotal: number;
   lossRate: number;
   lossTotal: number;
-  openRisk: number;
   monthlyProfitData: Array<{
     month: string;
     amount: number;
+    lossAmount: number;
+    breakevenAmount: number;
   }>;
   distributionData: Array<{
     name: 'Ganadas' | 'Perdidas' | 'Breakeven';
@@ -384,7 +613,9 @@ interface DashboardSummaryContentProps {
     pair: string;
     type: string;
     investedAmount: string;
+    investedAmountValue: number;
     result: string;
+    resultAmountValue: number | null;
     technicalOutcome: string;
     financialOutcome: string;
     isTechnicalBreak: boolean;
@@ -421,7 +652,6 @@ function DashboardSummaryContent({
   winTotal,
   lossRate,
   lossTotal,
-  openRisk,
   monthlyProfitData,
   distributionData,
   netResult,
@@ -437,6 +667,8 @@ function DashboardSummaryContent({
   onOpenLink,
 }: Readonly<DashboardSummaryContentProps>) {
   const profitKpiTitle = selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes';
+  const insightsTitlePeriod = selectedMonth === 'all' ? 'año' : 'mes';
+  const bestDayInsightTitle = 'Mejor dia para operar';
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -490,6 +722,31 @@ function DashboardSummaryContent({
       })
     );
   }, [recentTrades, tableFilters]);
+
+  const filteredTradesTotals = useMemo(() => {
+    return filteredRecentTrades.reduce(
+      (acc, trade) => {
+        acc.invested += trade.investedAmountValue;
+        if (trade.resultAmountValue !== null) {
+          acc.result += trade.resultAmountValue;
+          acc.withResultCount += 1;
+        }
+        return acc;
+      },
+      { invested: 0, result: 0, withResultCount: 0 },
+    );
+  }, [filteredRecentTrades]);
+
+  let filteredTotalResultClass: 'negative' | 'positive' | 'neutral' = 'neutral';
+  if (filteredTradesTotals.result < 0) {
+    filteredTotalResultClass = 'negative';
+  } else if (filteredTradesTotals.result > 0) {
+    filteredTotalResultClass = 'positive';
+  }
+
+  const tradingInsights = useMemo(() => {
+    return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
+  }, [filteredEntries, selectedMonth]);
   return (
     <>
       <section className="dashboard-summary-toolbar">
@@ -552,9 +809,9 @@ function DashboardSummaryContent({
           <span className="kpi-trend negative">Total perdido: {formatCurrency(lossTotal)}</span>
         </article>
         <article className="kpi-card">
-          <h2>Riesgo abierto</h2>
-          <p className="kpi-value">{formatCurrency(openRisk)}</p>
-          <span className="kpi-trend neutral">Controlado</span>
+          <h2>Mejor dia para operar</h2>
+          <p className="kpi-value">{tradingInsights.bestWeekdayLabel}</p>
+          <span className="kpi-trend positive">Total: {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</span>
         </article>
       </section>
 
@@ -567,11 +824,60 @@ function DashboardSummaryContent({
                 <CartesianGrid strokeDasharray="4 4" stroke="#dbeafe" />
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="amount" stroke="#1e5ba8" fill="#bfdbfe" strokeWidth={2} />
+                <Tooltip
+                  labelFormatter={(label: string) => {
+                    if (selectedMonth !== 'all') {
+                      const monthIndex = Number.parseInt(selectedMonth, 10);
+                      const fullMonth = monthFilterLabels[monthIndex] ?? '';
+                      return `Dia ${label} de ${fullMonth}`;
+                    }
+
+                    return fullMonthLabelFromShort(label);
+                  }}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'perdidas') return [formatCurrency(value), 'Perdidas'];
+                    if (name === 'breakeven') return [formatCurrency(value), 'Breakeven'];
+                    return [formatCurrency(value), 'Resultado neto (solo ganancias)'];
+                  }}
+                />
+                <Area type="monotone" dataKey="amount" name="neto" stroke="#1e5ba8" fill="#bfdbfe" fillOpacity={0.42} strokeWidth={2} />
+                <Area type="monotone" dataKey="lossAmount" name="perdidas" stroke="#dc2626" fill="#fecaca" fillOpacity={0.5} strokeWidth={2} />
+                <Area type="monotone" dataKey="breakevenAmount" name="breakeven" stroke="#ea580c" fill="#fed7aa" fillOpacity={0.45} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <div className="chart-color-legend" aria-label="Leyenda de colores de la gráfica">
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-net" aria-hidden="true" />
+              <span>Resultado neto (solo ganancias)</span>
+            </span>
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-loss" aria-hidden="true" />
+              <span>Perdidas</span>
+            </span>
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-breakeven" aria-hidden="true" />
+              <span>Breakeven</span>
+            </span>
+          </div>
+          <div className="chart-insights-separator" aria-hidden="true" />
+          <section className="chart-insights" aria-label="Indicadores clave de la gráfica">
+            <article>
+              <h3>Mejor semana del {insightsTitlePeriod}</h3>
+              <p>{tradingInsights.bestWeekLabel} · {distributionAmountLabel(tradingInsights.bestWeekAmount)}</p>
+            </article>
+            <article>
+              <h3>{bestDayInsightTitle}</h3>
+              <p>{tradingInsights.bestDayLabel} · {distributionAmountLabel(tradingInsights.bestDayAmount)}</p>
+            </article>
+            <article>
+              <h3>Mejor dia para operar</h3>
+              <p>{tradingInsights.bestWeekdayLabel} · {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</p>
+              <span>
+                {tradingInsights.bestWeekdayTrades} operaciones · Promedio {distributionAmountLabel(tradingInsights.bestWeekdayAverage)}
+              </span>
+            </article>
+          </section>
         </article>
 
         <article className="chart-card">
@@ -769,6 +1075,16 @@ function DashboardSummaryContent({
                   ))
               )}
             </tbody>
+            <tfoot>
+              <tr className="table-totals-row">
+                <td colSpan={3}>Totales filtrados</td>
+                <td>{formatCurrency(filteredTradesTotals.invested)}</td>
+                <td className={filteredTotalResultClass}>{distributionAmountLabel(filteredTradesTotals.result)}</td>
+                <td colSpan={2} />
+                <td>{filteredTradesTotals.withResultCount} con resultado</td>
+                <td />
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -1053,6 +1369,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
   const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
   const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const isAdmin = userRole?.name === 'admin';
   const roleLabel = roleNameLabel(userRole?.name);
   const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
@@ -1072,6 +1389,11 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       ...prev,
       [section]: !prev[section],
     }));
+  }
+
+  function activateTab(tab: DashboardTab) {
+    setActiveTab(tab);
+    setMobileSidebarOpen(false);
   }
 
   const filteredEntries = useMemo(() => {
@@ -1129,18 +1451,13 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       }, 0);
   }, [filteredEntries]);
 
-  const openRisk = useMemo(() => {
-    return filteredEntries
-      .filter((entry) => entry.status === 'planned' || entry.status === 'open')
-      .reduce((sum, entry) => sum + entry.riskAmount, 0);
-  }, [filteredEntries]);
-
   const monthlyProfitData = useMemo(() => {
-    return calculateMonthlyProfitData(
-      filteredEntries,
-      resolveMonthlyReferenceDate(filteredEntries, selectedYear),
-      selectedMonth === 'all' ? 'fullYear' : 'centered5',
-    );
+    const referenceDate = resolveMonthlyReferenceDate(filteredEntries, selectedYear);
+    if (selectedMonth !== 'all') {
+      return calculateDailyProfitData(filteredEntries, referenceDate);
+    }
+
+    return calculateMonthlyProfitData(filteredEntries, referenceDate, 'fullYear');
   }, [filteredEntries, selectedYear, selectedMonth]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
@@ -1222,7 +1539,9 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
           pair: entry.symbol,
           type: entry.direction.toUpperCase(),
           investedAmount: formatCurrency(entry.riskAmount),
+          investedAmountValue: entry.riskAmount,
           result: resultValue,
+          resultAmountValue: entry.resultR === null ? null : entry.riskAmount * entry.resultR,
           technicalOutcome: technicalOutcomeLabel(entry),
           financialOutcome: financialOutcomeLabel(entry),
           isTechnicalBreak: isTechnicalBreakEven(entry),
@@ -1304,7 +1623,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       winTotal={winTotal}
       lossRate={lossRate}
       lossTotal={lossTotal}
-      openRisk={openRisk}
       monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
       netResult={netResult}
@@ -1323,7 +1641,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
 
   return (
     <main className="dashboard-shell">
-      <aside className="dashboard-sidebar" aria-label="Menu lateral del dashboard">
+      <aside id="dashboard-mobile-sidebar" className={`dashboard-sidebar ${mobileSidebarOpen ? 'open' : ''}`} aria-label="Menu lateral del dashboard">
         <div className="sidebar-brand">
           <AppIcon name="brand" className="sidebar-brand-icon" />
           <span className="sidebar-brand-text">Inversiones</span>
@@ -1351,7 +1669,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-principal" className={`sidebar-section-content ${collapsedSections.principal ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`} onClick={() => setActiveTab('resumen')}>
+              <button type="button" className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`} onClick={() => activateTab('resumen')}>
                 <AppIcon name="dashboard" className="menu-btn-icon" />
                 <span>Resumen</span>
               </button>
@@ -1379,20 +1697,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-gestion" className={`sidebar-section-content ${collapsedSections.gestion ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => setActiveTab('noticias')} onMouseEnter={() => prefetchDashboardTab('noticias', isAdmin)} onFocus={() => prefetchDashboardTab('noticias', isAdmin)}>
+              <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => activateTab('noticias')} onMouseEnter={() => prefetchDashboardTab('noticias', isAdmin)} onFocus={() => prefetchDashboardTab('noticias', isAdmin)}>
                 <AppIcon name="article" className="menu-btn-icon" />
                 <span>Mis noticias</span>
               </button>
-              <button type="button" className={`menu-btn menu-entries ${activeTab === 'entradas' ? 'active' : ''}`} onClick={() => setActiveTab('entradas')} onMouseEnter={() => prefetchDashboardTab('entradas', isAdmin)} onFocus={() => prefetchDashboardTab('entradas', isAdmin)}>
+              <button type="button" className={`menu-btn menu-entries ${activeTab === 'entradas' ? 'active' : ''}`} onClick={() => activateTab('entradas')} onMouseEnter={() => prefetchDashboardTab('entradas', isAdmin)} onFocus={() => prefetchDashboardTab('entradas', isAdmin)}>
                 <AppIcon name="entry" className="menu-btn-icon" />
                 <span>Entradas mercado</span>
               </button>
-              <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => setActiveTab('cuentas')} onMouseEnter={() => prefetchDashboardTab('cuentas', isAdmin)} onFocus={() => prefetchDashboardTab('cuentas', isAdmin)}>
+              <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => activateTab('cuentas')} onMouseEnter={() => prefetchDashboardTab('cuentas', isAdmin)} onFocus={() => prefetchDashboardTab('cuentas', isAdmin)}>
                 <AppIcon name="accounts" className="menu-btn-icon" />
                 <span>Gestionar cuentas</span>
               </button>
               {isAdmin && (
-                <button type="button" className={`menu-btn menu-users ${activeTab === 'usuarios' ? 'active' : ''}`} onClick={() => setActiveTab('usuarios')} onMouseEnter={() => prefetchDashboardTab('usuarios', isAdmin)} onFocus={() => prefetchDashboardTab('usuarios', isAdmin)}>
+                <button type="button" className={`menu-btn menu-users ${activeTab === 'usuarios' ? 'active' : ''}`} onClick={() => activateTab('usuarios')} onMouseEnter={() => prefetchDashboardTab('usuarios', isAdmin)} onFocus={() => prefetchDashboardTab('usuarios', isAdmin)}>
                   <AppIcon name="users" className="menu-btn-icon" />
                   <span>Gestionar usuarios</span>
                 </button>
@@ -1421,7 +1739,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-cuenta" className={`sidebar-section-content ${collapsedSections.cuenta ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-settings ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')} onMouseEnter={() => prefetchDashboardTab('configuracion', isAdmin)} onFocus={() => prefetchDashboardTab('configuracion', isAdmin)}>
+              <button type="button" className={`menu-btn menu-settings ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => activateTab('configuracion')} onMouseEnter={() => prefetchDashboardTab('configuracion', isAdmin)} onFocus={() => prefetchDashboardTab('configuracion', isAdmin)}>
                 <AppIcon name="settings" className="menu-btn-icon" />
                 <span>Configuración</span>
               </button>
@@ -1441,12 +1759,29 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         </div>
       </aside>
 
+      <button
+        type="button"
+        className={`mobile-sidebar-overlay ${mobileSidebarOpen ? 'visible' : ''}`}
+        onClick={() => setMobileSidebarOpen(false)}
+        aria-label="Cerrar menu lateral"
+      />
+
       <section className="dashboard-layout">
         <header className="dashboard-header">
           <div className="dashboard-header-title">
             <h1>{pageTitle}</h1>
           </div>
           <div className="header-right">
+            <button
+              type="button"
+              className="mobile-menu-btn"
+              onClick={() => setMobileSidebarOpen((prev) => !prev)}
+              aria-label="Mostrar u ocultar menu"
+              aria-expanded={mobileSidebarOpen}
+              aria-controls="dashboard-mobile-sidebar"
+            >
+              <AppIcon name={mobileSidebarOpen ? 'close' : 'menu'} />
+            </button>
             <span className="system-status"><AppIcon name="system" /> <span>Sistema online</span></span>
             <button className="secondary-btn" type="button" onClick={onSignOut}>
               <AppIcon name="logout" />

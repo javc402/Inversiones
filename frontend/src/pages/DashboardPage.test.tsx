@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage, {
+  calculateDailyProfitData,
   calculateMonthlyProfitData,
   calculateProfitFactor,
   distributionAmountLabel,
@@ -580,13 +581,13 @@ describe('DashboardPage', () => {
     const gananciaCardText = screen.getByText('Ganancias del mes').closest('article')?.textContent ?? ''
     const exitoCardText = screen.getByText('Tasa de exito').closest('article')?.textContent ?? ''
     const perdidaCardText = screen.getByText('Tasa de perdida').closest('article')?.textContent ?? ''
-    const riesgoCardText = screen.getByText('Riesgo abierto').closest('article')?.textContent ?? ''
+    const mejorDiaCardText = screen.getAllByText('Mejor dia para operar')[0]?.closest('article')?.textContent ?? ''
     const resumenDistribucion = screen.getByLabelText('Métricas de desempeño').textContent ?? ''
 
     const normalizedGananciaCardText = gananciaCardText.replace(/\s+/g, ' ').trim()
     const normalizedExitoCardText = exitoCardText.replace(/\s+/g, ' ').trim()
     const normalizedPerdidaCardText = perdidaCardText.replace(/\s+/g, ' ').trim()
-    const normalizedRiesgoCardText = riesgoCardText.replace(/\s+/g, ' ').trim()
+    const normalizedMejorDiaCardText = mejorDiaCardText.replace(/\s+/g, ' ').trim()
 
     expect(normalizedGananciaCardText).toContain('3 operaciones')
     expect(normalizedGananciaCardText).toContain(formatCurrency(150).replace(/\s+/g, ' ').trim())
@@ -597,7 +598,8 @@ describe('DashboardPage', () => {
     expect(normalizedPerdidaCardText).toContain('50.0%')
     expect(normalizedPerdidaCardText).toContain(formatCurrency(-50).replace(/\s+/g, ' ').trim())
 
-    expect(normalizedRiesgoCardText).toContain(formatCurrency(70).replace(/\s+/g, ' ').trim())
+    expect(normalizedMejorDiaCardText).toContain('Mejor dia para operar')
+    expect(normalizedMejorDiaCardText).toContain(distributionAmountLabel(200).replace(/\s+/g, ' ').trim())
 
     expect(resumenDistribucion).toContain('Profit Factor')
     expect(resumenDistribucion).toContain('4.00')
@@ -784,7 +786,7 @@ describe('DashboardPage', () => {
     expect(zeroRates.length).toBeGreaterThan(0)
   })
 
-  it('calcula riesgo abierto solo de operaciones abiertas', async () => {
+  it('muestra KPI de mejor día para operar con operaciones cerradas', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([
       {
@@ -843,8 +845,9 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    const riesgoSeccion = await screen.findByText('Riesgo abierto')
-    expect(riesgoSeccion).toBeInTheDocument()
+    const mejorDiaSeccion = await screen.findAllByText('Mejor dia para operar')
+    expect(mejorDiaSeccion.length).toBeGreaterThan(0)
+    expect(screen.getAllByText((content) => content.includes('Total: +USD') && content.includes('600.00')).length).toBeGreaterThan(0)
   })
 
   it('muestra tabla de operaciones recientes ordenadas por fecha', async () => {
@@ -1013,7 +1016,7 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
 
-    fireEvent.change(screen.getByPlaceholderText('Filtrar fecha'), { target: { value: '20/6/2026' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar fecha'), { target: { value: '20/06/2026' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar par'), { target: { value: 'EUR' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar tipo'), { target: { value: 'BUY' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar invertido'), { target: { value: '100' } })
@@ -1454,11 +1457,11 @@ describe('DashboardPage', () => {
     )
 
     expect(monthlyData).toHaveLength(6)
-    expect(monthlyData.some((item) => item.amount !== 0)).toBe(true)
+    expect(monthlyData.some((item) => item.lossAmount !== 0)).toBe(true)
     expect(monthlyData[0]).toHaveProperty('month')
   })
 
-  it('la serie mensual incluye monto de break tecnico en su mes de ejecucion', () => {
+  it('la serie mensual separa monto de break tecnico en su indicador dedicado', () => {
     const fixedNow = new Date('2026-07-15T00:00:00.000Z')
     const monthlyData = calculateMonthlyProfitData(
       [
@@ -1498,7 +1501,8 @@ describe('DashboardPage', () => {
     )
 
     const jun = monthlyData.find((item) => item.month === 'Jun')
-    expect(jun?.amount).toBe(150)
+    expect(jun?.amount).toBe(0)
+    expect(jun?.breakevenAmount).toBe(150)
   })
 
   it('la serie mensual muestra todo el año cuando se seleccionan todos los meses', () => {
@@ -1528,7 +1532,7 @@ describe('DashboardPage', () => {
           operationLink: null,
           riskAmount: 100,
           investmentPercent: 1,
-          resultR: 1,
+          resultR: 2,
           note: '',
           status: 'closed',
           plannedAt: '2026-01-10T10:00:00.000Z',
@@ -1544,7 +1548,7 @@ describe('DashboardPage', () => {
     expect(monthlyData).toHaveLength(12)
     expect(monthlyData[0]?.month).toBe('Ene')
     expect(monthlyData[11]?.month).toBe('Dic')
-    expect(monthlyData.find((item) => item.month === 'Ene')?.amount).toBe(100)
+    expect(monthlyData.find((item) => item.month === 'Ene')?.amount).toBe(200)
   })
 
   it('la serie mensual centrada muestra 2 meses antes y 2 después del mes seleccionado', () => {
@@ -1574,7 +1578,7 @@ describe('DashboardPage', () => {
           operationLink: null,
           riskAmount: 120,
           investmentPercent: 1,
-          resultR: 1,
+          resultR: 2,
           note: '',
           status: 'closed',
           plannedAt: '2026-06-10T10:00:00.000Z',
@@ -1589,7 +1593,52 @@ describe('DashboardPage', () => {
 
     expect(monthlyData).toHaveLength(5)
     expect(monthlyData.map((item) => item.month)).toEqual(['Abr', 'May', 'Jun', 'Jul', 'Ago'])
-    expect(monthlyData.find((item) => item.month === 'Jun')?.amount).toBe(120)
+    expect(monthlyData.find((item) => item.month === 'Jun')?.amount).toBe(240)
+  })
+
+  it('la serie diaria incluye todos los días del mes seleccionado', () => {
+    const referenceDate = new Date('2026-07-15T00:00:00.000Z')
+    const dailyData = calculateDailyProfitData(
+      [
+        {
+          id: 'entry-day-win',
+          groupId: 'group-day-win',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 200,
+          investmentPercent: 1,
+          resultR: 1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-07-10T10:00:00.000Z',
+          createdAt: '2026-07-10T10:00:00.000Z',
+          updatedAt: '2026-07-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      referenceDate,
+    )
+
+    expect(dailyData).toHaveLength(31)
+    expect(dailyData[0]?.month).toBe('1')
+    expect(dailyData[30]?.month).toBe('31')
+    expect(dailyData.find((item) => item.month === '10')?.breakevenAmount).toBe(200)
   })
 
   it('formatea montos de distribución con signo', () => {
