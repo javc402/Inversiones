@@ -128,6 +128,13 @@
   gap: 16px;
 }
 
+@media (min-width: 1025px) {
+  .news-grid {
+    grid-template-columns: repeat(auto-fill, minmax(280px, 340px));
+    justify-content: start;
+  }
+}
+
 @media (min-width: 641px) and (max-width: 1024px) {
   .news-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));

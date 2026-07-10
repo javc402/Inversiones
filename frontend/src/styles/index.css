@@ -1078,6 +1078,7 @@ th {
   color: #375271;
   font-size: 13px;
   font-weight: 700;
+  min-width: 0;
 }
 
 .dashboard-edit-grid input,
@@ -1090,6 +1091,7 @@ th {
   color: #13385f;
   background: #ffffff;
   width: 100%;
+  min-width: 0;
   box-sizing: border-box;
 }
 
@@ -1358,6 +1360,30 @@ th {
 }
 
 @media (max-width: 640px) {
+  .dashboard-edit-overlay {
+    padding: 10px;
+  }
+
+  .dashboard-edit-modal {
+    padding: 14px;
+  }
+
+  .dashboard-edit-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .dashboard-edit-grid input,
+  .dashboard-edit-grid select,
+  .dashboard-edit-grid textarea {
+    padding: 9px 10px;
+    font-size: 13px;
+  }
+
+  .dashboard-edit-grid input[type="datetime-local"] {
+    font-size: 12px;
+  }
+
   .kpi-grid {
     grid-template-columns: 1fr;
   }

@@ -229,6 +229,13 @@
   gap: 16px;
 }
 
+@media (min-width: 1025px) {
+  .entries-grid {
+    grid-template-columns: repeat(auto-fill, minmax(290px, 360px));
+    justify-content: start;
+  }
+}
+
 @media (min-width: 641px) and (max-width: 1024px) {
   .entries-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
