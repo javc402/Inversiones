@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage, {
@@ -18,6 +18,7 @@ import DashboardPage, {
 const getCurrentUserRoleMock = vi.hoisted(() => vi.fn())
 const listTradingAccountsMock = vi.hoisted(() => vi.fn())
 const listMarketEntriesByUserMock = vi.hoisted(() => vi.fn())
+const updateMarketEntryByIdMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@components/AdminPanel', () => ({
   default: () => React.createElement('div', null, 'Panel de Administración'),
@@ -49,10 +50,23 @@ vi.mock('@services/accounts', () => ({
 
 vi.mock('@services/market-entries', () => ({
   listMarketEntriesByUser: listMarketEntriesByUserMock,
+  updateMarketEntryById: updateMarketEntryByIdMock,
 }))
 
 vi.mock('recharts', () => {
   const Wrapper = ({ children }: { children?: React.ReactNode }) => React.createElement('div', null, children)
+  const Tooltip = ({ formatter }: { formatter?: (value: number, name: string, props: { payload: { name: string; operations: number; totalAmount: number } }) => [string, string] }) => {
+    if (typeof formatter === 'function') {
+      formatter(33.3, 'Ganadas', { payload: { name: 'Ganadas', operations: 1, totalAmount: 100 } })
+    }
+    return React.createElement('div', null)
+  }
+  const Legend = ({ formatter }: { formatter?: (value: string) => string }) => {
+    if (typeof formatter === 'function') {
+      formatter('Ganadas')
+    }
+    return React.createElement('div', null)
+  }
   return {
     ResponsiveContainer: Wrapper,
     AreaChart: Wrapper,
@@ -61,8 +75,8 @@ vi.mock('recharts', () => {
     Area: Wrapper,
     Cell: Wrapper,
     CartesianGrid: Wrapper,
-    Legend: Wrapper,
-    Tooltip: Wrapper,
+    Legend,
+    Tooltip,
     XAxis: Wrapper,
     YAxis: Wrapper,
   }
@@ -74,6 +88,7 @@ describe('DashboardPage', () => {
     vi.clearAllMocks()
     listTradingAccountsMock.mockResolvedValue([])
     listMarketEntriesByUserMock.mockResolvedValue([])
+    updateMarketEntryByIdMock.mockResolvedValue(undefined)
   })
 
   it('muestra menu de gestionar usuarios solo para admin', async () => {
@@ -957,6 +972,190 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Distribucion de operaciones')).toBeInTheDocument()
     expect(screen.getByText((content) => content.includes('Total: +USD') && content.includes('160.00'))).toBeInTheDocument()
     expect(screen.getByText((content) => content.includes('Promedio: +USD') && content.includes('80.00'))).toBeInTheDocument()
+  })
+
+  it('aplica filtros por columnas en la tabla de operaciones recientes', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-filter-1',
+        groupId: 'group-filter-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: 'nota',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Filtrar fecha'), { target: { value: '20/6/2026' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar par'), { target: { value: 'EUR' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar tipo'), { target: { value: 'BUY' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar invertido'), { target: { value: '100' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar resultado'), { target: { value: '100' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar tecnico'), { target: { value: 'Break tecnico' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar financiero'), { target: { value: 'Breakeven' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar estado'), { target: { value: 'Completada' } })
+
+    expect(screen.getByText('EURUSD')).toBeInTheDocument()
+  })
+
+  it('permite editar entrada desde modal, cancelar y guardar cambios', async () => {
+    const baseEntry = {
+      id: 'entry-edit-1',
+      groupId: 'group-edit-1',
+      userEmail: 'usuario@demo.com',
+      accountId: 'acc-1',
+      accountName: 'Real',
+      symbol: 'EURUSD',
+      marketContext: 'CPI',
+      setup: 'Breakout',
+      session: 'NEW YORK',
+      direction: 'buy' as const,
+      entryPrice: 1.1,
+      stopLoss: 1,
+      takeProfit: 1.2,
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: 1,
+      note: 'nota inicial',
+      status: 'closed' as const,
+      operationLink: 'https://example.com/old',
+      plannedAt: '2026-06-20T10:00:00.000Z',
+      createdAt: '2026-06-20T10:00:00.000Z',
+      updatedAt: '2026-06-20T10:00:00.000Z',
+      contextSource: null,
+      newsArticleId: null,
+      noEntryReason: null,
+    }
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock
+      .mockResolvedValueOnce([baseEntry])
+      .mockResolvedValueOnce([
+        {
+          ...baseEntry,
+          riskAmount: 125,
+          investmentPercent: 1.5,
+          resultR: 2,
+          operationLink: 'https://example.com/new',
+          note: 'nota actualizada',
+          noEntryReason: 'No vi confirmacion',
+        },
+      ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+    expect(await screen.findByText('Editar entrada')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar modal' }))
+    expect(screen.queryByText('Editar entrada')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
+    fireEvent.change(screen.getByLabelText('Motivo sin entrada'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.change(screen.getByDisplayValue('Sin entrada'), { target: { value: 'closed' } })
+    fireEvent.change(screen.getByLabelText('Fecha de ejecución'), { target: { value: '2026-06-21T12:30' } })
+    fireEvent.change(screen.getByLabelText('Riesgo por cuenta (USD)'), { target: { value: '125' } })
+    fireEvent.change(screen.getByLabelText('% inversión'), { target: { value: '1.5' } })
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '2.0' } })
+    fireEvent.change(screen.getByLabelText('Link de operación'), { target: { value: 'https://example.com/new' } })
+    fireEvent.change(screen.getByLabelText('Notas'), { target: { value: 'nota actualizada' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      expect(updateMarketEntryByIdMock).toHaveBeenCalledWith('usuario@demo.com', 'entry-edit-1', expect.objectContaining({
+        status: 'closed',
+        riskAmount: 125,
+        investmentPercent: 1.5,
+        resultR: 2,
+        operationLink: 'https://example.com/new',
+        note: 'nota actualizada',
+        noEntryReason: 'No vi confirmacion',
+      }))
+      expect(listMarketEntriesByUserMock).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('muestra error al guardar con resultado R inválido en estado completada', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-edit-error',
+        groupId: 'group-edit-error',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: 'NaN' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    expect(await screen.findByText('El Resultado R debe ser valido para estado Completada.')).toBeInTheDocument()
+    expect(updateMarketEntryByIdMock).not.toHaveBeenCalled()
   })
 
   it('abre modal de edición en dashboard desde el botón de ojo sin redirección', async () => {
