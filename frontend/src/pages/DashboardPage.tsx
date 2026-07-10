@@ -1498,10 +1498,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       closeEditEntryModal();
     }
 
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key !== 'Escape') {
+        return;
+      }
+
+      closeEditEntryModal();
+    }
+
     document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
 
     return () => {
       document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
     };
   }, [editModalOpen]);
 
