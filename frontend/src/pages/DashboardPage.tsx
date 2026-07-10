@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -16,6 +16,7 @@ import { AppIcon } from '@components/AppIcon';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
 import { listMarketEntriesByUser, MarketEntry, MarketEntryStatus, updateMarketEntryById } from '@services/market-entries';
 import { getCurrentUserRole, Role } from '@services/roles';
+import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 
 const loadAdminPanelModule = () => import('@components/AdminPanel');
 const loadAccountsModule = () => import('@components/AccountsModule');
@@ -617,7 +618,6 @@ interface DashboardSummaryContentProps {
     result: string;
     resultAmountValue: number | null;
     technicalOutcome: string;
-    financialOutcome: string;
     isTechnicalBreak: boolean;
     operationLink: string | null;
     status: string;
@@ -638,7 +638,6 @@ type RecentTradeFilters = {
   investedAmount: string;
   result: string;
   technicalOutcome: string;
-  financialOutcome: string;
   status: string;
 };
 
@@ -669,6 +668,7 @@ function DashboardSummaryContent({
   const profitKpiTitle = selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes';
   const insightsTitlePeriod = selectedMonth === 'all' ? 'año' : 'mes';
   const bestDayInsightTitle = 'Mejor dia para operar';
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
 
   const availableYears = useMemo(() => {
     const years = new Set<number>();
@@ -687,9 +687,9 @@ function DashboardSummaryContent({
     investedAmount: '',
     result: '',
     technicalOutcome: '',
-    financialOutcome: '',
     status: '',
   });
+  const [expandedTradeIds, setExpandedTradeIds] = useState<Record<string, boolean>>({});
 
   const filteredRecentTrades = useMemo(() => {
     const normalized = {
@@ -699,7 +699,6 @@ function DashboardSummaryContent({
       investedAmount: tableFilters.investedAmount.toLowerCase().trim(),
       result: tableFilters.result.toLowerCase().trim(),
       technicalOutcome: tableFilters.technicalOutcome.toLowerCase().trim(),
-      financialOutcome: tableFilters.financialOutcome.toLowerCase().trim(),
       status: tableFilters.status.toLowerCase().trim(),
     };
 
@@ -710,7 +709,6 @@ function DashboardSummaryContent({
       [normalized.investedAmount, 'investedAmount'],
       [normalized.result, 'result'],
       [normalized.technicalOutcome, 'technicalOutcome'],
-      [normalized.financialOutcome, 'financialOutcome'],
       [normalized.status, 'status'],
     ];
 
@@ -737,19 +735,59 @@ function DashboardSummaryContent({
     );
   }, [filteredRecentTrades]);
 
-  let filteredTotalResultClass: 'negative' | 'positive' | 'neutral' = 'neutral';
+  let filteredTotalResultClass: 'negative' | 'positive' | 'breakeven';
   if (filteredTradesTotals.result < 0) {
     filteredTotalResultClass = 'negative';
   } else if (filteredTradesTotals.result > 0) {
     filteredTotalResultClass = 'positive';
+  } else {
+    filteredTotalResultClass = 'breakeven';
   }
 
   const tradingInsights = useMemo(() => {
     return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
   }, [filteredEntries, selectedMonth]);
+
+  function toggleTradeDetails(entryId: string) {
+    setExpandedTradeIds((prev) => ({
+      ...prev,
+      [entryId]: !prev[entryId],
+    }));
+  }
+
   return (
     <>
-      <section className="dashboard-summary-toolbar">
+      <button
+        type="button"
+        className="dashboard-filters-fab"
+        aria-label="Mostrar u ocultar filtros"
+        aria-expanded={filtersPanelOpen}
+        onClick={() => setFiltersPanelOpen((prev) => !prev)}
+      >
+        <AppIcon name="settings" />
+        <span>Filtros</span>
+      </button>
+
+      <button
+        type="button"
+        className={`dashboard-filters-overlay ${filtersPanelOpen ? 'visible' : ''}`}
+        aria-label="Cerrar panel de filtros"
+        onClick={() => setFiltersPanelOpen(false)}
+      />
+
+      <section className={`dashboard-summary-toolbar ${filtersPanelOpen ? 'open' : ''}`}>
+        <div className="dashboard-summary-toolbar-mobile-head">
+          <p>Filtros del dashboard</p>
+          <button
+            type="button"
+            className="dashboard-summary-toolbar-close"
+            aria-label="Cerrar filtros"
+            onClick={() => setFiltersPanelOpen(false)}
+          >
+            <AppIcon name="close" />
+          </button>
+        </div>
+
         <label htmlFor="dashboard-account-filter" className="dashboard-summary-filter-label">Filtrar por cuenta</label>
         <select
           id="dashboard-account-filter"
@@ -945,17 +983,18 @@ function DashboardSummaryContent({
           <table>
             <thead>
               <tr>
+                <th className="table-expand-col" aria-label="Expandir fila" />
                 <th>Fecha</th>
-                <th>Par</th>
-                <th>Tipo</th>
+                <th className="table-mobile-hidden">Par</th>
+                <th className="table-mobile-hidden">Tipo</th>
                 <th>Invertido</th>
                 <th>Resultado</th>
-                <th>Tecnico</th>
-                <th>Financiero</th>
-                <th>Estado</th>
-                <th>Accion</th>
+                <th className="table-mobile-hidden">Tecnico</th>
+                <th className="table-mobile-hidden">Estado</th>
+                <th className="table-mobile-hidden">Acciones</th>
               </tr>
               <tr className="table-filter-row">
+                <td className="table-expand-col" aria-label="Sin filtro de expansión" />
                 <td>
                   <input
                     type="text"
@@ -965,7 +1004,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, date: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar par"
@@ -974,7 +1013,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, pair: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar tipo"
@@ -1001,7 +1040,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, result: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar tecnico"
@@ -1010,16 +1049,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, technicalOutcome: event.target.value }))}
                   />
                 </td>
-                <td>
-                  <input
-                    type="text"
-                    placeholder="Filtrar financiero"
-                    className="table-filter-input"
-                    value={tableFilters.financialOutcome}
-                    onChange={(event) => setTableFilters((prev) => ({ ...prev, financialOutcome: event.target.value }))}
-                  />
-                </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar estado"
@@ -1028,7 +1058,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, status: event.target.value }))}
                   />
                 </td>
-                <td aria-label="Sin filtro de acciones" />
+                <td className="table-mobile-hidden" aria-label="Sin filtro de acciones" />
               </tr>
             </thead>
             <tbody>
@@ -1037,18 +1067,30 @@ function DashboardSummaryContent({
                   <td colSpan={9}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
-                filteredRecentTrades
-                  .map((trade) => (
+                filteredRecentTrades.flatMap((trade) => {
+                  const isExpanded = expandedTradeIds[trade.entryId] === true;
+
+                  const rows = [
                     <tr key={trade.entryId}>
+                      <td className="table-expand-cell">
+                        <button
+                          type="button"
+                          className="table-expand-btn"
+                          onClick={() => toggleTradeDetails(trade.entryId)}
+                          aria-label={isExpanded ? `Ocultar detalles de ${trade.pair}` : `Mostrar detalles de ${trade.pair}`}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? '−' : '+'}
+                        </button>
+                      </td>
                       <td>{trade.date}</td>
-                      <td>{trade.pair}</td>
-                      <td>{trade.type}</td>
+                      <td className="table-mobile-hidden">{trade.pair}</td>
+                      <td className="table-mobile-hidden">{trade.type}</td>
                       <td>{trade.investedAmount}</td>
                       <td className={tradeResultClass(trade.result, trade.isTechnicalBreak)}>{trade.result}</td>
-                      <td>{trade.technicalOutcome}</td>
-                      <td>{trade.financialOutcome}</td>
-                      <td>{trade.status}</td>
-                      <td>
+                      <td className="table-mobile-hidden">{trade.technicalOutcome}</td>
+                      <td className="table-mobile-hidden">{trade.status}</td>
+                      <td className="table-mobile-hidden">
                         <div className="table-actions-group">
                           <button
                             type="button"
@@ -1071,18 +1113,82 @@ function DashboardSummaryContent({
                           </button>
                         </div>
                       </td>
-                    </tr>
-                  ))
+                    </tr>,
+                  ];
+
+                  if (isExpanded) {
+                    rows.push(
+                      <tr key={`${trade.entryId}-details`} className="table-expanded-row open">
+                        <td colSpan={9}>
+                          <div className="table-expanded-content">
+                            <div className="table-expanded-grid">
+                              <div className="table-expanded-item">
+                                <span>Par</span>
+                                <strong>{trade.pair}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Tipo</span>
+                                <strong>{trade.type}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Tecnico</span>
+                                <strong>{trade.technicalOutcome}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Estado</span>
+                                <strong>{trade.status}</strong>
+                              </div>
+                            </div>
+                            <div className="table-expanded-actions">
+                              <button
+                                type="button"
+                                className="table-action-btn"
+                                onClick={() => onOpenEntry(trade.entryId)}
+                                aria-label={`Editar entrada ${trade.pair}`}
+                                title="Ver y editar entrada"
+                              >
+                                <AppIcon name="eye" />
+                              </button>
+                              <button
+                                type="button"
+                                className="table-action-btn"
+                                onClick={() => onOpenLink(trade.operationLink)}
+                                aria-label={`Abrir link de ${trade.pair}`}
+                                title="Abrir link de operación"
+                                disabled={!trade.operationLink}
+                              >
+                                <AppIcon name="link" />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>,
+                    );
+                  }
+
+                  return rows;
+                })
               )}
             </tbody>
             <tfoot>
-              <tr className="table-totals-row">
+              <tr className="table-totals-row table-totals-desktop">
+                <td className="table-expand-col" />
                 <td colSpan={3}>Totales filtrados</td>
                 <td>{formatCurrency(filteredTradesTotals.invested)}</td>
                 <td className={filteredTotalResultClass}>{distributionAmountLabel(filteredTradesTotals.result)}</td>
-                <td colSpan={2} />
+                <td />
                 <td>{filteredTradesTotals.withResultCount} con resultado</td>
                 <td />
+              </tr>
+              <tr className="table-totals-row table-totals-mobile">
+                <td colSpan={9}>
+                  <div className="table-totals-mobile-summary">
+                    <strong>Totales filtrados</strong>
+                    <span>Invertido: {formatCurrency(filteredTradesTotals.invested)}</span>
+                    <span className={filteredTotalResultClass}>Resultado: {distributionAmountLabel(filteredTradesTotals.result)}</span>
+                    <span>{filteredTradesTotals.withResultCount} con resultado</span>
+                  </div>
+                </td>
               </tr>
             </tfoot>
           </table>
@@ -1376,6 +1482,28 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   const pageTitle = pageTitleByTab[activeTab];
 
   const editModalOpen = editingEntry !== null && dashboardEditForm !== null;
+  const dashboardEditModalRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!editModalOpen) {
+      return;
+    }
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (dashboardEditModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeEditEntryModal();
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [editModalOpen]);
 
   useDashboardModulePrefetch(isAdmin);
   useEnsureSelectedAccountExists(selectedAccountId, summaryAccounts, setSelectedAccountId);
@@ -1543,7 +1671,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
           result: resultValue,
           resultAmountValue: entry.resultR === null ? null : entry.riskAmount * entry.resultR,
           technicalOutcome: technicalOutcomeLabel(entry),
-          financialOutcome: financialOutcomeLabel(entry),
           isTechnicalBreak: isTechnicalBreakEven(entry),
           operationLink: entry.operationLink,
           status: statusLabel(entry.status),
@@ -1794,8 +1921,16 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       </section>
 
       {editModalOpen && dashboardEditForm && (
-        <dialog className="dashboard-edit-overlay" open aria-labelledby="dashboard-edit-title">
-          <div className="dashboard-edit-modal">
+        <dialog
+          className="dashboard-edit-overlay"
+          open
+          aria-labelledby="dashboard-edit-title"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeEditEntryModal();
+          }}
+        >
+          <div className="dashboard-edit-modal" ref={dashboardEditModalRef}>
             <header className="dashboard-edit-header">
               <h2 id="dashboard-edit-title">Editar entrada</h2>
               <button type="button" className="dashboard-edit-close" onClick={closeEditEntryModal} aria-label="Cerrar modal">
@@ -1824,6 +1959,12 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   type="datetime-local"
                   value={dashboardEditForm.plannedAt}
                   onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                  inputMode="none"
+                  onFocus={openDatePicker}
+                  onClick={openDatePicker}
+                  onKeyDown={preventManualDateTyping}
+                  onPaste={preventManualDatePasteOrDrop}
+                  onDrop={preventManualDatePasteOrDrop}
                 />
               </label>
 

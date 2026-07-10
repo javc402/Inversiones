@@ -440,6 +440,32 @@ describe('AccountsModule', () => {
     });
   });
 
+  it('usa selector de fecha y cierra modal con evento cancel', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([]);
+
+    render(<AccountsModule />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+
+    const dateInput = screen.getByLabelText('Fecha apertura *') as HTMLInputElement;
+    fireEvent.focus(dateInput);
+    fireEvent.click(dateInput);
+    fireEvent.keyDown(dateInput, { key: '1' });
+    fireEvent.keyDown(dateInput, { key: 'Tab' });
+    fireEvent.paste(dateInput, { clipboardData: { getData: () => '2026-07-10' } as DataTransfer });
+    fireEvent.change(dateInput, { target: { value: '2026-07-10' } });
+
+    fireEvent.mouseDown(screen.getByText('Crear cuenta'));
+    expect(screen.getByRole('dialog', { name: 'Formulario cuenta' })).toBeInTheDocument();
+
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Formulario cuenta' })).not.toBeInTheDocument();
+    });
+  });
+
   it('crea cuenta funded con campos de fondeo', async () => {
     vi.mocked(accountsService.listTradingAccounts)
       .mockResolvedValueOnce([])

@@ -18,6 +18,7 @@ import {
 } from '../services/market-entries';
 import { listUserNews, NewsArticle } from '@services/news';
 import { logAuditActivity } from '@services/audit';
+import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 import '../styles/market-entries-module.css';
 
 type AuditTargetTypeWithSystem = 'account' | 'user' | 'config' | 'system';
@@ -755,7 +756,18 @@ function MarketEntriesCreateForm({
 
       <label>
         <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora real (pasada) o prevista (futura) en la que se ejecuta/ejecutará la operación." />
-        <input type="datetime-local" value={commonForm.plannedAt} onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))} required />
+        <input
+          type="datetime-local"
+          value={commonForm.plannedAt}
+          onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+          inputMode="none"
+          onFocus={openDatePicker}
+          onClick={openDatePicker}
+          onKeyDown={preventManualDateTyping}
+          onPaste={preventManualDatePasteOrDrop}
+          onDrop={preventManualDatePasteOrDrop}
+          required
+        />
       </label>
 
       <label>
@@ -971,6 +983,12 @@ function MarketEntriesEditForm({
           type="datetime-local"
           value={editForm.plannedAt}
           onChange={(event) => setEditForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+          inputMode="none"
+          onFocus={openDatePicker}
+          onClick={openDatePicker}
+          onKeyDown={preventManualDateTyping}
+          onPaste={preventManualDatePasteOrDrop}
+          onDrop={preventManualDatePasteOrDrop}
           required
         />
       </label>
@@ -1068,6 +1086,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [isEditSubmitting, setIsEditSubmitting] = useState(false);
   const createSubmitLockRef = useRef(false);
   const editSubmitLockRef = useRef(false);
+  const entriesModalRef = useRef<HTMLDialogElement | null>(null);
 
   const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
   const isCompletedOnCreate = commonForm.status === 'closed';
@@ -1318,6 +1337,35 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setError('');
   }
 
+  useEffect(() => {
+    if (!modalMode) {
+      return;
+    }
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (entriesModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeModal();
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeModal();
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [modalMode]);
+
   function addAccountRow() {
     setPerAccountRows((prev) => [...prev, createAccountRow()]);
   }
@@ -1463,7 +1511,16 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const modal = modalMode
     ? createPortal(
         <div className="entries-modal-overlay">
-          <dialog className="entries-modal-shell" open aria-labelledby="entries-modal-title">
+          <dialog
+            className="entries-modal-shell"
+            open
+            aria-labelledby="entries-modal-title"
+            ref={entriesModalRef}
+            onCancel={(event) => {
+              event.preventDefault();
+              closeModal();
+            }}
+          >
             <div className="entries-modal-header">
               <div>
                 <p className="entries-modal-kicker">Registro operativo</p>

@@ -56,9 +56,15 @@ vi.mock('@services/market-entries', () => ({
 
 vi.mock('recharts', () => {
   const Wrapper = ({ children }: { children?: React.ReactNode }) => React.createElement('div', null, children)
-  const Tooltip = ({ formatter }: { formatter?: (value: number, name: string, props: { payload: { name: string; operations: number; totalAmount: number } }) => [string, string] }) => {
+  const Tooltip = ({ formatter, labelFormatter }: {
+    formatter?: (value: number, name: string, props: { payload: { name: string; operations: number; totalAmount: number } }) => [string, string]
+    labelFormatter?: (label: string) => string
+  }) => {
     if (typeof formatter === 'function') {
       formatter(33.3, 'Ganadas', { payload: { name: 'Ganadas', operations: 1, totalAmount: 100 } })
+    }
+    if (typeof labelFormatter === 'function') {
+      labelFormatter('Ene')
     }
     return React.createElement('div', null)
   }
@@ -297,7 +303,7 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByLabelText('Filtrar por cuenta')).toBeInTheDocument()
-    expect(await screen.findByText('EURUSD')).toBeInTheDocument()
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
     expect(screen.getByText('GBPUSD')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Filtrar por cuenta'), { target: { value: 'acc-1' } })
@@ -378,7 +384,7 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByLabelText('Filtrar por mes')).toBeInTheDocument()
-    expect(await screen.findByText('EURUSD')).toBeInTheDocument()
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
     expect(screen.getByText('GBPUSD')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Filtrar por mes'), { target: { value: '5' } })
@@ -1022,7 +1028,6 @@ describe('DashboardPage', () => {
     fireEvent.change(screen.getByPlaceholderText('Filtrar invertido'), { target: { value: '100' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar resultado'), { target: { value: '100' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar tecnico'), { target: { value: 'Break tecnico' } })
-    fireEvent.change(screen.getByPlaceholderText('Filtrar financiero'), { target: { value: 'Breakeven' } })
     fireEvent.change(screen.getByPlaceholderText('Filtrar estado'), { target: { value: 'Completada' } })
 
     expect(screen.getByText('EURUSD')).toBeInTheDocument()
@@ -1205,6 +1210,62 @@ describe('DashboardPage', () => {
     expect(screen.getByRole('button', { name: 'Resumen' })).toHaveClass('active')
   })
 
+  it('usa handlers de fecha readonly y cierra modal con evento cancel', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-cancel-1',
+        groupId: 'group-cancel',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada EURUSD' }))
+    const dateInput = screen.getByLabelText('Fecha de ejecución') as HTMLInputElement
+    fireEvent.focus(dateInput)
+    fireEvent.click(dateInput)
+    fireEvent.keyDown(dateInput, { key: '1' })
+    fireEvent.keyDown(dateInput, { key: 'Tab' })
+    fireEvent.paste(dateInput, { clipboardData: { getData: () => '2026-07-10T12:00' } as unknown as DataTransfer })
+    fireEvent.change(dateInput, { target: { value: '2026-07-10T12:00' } })
+
+    fireEvent.mouseDown(screen.getByText('Editar entrada'))
+    expect(screen.getByRole('dialog', { name: 'Editar entrada' })).toBeInTheDocument()
+
+    const dialog = screen.getByRole('dialog', { name: 'Editar entrada' })
+    fireEvent(dialog, new Event('cancel', { cancelable: true }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Editar entrada' })).not.toBeInTheDocument()
+    })
+  })
+
   it('abre el link de operación desde el botón de navegación', async () => {
     const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
 
@@ -1248,6 +1309,59 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Abrir link de EURUSD' }))
 
     expect(openSpy).toHaveBeenCalledWith('https://example.com/trade/1', '_blank', 'noopener,noreferrer')
+    openSpy.mockRestore()
+  })
+
+  it('activa controles móviles y expande detalles de operación en la tabla', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-mobile-1',
+        groupId: 'group-mobile-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        operationLink: 'https://example.com/mobile',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mostrar u ocultar menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar u ocultar filtros' }))
+    fireEvent.click(screen.getByRole('button', { name: /Mostrar detalles de EURUSD/i }))
+
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByRole('button', { name: /Abrir link de EURUSD/i })[0])
+    expect(openSpy).toHaveBeenCalledWith('https://example.com/mobile', '_blank', 'noopener,noreferrer')
+
     openSpy.mockRestore()
   })
 
