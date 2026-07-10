@@ -4,7 +4,7 @@ import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping }
 describe('dateInputGuards', () => {
   it('openDatePicker llama showPicker cuando existe', () => {
     const showPicker = vi.fn();
-    openDatePicker({ currentTarget: { showPicker } as HTMLInputElement & { showPicker: () => void } });
+    openDatePicker({ currentTarget: { showPicker } as unknown as HTMLInputElement & { showPicker: () => void } });
     expect(showPicker).toHaveBeenCalledTimes(1);
   });
 
@@ -29,7 +29,7 @@ describe('dateInputGuards', () => {
     const showPickerEnter = vi.fn();
 
     preventManualDateTyping({
-      currentTarget: { showPicker: showPickerEnter } as HTMLInputElement & { showPicker: () => void },
+      currentTarget: { showPicker: showPickerEnter } as unknown as HTMLInputElement & { showPicker: () => void },
       key: 'Enter',
       preventDefault: preventDefaultEnter,
     });
@@ -38,7 +38,7 @@ describe('dateInputGuards', () => {
     const showPickerSpace = vi.fn();
 
     preventManualDateTyping({
-      currentTarget: { showPicker: showPickerSpace } as HTMLInputElement & { showPicker: () => void },
+      currentTarget: { showPicker: showPickerSpace } as unknown as HTMLInputElement & { showPicker: () => void },
       key: ' ',
       preventDefault: preventDefaultSpace,
     });

@@ -452,7 +452,7 @@ describe('AccountsModule', () => {
     fireEvent.click(dateInput);
     fireEvent.keyDown(dateInput, { key: '1' });
     fireEvent.keyDown(dateInput, { key: 'Tab' });
-    fireEvent.paste(dateInput, { clipboardData: { getData: () => '2026-07-10' } as DataTransfer });
+    fireEvent.paste(dateInput, { clipboardData: { getData: () => '2026-07-10' } as unknown as DataTransfer });
     fireEvent.change(dateInput, { target: { value: '2026-07-10' } });
 
     fireEvent.mouseDown(screen.getByText('Crear cuenta'));

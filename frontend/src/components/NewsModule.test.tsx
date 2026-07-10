@@ -479,7 +479,7 @@ describe('NewsModule', () => {
     fireEvent.click(datetimeInput);
     fireEvent.keyDown(datetimeInput, { key: '2' });
     fireEvent.keyDown(datetimeInput, { key: 'Tab' });
-    fireEvent.paste(datetimeInput, { clipboardData: { getData: () => '2026-07-10T10:00' } as DataTransfer });
+    fireEvent.paste(datetimeInput, { clipboardData: { getData: () => '2026-07-10T10:00' } as unknown as DataTransfer });
     fireEvent.change(datetimeInput, { target: { value: '2026-07-10T10:00' } });
 
     const dialog = screen.getByRole('dialog');

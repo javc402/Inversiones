@@ -1107,7 +1107,7 @@ describe('MarketEntriesModule', () => {
     fireEvent.click(createDatetime);
     fireEvent.keyDown(createDatetime, { key: '1' });
     fireEvent.keyDown(createDatetime, { key: 'Tab' });
-    fireEvent.paste(createDatetime, { clipboardData: { getData: () => '2026-07-10T09:00' } as DataTransfer });
+    fireEvent.paste(createDatetime, { clipboardData: { getData: () => '2026-07-10T09:00' } as unknown as DataTransfer });
     fireEvent.change(createDatetime, { target: { value: '2026-07-10T09:00' } });
 
     fireEvent.mouseDown(screen.getByText('Nueva entrada al mercado'));
@@ -1125,7 +1125,7 @@ describe('MarketEntriesModule', () => {
     fireEvent.click(editDatetime);
     fireEvent.keyDown(editDatetime, { key: '2' });
     fireEvent.keyDown(editDatetime, { key: 'Tab' });
-    fireEvent.paste(editDatetime, { clipboardData: { getData: () => '2026-07-11T10:00' } as DataTransfer });
+    fireEvent.paste(editDatetime, { clipboardData: { getData: () => '2026-07-11T10:00' } as unknown as DataTransfer });
     fireEvent.change(editDatetime, { target: { value: '2026-07-11T10:00' } });
   });
 
