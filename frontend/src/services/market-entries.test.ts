@@ -609,7 +609,7 @@ describe('market-entries service', () => {
     ).rejects.toThrow('El setup/estrategia es obligatorio.');
   });
 
-  it('valida create: valor de cierre obligatorio cuando status es closed', async () => {
+  it('valida create: resultado R obligatorio cuando status es closed', async () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
@@ -630,7 +630,7 @@ describe('market-entries service', () => {
         },
         perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
       })
-    ).rejects.toThrow('El valor de cierre es obligatorio para entradas completadas.');
+    ).rejects.toThrow('El Resultado R es obligatorio para entradas completadas.');
   });
 
   it('valida create: riesgo e inversión por cuenta mayores a 0', async () => {
@@ -823,7 +823,7 @@ describe('market-entries service', () => {
     await expect(listMostUsedMarketContexts('user@example.com')).rejects.toThrow('contexts fail');
   });
 
-  it('valida create: sesión, dirección y precios obligatorios', async () => {
+  it('valida create: sesión, dirección y símbolo controlado obligatorios', async () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
@@ -867,62 +867,20 @@ describe('market-entries service', () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
-          symbol: 'EURUSD',
+          symbol: 'OTRO',
+          symbolDetail: ' ',
           marketContext: 'CPI',
           contextSource: 'free_text',
           setup: 'Breakout',
           session: 'NY',
           direction: 'buy',
-          entryPrice: 0,
-          stopLoss: 1.09,
-          takeProfit: 1.12,
           note: '',
           plannedAt: '2026-06-29T10:00',
           status: 'planned',
         },
         perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
-      })
-    ).rejects.toThrow('Precio de entrada inválido.');
-
-    await expect(
-      createMarketEntriesForAccounts('user@example.com', {
-        common: {
-          symbol: 'EURUSD',
-          marketContext: 'CPI',
-          contextSource: 'free_text',
-          setup: 'Breakout',
-          session: 'NY',
-          direction: 'buy',
-          entryPrice: 1.1,
-          stopLoss: 0,
-          takeProfit: 1.12,
-          note: '',
-          plannedAt: '2026-06-29T10:00',
-          status: 'planned',
-        },
-        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
-      })
-    ).rejects.toThrow('Stop loss inválido.');
-
-    await expect(
-      createMarketEntriesForAccounts('user@example.com', {
-        common: {
-          symbol: 'EURUSD',
-          marketContext: 'CPI',
-          contextSource: 'free_text',
-          setup: 'Breakout',
-          session: 'NY',
-          direction: 'buy',
-          entryPrice: 1.1,
-          stopLoss: 1.09,
-          takeProfit: 0,
-          note: '',
-          plannedAt: '2026-06-29T10:00',
-          status: 'planned',
-        },
-        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
-      })
-    ).rejects.toThrow('Take profit inválido.');
+      } as never)
+    ).rejects.toThrow('Debes indicar el símbolo cuando seleccionas Otro.');
   });
 
   it('create para contexto news mantiene newsArticleId y normaliza cuenta', async () => {
@@ -938,6 +896,7 @@ describe('market-entries service', () => {
         marketContext: 'CPI',
         contextSource: 'news',
         newsArticleId: 'news-1',
+        newsImpact: 'high',
         setup: 'Breakout',
         session: 'NY',
         direction: 'buy',

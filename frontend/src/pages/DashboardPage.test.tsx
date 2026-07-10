@@ -626,7 +626,23 @@ describe('DashboardPage', () => {
     expect(localStorage.getItem('inversiones_dashboard_active_tab')).toBe('cuentas')
   })
 
-  it('muestra noticias cuando se selecciona la pestaña de noticias', async () => {
+  it.each([
+    {
+      caseName: 'noticias',
+      buttonName: 'Mis noticias',
+      expectedContent: 'Modulo de Noticias',
+    },
+    {
+      caseName: 'entradas',
+      buttonName: 'Entradas mercado',
+      expectedContent: 'Modulo de Entradas',
+    },
+    {
+      caseName: 'configuracion',
+      buttonName: 'Configuración',
+      expectedContent: 'Modulo de Configuracion',
+    },
+  ])('muestra $caseName cuando se selecciona su pestaña', async ({ buttonName, expectedContent }) => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([])
 
@@ -638,43 +654,9 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
+    fireEvent.click(screen.getByRole('button', { name: buttonName }))
 
-    expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
-  })
-
-  it('muestra entradas al mercado cuando se selecciona la pestaña de entradas', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([])
-
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))
-
-    expect(await screen.findByText('Modulo de Entradas')).toBeInTheDocument()
-  })
-
-  it('muestra configuracion cuando se selecciona la pestaña de configuracion', async () => {
-    listTradingAccountsMock.mockResolvedValueOnce([])
-    listMarketEntriesByUserMock.mockResolvedValueOnce([])
-
-    getCurrentUserRoleMock.mockResolvedValueOnce({
-      id: 'role-user',
-      name: 'user',
-      description: 'Usuario',
-    })
-
-    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
-
-    fireEvent.click(screen.getByRole('button', { name: 'Configuración' }))
-
-    expect(await screen.findByText('Modulo de Configuracion')).toBeInTheDocument()
+    expect(await screen.findByText(expectedContent)).toBeInTheDocument()
   })
 
   it('maneja error cuando falla la carga de cuentas', async () => {
@@ -725,14 +707,20 @@ describe('DashboardPage', () => {
           accountId: 'acc-1',
           accountName: 'Real',
           symbol: 'EURUSD',
+          symbolDetail: null,
           marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
           setup: 'Breakout',
           session: 'NEW YORK',
+          candleProtocol: 'no',
           direction: 'buy',
           entryPrice: 1.1,
           stopLoss: 1,
           takeProfit: 1.2,
           closePrice: null,
+          operationLink: null,
           riskAmount: 100,
           investmentPercent: 1,
           resultR: null,
@@ -741,8 +729,6 @@ describe('DashboardPage', () => {
           plannedAt: 'invalid-date',
           createdAt: 'invalid-date',
           updatedAt: 'invalid-date',
-          contextSource: 'free_text',
-          newsArticleId: null,
           noEntryReason: null,
         },
         {
@@ -752,14 +738,20 @@ describe('DashboardPage', () => {
           accountId: 'acc-1',
           accountName: 'Real',
           symbol: 'GBPUSD',
+          symbolDetail: null,
           marketContext: 'NFP',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
           setup: 'Pullback',
           session: 'LONDON',
+          candleProtocol: 'no',
           direction: 'sell',
           entryPrice: 1.3,
           stopLoss: 1.31,
           takeProfit: 1.28,
           closePrice: null,
+          operationLink: null,
           riskAmount: 50,
           investmentPercent: 1,
           resultR: 2,
@@ -768,8 +760,6 @@ describe('DashboardPage', () => {
           plannedAt: '2025-12-20T10:00:00.000Z',
           createdAt: '2025-12-20T10:00:00.000Z',
           updatedAt: '2025-12-20T10:00:00.000Z',
-          contextSource: 'free_text',
-          newsArticleId: null,
           noEntryReason: null,
         },
         {
@@ -779,14 +769,20 @@ describe('DashboardPage', () => {
           accountId: 'acc-1',
           accountName: 'Real',
           symbol: 'USDJPY',
+          symbolDetail: null,
           marketContext: 'FOMC',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
           setup: 'Reversal',
           session: 'LONDON',
+          candleProtocol: 'no',
           direction: 'buy',
           entryPrice: 140,
           stopLoss: 139,
           takeProfit: 141,
           closePrice: null,
+          operationLink: null,
           riskAmount: 75,
           investmentPercent: 1,
           resultR: -1,
@@ -795,8 +791,6 @@ describe('DashboardPage', () => {
           plannedAt: '2026-06-05T10:00:00.000Z',
           createdAt: '2026-06-05T10:00:00.000Z',
           updatedAt: '2026-06-05T10:00:00.000Z',
-          contextSource: 'free_text',
-          newsArticleId: null,
           noEntryReason: null,
         },
       ],

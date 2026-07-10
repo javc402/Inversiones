@@ -2,12 +2,16 @@ import { describe, expect, it } from 'vitest';
 import {
   buildCreateMarketEntryRequest,
   buildCreatePerAccountSelection,
+  candleProtocolLabel,
   buildDefaultAccountRows,
   createAccountRow,
   directionLabel,
   entryDeletionLabel,
   formatDate as formatEntryDate,
   statusLabel as marketStatusLabel,
+  newsImpactLabel,
+  normalizeResultR,
+  resolveEntrySymbol,
   toNumber,
   toNumberOrNull,
 } from '@components/MarketEntriesModule';
@@ -144,6 +148,19 @@ describe('coverage helpers', () => {
     expect(toNumber(' 1.25 ')).toBe(1.25);
     expect(toNumberOrNull('')).toBeNull();
     expect(toNumberOrNull(' 2.5 ')).toBe(2.5);
+    expect(normalizeResultR(1.26)).toBe(1.3);
+    expect(normalizeResultR(Number.NaN)).toBeNull();
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: 'DE40' } as never)).toBe('DE40');
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: '' } as never)).toBe('OTRO');
+    expect(resolveEntrySymbol({ symbol: 'EURUSD', symbolDetail: null } as never)).toBe('EURUSD');
+    expect(candleProtocolLabel('ob')).toBe('OB');
+    expect(candleProtocolLabel('fvg')).toBe('FVG');
+    expect(candleProtocolLabel('no')).toBe('NO');
+    expect(candleProtocolLabel(null)).toBe('NO');
+    expect(newsImpactLabel('high')).toBe('Alto');
+    expect(newsImpactLabel('medium')).toBe('Medio');
+    expect(newsImpactLabel('low')).toBe('Bajo');
+    expect(newsImpactLabel(null)).toBe('Sin impacto');
   });
 
   it('market helpers cubren ramas adicionales', () => {
@@ -212,17 +229,17 @@ describe('coverage helpers', () => {
   it('market buildCreateMarketEntryRequest valida y transforma', () => {
     const common = {
       symbol: 'EURUSD',
+      symbolDetail: '',
       marketContext: 'CPI',
       contextSource: 'free_text',
       newsArticleId: 'news-1',
+      newsImpact: '',
       setup: 'Breakout',
       session: 'NEW YORK',
+      candleProtocol: 'ob',
       direction: 'buy',
-      entryPrice: '1.1',
-      stopLoss: '1.09',
-      takeProfit: '1.12',
-      closePrice: '1.12',
-      resultR: '',
+      resultR: '2.0',
+      operationLink: '',
       noEntryReason: '',
       note: '',
       plannedAt: '2026-06-20T10:00',
@@ -247,16 +264,17 @@ describe('coverage helpers', () => {
     const newsRequest = buildCreateMarketEntryRequest(
       {
         symbol: 'EURUSD',
+        symbolDetail: '',
         marketContext: 'CPI',
         contextSource: 'news',
         newsArticleId: '',
+        newsImpact: 'high',
         setup: 'Breakout',
         session: 'NY',
+        candleProtocol: 'fvg',
         direction: 'buy',
-        entryPrice: '1.1',
-        stopLoss: '1.09',
-        takeProfit: '1.12',
-        resultR: '',
+        resultR: '0.0',
+        operationLink: '',
         noEntryReason: '',
         note: '',
         plannedAt: '2026-06-20T10:00',
@@ -270,17 +288,18 @@ describe('coverage helpers', () => {
 
     const invalidNumbersRequest = buildCreateMarketEntryRequest(
       {
-        symbol: 'EURUSD',
+        symbol: 'OTRO',
+        symbolDetail: 'DE40',
         marketContext: 'CPI',
         contextSource: 'free_text',
         newsArticleId: 'news-1',
+        newsImpact: '',
         setup: 'Breakout',
         session: 'NY',
+        candleProtocol: 'no',
         direction: 'buy',
-        entryPrice: '',
-        stopLoss: '',
-        takeProfit: '',
         resultR: '',
+        operationLink: 'https://example.com/op',
         noEntryReason: '',
         note: '',
         plannedAt: '2026-06-20T10:00',
@@ -290,23 +309,23 @@ describe('coverage helpers', () => {
       false,
       false
     );
-    expect(invalidNumbersRequest.createInput.common.entryPrice).toBe(0);
+    expect(invalidNumbersRequest.createInput.common.symbolDetail).toBe('DE40');
 
     expect(() =>
       buildCreateMarketEntryRequest(
         {
           symbol: 'EURUSD',
+          symbolDetail: '',
           marketContext: 'CPI',
           contextSource: 'free_text',
           newsArticleId: 'news-1',
+          newsImpact: '',
           setup: 'Breakout',
           session: 'NY',
+          candleProtocol: 'ob',
           direction: 'buy',
-          entryPrice: '1.1',
-          stopLoss: '1.1',
-          takeProfit: '1.12',
-          closePrice: '1.12',
-          resultR: '',
+          resultR: 'abc',
+          operationLink: '',
           noEntryReason: '',
           note: '',
           plannedAt: '2026-06-20T10:00',
@@ -316,7 +335,7 @@ describe('coverage helpers', () => {
         false,
         true
       )
-    ).toThrow('No se pudo calcular Resultado R');
+    ).toThrow('No se pudo interpretar el Resultado R ingresado.');
   });
 
   it('market buildDefaultAccountRows usa cuenta por defecto', () => {
