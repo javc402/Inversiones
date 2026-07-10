@@ -137,13 +137,13 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
     expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Resumen|Dashboard/ }))
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
   })
 
   it('filtra operaciones por año desde el combo superior', async () => {
@@ -384,7 +384,8 @@ describe('DashboardPage', () => {
 
     expect(screen.getByText('EURUSD')).toBeInTheDocument()
     expect(screen.queryByText('GBPUSD')).not.toBeInTheDocument()
-    const monthlyProfitCard = screen.getByText('Ganancia del mes').closest('article')
+    expect(screen.getByText('Ganancias del mes')).toBeInTheDocument()
+    const monthlyProfitCard = screen.getByText('Ganancias del mes').closest('article')
     const normalizedCardText = monthlyProfitCard?.textContent?.replace(/\s+/g, ' ') ?? ''
     const normalizedAmount = formatCurrency(200).replace(/\s+/g, ' ')
     expect(normalizedCardText).toContain(normalizedAmount)
@@ -576,7 +577,7 @@ describe('DashboardPage', () => {
     fireEvent.change(screen.getByLabelText('Filtrar por año'), { target: { value: '2026' } })
     fireEvent.change(screen.getByLabelText('Filtrar por mes'), { target: { value: '5' } })
 
-    const gananciaCardText = screen.getByText('Ganancia del mes').closest('article')?.textContent ?? ''
+    const gananciaCardText = screen.getByText('Ganancias del mes').closest('article')?.textContent ?? ''
     const exitoCardText = screen.getByText('Tasa de exito').closest('article')?.textContent ?? ''
     const perdidaCardText = screen.getByText('Tasa de perdida').closest('article')?.textContent ?? ''
     const riesgoCardText = screen.getByText('Riesgo abierto').closest('article')?.textContent ?? ''
@@ -681,7 +682,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    const gananciaNota = await screen.findByText('Ganancia del mes')
+    const gananciaNota = await screen.findByText('Ganancias del año')
     expect(gananciaNota).toBeInTheDocument()
     expect(screen.getByText('1 operaciones')).toBeInTheDocument()
   })
@@ -1326,7 +1327,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.getByText('0 operaciones')).toBeInTheDocument()
   })
 
@@ -1342,7 +1343,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
   })
 
   it('calcula profit factor con ramas de pérdida cero y normal', () => {
@@ -1500,6 +1501,97 @@ describe('DashboardPage', () => {
     expect(jun?.amount).toBe(150)
   })
 
+  it('la serie mensual muestra todo el año cuando se seleccionan todos los meses', () => {
+    const fixedNow = new Date('2026-07-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-jan',
+          groupId: 'group-jan',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 100,
+          investmentPercent: 1,
+          resultR: 1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-01-10T10:00:00.000Z',
+          createdAt: '2026-01-10T10:00:00.000Z',
+          updatedAt: '2026-01-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      fixedNow,
+      'fullYear',
+    )
+
+    expect(monthlyData).toHaveLength(12)
+    expect(monthlyData[0]?.month).toBe('Ene')
+    expect(monthlyData[11]?.month).toBe('Dic')
+    expect(monthlyData.find((item) => item.month === 'Ene')?.amount).toBe(100)
+  })
+
+  it('la serie mensual centrada muestra 2 meses antes y 2 después del mes seleccionado', () => {
+    const fixedNow = new Date('2026-06-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-jun-centered',
+          groupId: 'group-jun-centered',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 120,
+          investmentPercent: 1,
+          resultR: 1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-10T10:00:00.000Z',
+          createdAt: '2026-06-10T10:00:00.000Z',
+          updatedAt: '2026-06-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      fixedNow,
+      'centered5',
+    )
+
+    expect(monthlyData).toHaveLength(5)
+    expect(monthlyData.map((item) => item.month)).toEqual(['Abr', 'May', 'Jun', 'Jul', 'Ago'])
+    expect(monthlyData.find((item) => item.month === 'Jun')?.amount).toBe(120)
+  })
+
   it('formatea montos de distribución con signo', () => {
     expect(distributionAmountLabel(50)).toMatch(/^\+/)
     expect(distributionAmountLabel(-50)).toMatch(/^-/)
@@ -1545,7 +1637,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
   })
 
@@ -1563,7 +1655,7 @@ describe('DashboardPage', () => {
       />
     )
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
     expect(getCurrentUserRoleMock).not.toHaveBeenCalled()
   })
@@ -1579,7 +1671,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))

@@ -55,6 +55,20 @@ export function loadStoredDashboardTab(): DashboardTab {
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const monthFilterLabels = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
 
 interface DistributionSlice {
   name: 'Ganadas' | 'Perdidas' | 'Breakeven';
@@ -128,16 +142,40 @@ export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resul
   return entry.riskAmount * entry.resultR;
 }
 
-export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: Date = new Date()): Array<{ month: string; amount: number }> {
-  const recentMonths = Array.from({ length: 6 }, (_, index) => {
-    const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
-    return {
-      key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
-      month: monthLabels[monthDate.getMonth()],
-    };
-  });
+export function calculateMonthlyProfitData(
+  filteredEntries: MarketEntry[],
+  now: Date = new Date(),
+  chartMode: 'recent6' | 'fullYear' | 'centered5' = 'recent6',
+): Array<{ month: string; amount: number }> {
+  let chartMonths: Array<{ key: string; month: string }>;
 
-  const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
+  if (chartMode === 'fullYear') {
+    chartMonths = Array.from({ length: 12 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), index, 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  } else if (chartMode === 'centered5') {
+    chartMonths = Array.from({ length: 5 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() + (index - 2), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  } else {
+    chartMonths = Array.from({ length: 6 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  }
+
+  const totalsByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
 
   for (const entry of filteredEntries) {
     if (entry.resultR === null) {
@@ -158,7 +196,7 @@ export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: 
     totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + (entry.riskAmount * entry.resultR));
   }
 
-  return recentMonths.map((item) => ({
+  return chartMonths.map((item) => ({
     month: item.month,
     amount: totalsByMonth.get(item.key) ?? 0,
   }));
@@ -398,6 +436,8 @@ function DashboardSummaryContent({
   onOpenEntry,
   onOpenLink,
 }: Readonly<DashboardSummaryContentProps>) {
+  const profitKpiTitle = selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes';
+
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     for (const entry of filteredEntries) {
@@ -488,14 +528,14 @@ function DashboardSummaryContent({
         >
           <option value="all">Todos los meses</option>
           {availableMonths.map((month) => (
-            <option key={month} value={month}>{monthLabels[month]}</option>
+            <option key={month} value={month}>{monthFilterLabels[month]}</option>
           ))}
         </select>
       </section>
 
       <section className="kpi-grid">
         <article className="kpi-card">
-          <h2>Ganancia del mes</h2>
+          <h2>{profitKpiTitle}</h2>
           <p className="kpi-value">{formatCurrency(monthlyProfit)}</p>
           <span className={`kpi-trend ${monthlyProfit >= 0 ? 'positive' : 'negative'}`}>
             {filteredEntries.length} operaciones
@@ -1096,8 +1136,12 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [filteredEntries]);
 
   const monthlyProfitData = useMemo(() => {
-    return calculateMonthlyProfitData(filteredEntries, resolveMonthlyReferenceDate(filteredEntries, selectedYear));
-  }, [filteredEntries, selectedYear]);
+    return calculateMonthlyProfitData(
+      filteredEntries,
+      resolveMonthlyReferenceDate(filteredEntries, selectedYear),
+      selectedMonth === 'all' ? 'fullYear' : 'centered5',
+    );
+  }, [filteredEntries, selectedYear, selectedMonth]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
