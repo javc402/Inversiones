@@ -470,6 +470,42 @@ describe('NewsModule', () => {
     });
   });
 
+  it('should use datetime picker handlers and close modal with cancel event', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    const datetimeInput = document.querySelector('dialog input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.focus(datetimeInput);
+    fireEvent.click(datetimeInput);
+    fireEvent.keyDown(datetimeInput, { key: '2' });
+    fireEvent.keyDown(datetimeInput, { key: 'Tab' });
+    fireEvent.paste(datetimeInput, { clipboardData: { getData: () => '2026-07-10T10:00' } as unknown as DataTransfer });
+    fireEvent.change(datetimeInput, { target: { value: '2026-07-10T10:00' } });
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent(dialog, new Event('cancel', { cancelable: true }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should close title help popover with outside click and react to resize', async () => {
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Titulo' }));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    window.dispatchEvent(new Event('resize'));
+    fireEvent.mouseDown(screen.getByRole('tooltip'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+    fireEvent.mouseDown(document.body);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+  });
+
   it('should change all create modal fields including media and scheduling', async () => {
     render(<NewsModule userEmail="test@example.com" />);
     fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));

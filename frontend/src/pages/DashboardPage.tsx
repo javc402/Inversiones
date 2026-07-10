@@ -1,4 +1,4 @@
-import { Suspense, lazy, useEffect, useMemo, useState } from 'react';
+import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Area,
   AreaChart,
@@ -14,8 +14,9 @@ import {
 } from 'recharts';
 import { AppIcon } from '@components/AppIcon';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
-import { listMarketEntriesByUser, MarketEntry } from '@services/market-entries';
+import { listMarketEntriesByUser, MarketEntry, MarketEntryStatus, updateMarketEntryById } from '@services/market-entries';
 import { getCurrentUserRole, Role } from '@services/roles';
+import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 
 const loadAdminPanelModule = () => import('@components/AdminPanel');
 const loadAccountsModule = () => import('@components/AccountsModule');
@@ -55,6 +56,21 @@ export function loadStoredDashboardTab(): DashboardTab {
 
 const pieColors = ['#1e5ba8', '#ef4444', '#f59e0b'];
 const monthLabels = ['Ene', 'Feb', 'Mar', 'Abr', 'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic'];
+const weekdayLabels = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'];
+const monthFilterLabels = [
+  'Enero',
+  'Febrero',
+  'Marzo',
+  'Abril',
+  'Mayo',
+  'Junio',
+  'Julio',
+  'Agosto',
+  'Septiembre',
+  'Octubre',
+  'Noviembre',
+  'Diciembre',
+];
 
 interface DistributionSlice {
   name: 'Ganadas' | 'Perdidas' | 'Breakeven';
@@ -80,38 +96,330 @@ export function calculateProfitFactor(winAmount: number, lossAmount: number): st
   return (winAmount / absoluteLoss).toFixed(2);
 }
 
-export function calculateMonthlyProfitData(filteredEntries: MarketEntry[], now: Date = new Date()): Array<{ month: string; amount: number }> {
-  const recentMonths = Array.from({ length: 6 }, (_, index) => {
+export function getEntryExecutionDate(entry: Pick<MarketEntry, 'status' | 'plannedAt' | 'updatedAt' | 'createdAt'>): string {
+  // Regla de negocio: el dashboard usa fecha de ejecucion (plannedAt).
+  const planned = new Date(entry.plannedAt);
+  if (!Number.isNaN(planned.getTime())) {
+    return entry.plannedAt;
+  }
+
+  const updated = new Date(entry.updatedAt);
+  if (!Number.isNaN(updated.getTime())) {
+    return entry.updatedAt;
+  }
+
+  return entry.createdAt;
+}
+
+export function technicalOutcomeLabel(entry: Pick<MarketEntry, 'status' | 'resultR'>): string {
+  if (entry.status !== 'closed' || entry.resultR === null) return 'N/A';
+  if (entry.resultR < 0) return 'SL';
+  if (entry.resultR === 0) return 'Sin avance';
+  if (entry.resultR === 1) return 'Break tecnico 1:1';
+  if (entry.resultR > 1) return 'TP extendido';
+  return 'TP parcial';
+}
+
+export function financialOutcomeLabel(entry: Pick<MarketEntry, 'status' | 'resultR'>): string {
+  if (entry.status !== 'closed' || entry.resultR === null) return 'N/A';
+  if (entry.resultR < 0) return 'Perdida';
+  if (entry.resultR === 1) return 'Breakeven';
+  if (entry.resultR > 0) return 'Ganancia';
+  return 'Breakeven';
+}
+
+export function isTechnicalBreakEven(entry: Pick<MarketEntry, 'status' | 'resultR'>): boolean {
+  return entry.status === 'closed' && entry.resultR === 1;
+}
+
+export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resultR' | 'riskAmount'>): number | null {
+  if (entry.status !== 'closed' || entry.resultR === null) {
+    return null;
+  }
+
+  if (isTechnicalBreakEven(entry)) {
+    return 0;
+  }
+
+  return entry.riskAmount * entry.resultR;
+}
+
+export type MonthlyProfitPoint = {
+  month: string;
+  amount: number;
+  lossAmount: number;
+  breakevenAmount: number;
+};
+
+type TradingInsights = {
+  bestWeekLabel: string;
+  bestWeekAmount: number;
+  bestDayLabel: string;
+  bestDayAmount: number;
+  bestWeekdayLabel: string;
+  bestWeekdayTotal: number;
+  bestWeekdayAverage: number;
+  bestWeekdayTrades: number;
+};
+
+type TradingInsightsMode = 'month' | 'year';
+
+function emptyTradingInsights(): TradingInsights {
+  return {
+    bestWeekLabel: 'Sin datos',
+    bestWeekAmount: 0,
+    bestDayLabel: 'Sin datos',
+    bestDayAmount: 0,
+    bestWeekdayLabel: 'Sin datos',
+    bestWeekdayTotal: 0,
+    bestWeekdayAverage: 0,
+    bestWeekdayTrades: 0,
+  };
+}
+
+function weekOfPeriod(date: Date, mode: TradingInsightsMode): number {
+  if (mode === 'year') {
+    return Math.floor((date.getTime() - new Date(date.getFullYear(), 0, 1).getTime()) / (7 * 24 * 60 * 60 * 1000)) + 1;
+  }
+
+  return Math.floor((date.getDate() - 1) / 7) + 1;
+}
+
+function dayKeyOfPeriod(date: Date, mode: TradingInsightsMode): string {
+  if (mode === 'year') {
+    return `${date.getMonth() + 1}-${date.getDate()}`;
+  }
+
+  return String(date.getDate());
+}
+
+function updateDayAggregation(
+  map: Map<string, { amount: number; day: number; month: number }>,
+  key: string,
+  day: number,
+  month: number,
+  amount: number,
+): void {
+  const previousDay = map.get(key);
+  if (!previousDay) {
+    map.set(key, { amount, day, month });
+    return;
+  }
+
+  map.set(key, { ...previousDay, amount: previousDay.amount + amount });
+}
+
+function daysInMonth(referenceDate: Date): number {
+  return new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0).getDate();
+}
+
+function calculateTradingInsights(entries: MarketEntry[], mode: TradingInsightsMode): TradingInsights {
+  const byWeek = new Map<number, number>();
+  const byDay = new Map<string, { amount: number; day: number; month: number }>();
+  const byWeekday = new Map<number, { total: number; trades: number }>();
+
+  for (const entry of entries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const amount = financialResultAmount(entry) ?? 0;
+    const executionDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(executionDate.getTime())) {
+      continue;
+    }
+
+    const week = weekOfPeriod(executionDate, mode);
+    byWeek.set(week, (byWeek.get(week) ?? 0) + amount);
+
+    const dayOfMonth = executionDate.getDate();
+    const monthOfYear = executionDate.getMonth();
+    const dayKey = dayKeyOfPeriod(executionDate, mode);
+    updateDayAggregation(byDay, dayKey, dayOfMonth, monthOfYear, amount);
+
+    const weekday = executionDate.getDay();
+    const previousWeekday = byWeekday.get(weekday) ?? { total: 0, trades: 0 };
+    byWeekday.set(weekday, { total: previousWeekday.total + amount, trades: previousWeekday.trades + 1 });
+  }
+
+  const bestWeek = [...byWeek.entries()].reduce<[number, number]>((best, current) => {
+    if (current[1] > best[1]) return current;
+    return best;
+  }, [0, Number.NEGATIVE_INFINITY]);
+
+  const bestDay = [...byDay.values()].reduce<{ amount: number; day: number; month: number }>((best, current) => {
+    if (current.amount > best.amount) return current;
+    return best;
+  }, { amount: Number.NEGATIVE_INFINITY, day: 0, month: 0 });
+
+  const bestWeekday = [...byWeekday.entries()].reduce<[number, { total: number; trades: number }]>((best, current) => {
+    const bestAverage = best[1].trades === 0 ? Number.NEGATIVE_INFINITY : best[1].total / best[1].trades;
+    const currentAverage = current[1].trades === 0 ? Number.NEGATIVE_INFINITY : current[1].total / current[1].trades;
+    if (currentAverage > bestAverage) return current;
+    return best;
+  }, [0, { total: Number.NEGATIVE_INFINITY, trades: 0 }]);
+
+  if (byWeek.size === 0) {
+    return emptyTradingInsights();
+  }
+
+  const bestDayText = `Dia ${String(bestDay.day).padStart(2, '0')}`;
+
+  return {
+    bestWeekLabel: `Semana ${bestWeek[0]}`,
+    bestWeekAmount: bestWeek[1],
+    bestDayLabel: mode === 'year'
+      ? `${bestDayText} de ${monthFilterLabels[bestDay.month] ?? ''}`
+      : bestDayText,
+    bestDayAmount: bestDay.amount,
+    bestWeekdayLabel: weekdayLabels[bestWeekday[0]] ?? 'Sin datos',
+    bestWeekdayTotal: bestWeekday[1].trades === 0 ? 0 : bestWeekday[1].total,
+    bestWeekdayAverage: bestWeekday[1].trades === 0 ? 0 : bestWeekday[1].total / bestWeekday[1].trades,
+    bestWeekdayTrades: bestWeekday[1].trades,
+  };
+}
+
+function fullMonthLabelFromShort(shortLabel: string): string {
+  const monthIndex = monthLabels.indexOf(shortLabel);
+  if (monthIndex < 0) {
+    return shortLabel;
+  }
+
+  return monthFilterLabels[monthIndex] ?? shortLabel;
+}
+
+function buildChartMonths(now: Date, chartMode: 'recent6' | 'fullYear' | 'centered5'): Array<{ key: string; month: string }> {
+  if (chartMode === 'fullYear') {
+    return Array.from({ length: 12 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), index, 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  }
+
+  if (chartMode === 'centered5') {
+    return Array.from({ length: 5 }, (_, index) => {
+      const monthDate = new Date(now.getFullYear(), now.getMonth() + (index - 2), 1);
+      return {
+        key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
+        month: monthLabels[monthDate.getMonth()],
+      };
+    });
+  }
+
+  return Array.from({ length: 6 }, (_, index) => {
     const monthDate = new Date(now.getFullYear(), now.getMonth() - (5 - index), 1);
     return {
       key: `${monthDate.getFullYear()}-${String(monthDate.getMonth() + 1).padStart(2, '0')}`,
       month: monthLabels[monthDate.getMonth()],
     };
   });
+}
 
-  const totalsByMonth = new Map<string, number>(recentMonths.map((item) => [item.key, 0]));
+export function calculateMonthlyProfitData(
+  filteredEntries: MarketEntry[],
+  now: Date = new Date(),
+  chartMode: 'recent6' | 'fullYear' | 'centered5' = 'recent6',
+): MonthlyProfitPoint[] {
+  const chartMonths = buildChartMonths(now, chartMode);
+
+  const gainsByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
+  const lossesByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
+  const breakevenByMonth = new Map<string, number>(chartMonths.map((item) => [item.key, 0]));
 
   for (const entry of filteredEntries) {
     if (entry.resultR === null) {
       continue;
     }
 
-    const referenceDate = new Date(entry.updatedAt || entry.createdAt);
+    const referenceDate = new Date(getEntryExecutionDate(entry));
     if (Number.isNaN(referenceDate.getTime())) {
       continue;
     }
 
     const monthKey = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
-    if (!totalsByMonth.has(monthKey)) {
+    if (!gainsByMonth.has(monthKey)) {
       continue;
     }
 
-    totalsByMonth.set(monthKey, (totalsByMonth.get(monthKey) ?? 0) + entry.riskAmount * entry.resultR);
+    // La serie temporal refleja el resultado monetario de la operacion por fecha de ejecucion.
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      breakevenByMonth.set(monthKey, (breakevenByMonth.get(monthKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount > 0) {
+      gainsByMonth.set(monthKey, (gainsByMonth.get(monthKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount < 0) {
+      lossesByMonth.set(monthKey, (lossesByMonth.get(monthKey) ?? 0) + entryAmount);
+    }
   }
 
-  return recentMonths.map((item) => ({
+  return chartMonths.map((item) => ({
     month: item.month,
-    amount: totalsByMonth.get(item.key) ?? 0,
+    amount: gainsByMonth.get(item.key) ?? 0,
+    lossAmount: lossesByMonth.get(item.key) ?? 0,
+    breakevenAmount: breakevenByMonth.get(item.key) ?? 0,
+  }));
+}
+
+export function calculateDailyProfitData(filteredEntries: MarketEntry[], referenceDate: Date): MonthlyProfitPoint[] {
+  const days = daysInMonth(referenceDate);
+  const chartDays = Array.from({ length: days }, (_, index) => {
+    const day = index + 1;
+    const dayDate = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), day);
+    return {
+      key: `${dayDate.getFullYear()}-${String(dayDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
+      dayLabel: String(day),
+    };
+  });
+
+  const gainsByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+  const lossesByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+  const breakevenByDay = new Map<string, number>(chartDays.map((item) => [item.key, 0]));
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceEntryDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(referenceEntryDate.getTime())) {
+      continue;
+    }
+
+    const dayKey = `${referenceEntryDate.getFullYear()}-${String(referenceEntryDate.getMonth() + 1).padStart(2, '0')}-${String(referenceEntryDate.getDate()).padStart(2, '0')}`;
+    if (!gainsByDay.has(dayKey)) {
+      continue;
+    }
+
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      breakevenByDay.set(dayKey, (breakevenByDay.get(dayKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount > 0) {
+      gainsByDay.set(dayKey, (gainsByDay.get(dayKey) ?? 0) + entryAmount);
+      continue;
+    }
+
+    if (entryAmount < 0) {
+      lossesByDay.set(dayKey, (lossesByDay.get(dayKey) ?? 0) + entryAmount);
+    }
+  }
+
+  return chartDays.map((item) => ({
+    month: item.dayLabel,
+    amount: gainsByDay.get(item.key) ?? 0,
+    lossAmount: lossesByDay.get(item.key) ?? 0,
+    breakevenAmount: breakevenByDay.get(item.key) ?? 0,
   }));
 }
 const pageTitleByTab: Record<DashboardTab, string> = {
@@ -126,7 +434,15 @@ const pageTitleByTab: Record<DashboardTab, string> = {
 export function formatDate(dateValue: string): string {
   const parsed = new Date(dateValue);
   if (Number.isNaN(parsed.getTime())) return dateValue;
-  return parsed.toLocaleDateString('es-MX');
+
+  const weekday = ['Domingo', 'Lunes', 'Martes', 'Miercoles', 'Jueves', 'Viernes', 'Sabado'][parsed.getDay()] ?? '';
+  const day = String(parsed.getDate()).padStart(2, '0');
+  const month = String(parsed.getMonth() + 1).padStart(2, '0');
+  const year = parsed.getFullYear();
+  const hours = String(parsed.getHours()).padStart(2, '0');
+  const minutes = String(parsed.getMinutes()).padStart(2, '0');
+
+  return `${weekday}, ${day}/${month}/${year} ${hours}:${minutes}`;
 }
 
 export function formatCurrency(value: number): string {
@@ -151,10 +467,111 @@ export function roleNameLabel(roleName: Role['name'] | null | undefined): string
   return 'Sin rol';
 }
 
-export function tradeResultClass(result: string): 'negative' | 'neutral' | 'positive' {
+export function tradeResultClass(result: string, isTechnicalBreak = false): 'negative' | 'neutral' | 'positive' | 'breakeven' {
+  if (isTechnicalBreak) return 'breakeven';
   if (result.startsWith('-')) return 'negative';
   if (result === 'N/A') return 'neutral';
   return 'positive';
+}
+
+type DashboardEditForm = {
+  status: MarketEntryStatus;
+  plannedAt: string;
+  riskAmount: string;
+  investmentPercent: string;
+  resultR: string;
+  operationLink: string;
+  note: string;
+  noEntryReason: string;
+};
+
+function toDateTimeLocalValue(value: string): string {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return new Date().toISOString().slice(0, 16);
+  }
+
+  return parsed.toISOString().slice(0, 16);
+}
+
+function openOperationLink(operationLink: string | null) {
+  if (!operationLink) {
+    return;
+  }
+
+  window.open(operationLink, '_blank', 'noopener,noreferrer');
+}
+
+function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYear: string): Date {
+  if (filteredEntries.length > 0) {
+    const latestTimestamp = filteredEntries.reduce((latest, entry) => {
+      const current = new Date(getEntryExecutionDate(entry)).getTime();
+      if (Number.isNaN(current)) return latest;
+      return Math.max(latest, current);
+    }, Number.NEGATIVE_INFINITY);
+
+    if (Number.isFinite(latestTimestamp)) {
+      return new Date(latestTimestamp);
+    }
+  }
+
+  if (selectedYear !== 'all') {
+    const selectedYearNumber = Number.parseInt(selectedYear, 10);
+    if (Number.isFinite(selectedYearNumber)) {
+      return new Date(selectedYearNumber, 11, 1);
+    }
+  }
+
+  return new Date();
+}
+
+function parseDashboardEditValues(form: DashboardEditForm): {
+  resultRValue: number | null;
+  riskAmount: number;
+  investmentPercent: number;
+} {
+  const resultRValue = form.status === 'closed' ? Number.parseFloat(form.resultR) : null;
+
+  if (form.status === 'closed' && !Number.isFinite(resultRValue ?? Number.NaN)) {
+    throw new Error('El Resultado R debe ser valido para estado Completada.');
+  }
+
+  return {
+    resultRValue,
+    riskAmount: Number.parseFloat(form.riskAmount),
+    investmentPercent: Number.parseFloat(form.investmentPercent),
+  };
+}
+
+function filterEntriesForSummary(
+  entries: MarketEntry[],
+  selectedAccountId: string,
+  selectedYear: string,
+  selectedMonth: string,
+): MarketEntry[] {
+  let filtered = entries;
+
+  if (selectedAccountId !== 'all') {
+    filtered = filtered.filter((entry) => entry.accountId === selectedAccountId);
+  }
+
+  if (selectedYear !== 'all') {
+    const year = Number.parseInt(selectedYear, 10);
+    filtered = filtered.filter((entry) => {
+      const entryDate = new Date(getEntryExecutionDate(entry));
+      return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
+    });
+  }
+
+  if (selectedMonth !== 'all') {
+    const month = Number.parseInt(selectedMonth, 10);
+    filtered = filtered.filter((entry) => {
+      const entryDate = new Date(getEntryExecutionDate(entry));
+      return !Number.isNaN(entryDate.getTime()) && entryDate.getMonth() === month;
+    });
+  }
+
+  return filtered;
 }
 
 interface DashboardTabPanelsProps {
@@ -174,10 +591,11 @@ interface DashboardSummaryContentProps {
   winTotal: number;
   lossRate: number;
   lossTotal: number;
-  openRisk: number;
   monthlyProfitData: Array<{
     month: string;
     amount: number;
+    lossAmount: number;
+    breakevenAmount: number;
   }>;
   distributionData: Array<{
     name: 'Ganadas' | 'Perdidas' | 'Breakeven';
@@ -191,21 +609,35 @@ interface DashboardSummaryContentProps {
   profitFactor: string;
   winLossRatio: string;
   recentTrades: Array<{
+    entryId: string;
     date: string;
     pair: string;
     type: string;
+    investedAmount: string;
+    investedAmountValue: number;
     result: string;
+    resultAmountValue: number | null;
+    technicalOutcome: string;
+    isTechnicalBreak: boolean;
+    operationLink: string | null;
     status: string;
   }>;
   selectedYear: string;
   setSelectedYear: (value: string) => void;
+  selectedMonth: string;
+  setSelectedMonth: (value: string) => void;
+  availableMonths: number[];
+  onOpenEntry: (entryId: string) => void;
+  onOpenLink: (operationLink: string | null) => void;
 }
 
 type RecentTradeFilters = {
   date: string;
   pair: string;
   type: string;
+  investedAmount: string;
   result: string;
+  technicalOutcome: string;
   status: string;
 };
 
@@ -219,7 +651,6 @@ function DashboardSummaryContent({
   winTotal,
   lossRate,
   lossTotal,
-  openRisk,
   monthlyProfitData,
   distributionData,
   netResult,
@@ -228,11 +659,21 @@ function DashboardSummaryContent({
   recentTrades,
   selectedYear,
   setSelectedYear,
+  selectedMonth,
+  setSelectedMonth,
+  availableMonths,
+  onOpenEntry,
+  onOpenLink,
 }: Readonly<DashboardSummaryContentProps>) {
+  const profitKpiTitle = selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes';
+  const insightsTitlePeriod = selectedMonth === 'all' ? 'año' : 'mes';
+  const bestDayInsightTitle = 'Mejor dia para operar';
+  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
+
   const availableYears = useMemo(() => {
     const years = new Set<number>();
     for (const entry of filteredEntries) {
-      const date = new Date(entry.updatedAt || entry.createdAt);
+      const date = new Date(getEntryExecutionDate(entry));
       if (!Number.isNaN(date.getTime())) {
         years.add(date.getFullYear());
       }
@@ -243,31 +684,110 @@ function DashboardSummaryContent({
     date: '',
     pair: '',
     type: '',
+    investedAmount: '',
     result: '',
+    technicalOutcome: '',
     status: '',
   });
+  const [expandedTradeIds, setExpandedTradeIds] = useState<Record<string, boolean>>({});
 
   const filteredRecentTrades = useMemo(() => {
     const normalized = {
       date: tableFilters.date.toLowerCase().trim(),
       pair: tableFilters.pair.toLowerCase().trim(),
       type: tableFilters.type.toLowerCase().trim(),
+      investedAmount: tableFilters.investedAmount.toLowerCase().trim(),
       result: tableFilters.result.toLowerCase().trim(),
+      technicalOutcome: tableFilters.technicalOutcome.toLowerCase().trim(),
       status: tableFilters.status.toLowerCase().trim(),
     };
 
-    return recentTrades.filter((trade) => {
-      if (normalized.date && !trade.date.toLowerCase().includes(normalized.date)) return false;
-      if (normalized.pair && !trade.pair.toLowerCase().includes(normalized.pair)) return false;
-      if (normalized.type && !trade.type.toLowerCase().includes(normalized.type)) return false;
-      if (normalized.result && !trade.result.toLowerCase().includes(normalized.result)) return false;
-      if (normalized.status && !trade.status.toLowerCase().includes(normalized.status)) return false;
-      return true;
-    });
+    const filterPairs: Array<[string, string]> = [
+      [normalized.date, 'date'],
+      [normalized.pair, 'pair'],
+      [normalized.type, 'type'],
+      [normalized.investedAmount, 'investedAmount'],
+      [normalized.result, 'result'],
+      [normalized.technicalOutcome, 'technicalOutcome'],
+      [normalized.status, 'status'],
+    ];
+
+    return recentTrades.filter((trade) =>
+      filterPairs.every(([term, key]) => {
+        if (!term) return true;
+        const value = String(trade[key as keyof typeof trade]).toLowerCase();
+        return value.includes(term);
+      })
+    );
   }, [recentTrades, tableFilters]);
+
+  const filteredTradesTotals = useMemo(() => {
+    return filteredRecentTrades.reduce(
+      (acc, trade) => {
+        acc.invested += trade.investedAmountValue;
+        if (trade.resultAmountValue !== null) {
+          acc.result += trade.resultAmountValue;
+          acc.withResultCount += 1;
+        }
+        return acc;
+      },
+      { invested: 0, result: 0, withResultCount: 0 },
+    );
+  }, [filteredRecentTrades]);
+
+  let filteredTotalResultClass: 'negative' | 'positive' | 'breakeven';
+  if (filteredTradesTotals.result < 0) {
+    filteredTotalResultClass = 'negative';
+  } else if (filteredTradesTotals.result > 0) {
+    filteredTotalResultClass = 'positive';
+  } else {
+    filteredTotalResultClass = 'breakeven';
+  }
+
+  const tradingInsights = useMemo(() => {
+    return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
+  }, [filteredEntries, selectedMonth]);
+
+  function toggleTradeDetails(entryId: string) {
+    setExpandedTradeIds((prev) => ({
+      ...prev,
+      [entryId]: !prev[entryId],
+    }));
+  }
+
   return (
     <>
-      <section className="dashboard-summary-toolbar">
+      <button
+        type="button"
+        className="dashboard-filters-fab"
+        aria-label="Mostrar u ocultar filtros"
+        aria-expanded={filtersPanelOpen}
+        onClick={() => setFiltersPanelOpen((prev) => !prev)}
+      >
+        <AppIcon name="settings" />
+        <span>Filtros</span>
+      </button>
+
+      <button
+        type="button"
+        className={`dashboard-filters-overlay ${filtersPanelOpen ? 'visible' : ''}`}
+        aria-label="Cerrar panel de filtros"
+        onClick={() => setFiltersPanelOpen(false)}
+      />
+
+      <section className={`dashboard-summary-toolbar ${filtersPanelOpen ? 'open' : ''}`}>
+        <div className="dashboard-summary-toolbar-mobile-head">
+          <p>Filtros del dashboard</p>
+          <button
+            type="button"
+            className="dashboard-summary-toolbar-close"
+            aria-label="Cerrar filtros"
+            onClick={() => setFiltersPanelOpen(false)}
+          >
+            <AppIcon name="close" />
+          </button>
+        </div>
+
         <label htmlFor="dashboard-account-filter" className="dashboard-summary-filter-label">Filtrar por cuenta</label>
         <select
           id="dashboard-account-filter"
@@ -293,11 +813,24 @@ function DashboardSummaryContent({
             <option key={year} value={year}>{year}</option>
           ))}
         </select>
+
+        <label htmlFor="dashboard-month-filter" className="dashboard-summary-filter-label">Filtrar por mes</label>
+        <select
+          id="dashboard-month-filter"
+          className="dashboard-summary-filter"
+          value={selectedMonth}
+          onChange={(event) => setSelectedMonth(event.target.value)}
+        >
+          <option value="all">Todos los meses</option>
+          {availableMonths.map((month) => (
+            <option key={month} value={month}>{monthFilterLabels[month]}</option>
+          ))}
+        </select>
       </section>
 
       <section className="kpi-grid">
         <article className="kpi-card">
-          <h2>Ganancia del mes</h2>
+          <h2>{profitKpiTitle}</h2>
           <p className="kpi-value">{formatCurrency(monthlyProfit)}</p>
           <span className={`kpi-trend ${monthlyProfit >= 0 ? 'positive' : 'negative'}`}>
             {filteredEntries.length} operaciones
@@ -314,9 +847,9 @@ function DashboardSummaryContent({
           <span className="kpi-trend negative">Total perdido: {formatCurrency(lossTotal)}</span>
         </article>
         <article className="kpi-card">
-          <h2>Riesgo abierto</h2>
-          <p className="kpi-value">{formatCurrency(openRisk)}</p>
-          <span className="kpi-trend neutral">Controlado</span>
+          <h2>Mejor dia para operar</h2>
+          <p className="kpi-value">{tradingInsights.bestWeekdayLabel}</p>
+          <span className="kpi-trend positive">Total: {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</span>
         </article>
       </section>
 
@@ -329,11 +862,60 @@ function DashboardSummaryContent({
                 <CartesianGrid strokeDasharray="4 4" stroke="#dbeafe" />
                 <XAxis dataKey="month" />
                 <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="amount" stroke="#1e5ba8" fill="#bfdbfe" strokeWidth={2} />
+                <Tooltip
+                  labelFormatter={(label: string) => {
+                    if (selectedMonth !== 'all') {
+                      const monthIndex = Number.parseInt(selectedMonth, 10);
+                      const fullMonth = monthFilterLabels[monthIndex] ?? '';
+                      return `Dia ${label} de ${fullMonth}`;
+                    }
+
+                    return fullMonthLabelFromShort(label);
+                  }}
+                  formatter={(value: number, name: string) => {
+                    if (name === 'perdidas') return [formatCurrency(value), 'Perdidas'];
+                    if (name === 'breakeven') return [formatCurrency(value), 'Breakeven'];
+                    return [formatCurrency(value), 'Resultado neto (solo ganancias)'];
+                  }}
+                />
+                <Area type="monotone" dataKey="amount" name="neto" stroke="#1e5ba8" fill="#bfdbfe" fillOpacity={0.42} strokeWidth={2} />
+                <Area type="monotone" dataKey="lossAmount" name="perdidas" stroke="#dc2626" fill="#fecaca" fillOpacity={0.5} strokeWidth={2} />
+                <Area type="monotone" dataKey="breakevenAmount" name="breakeven" stroke="#ea580c" fill="#fed7aa" fillOpacity={0.45} strokeWidth={2} />
               </AreaChart>
             </ResponsiveContainer>
           </div>
+          <div className="chart-color-legend" aria-label="Leyenda de colores de la gráfica">
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-net" aria-hidden="true" />
+              <span>Resultado neto (solo ganancias)</span>
+            </span>
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-loss" aria-hidden="true" />
+              <span>Perdidas</span>
+            </span>
+            <span className="chart-color-legend-item">
+              <span className="chart-color-dot chart-color-dot-breakeven" aria-hidden="true" />
+              <span>Breakeven</span>
+            </span>
+          </div>
+          <div className="chart-insights-separator" aria-hidden="true" />
+          <section className="chart-insights" aria-label="Indicadores clave de la gráfica">
+            <article>
+              <h3>Mejor semana del {insightsTitlePeriod}</h3>
+              <p>{tradingInsights.bestWeekLabel} · {distributionAmountLabel(tradingInsights.bestWeekAmount)}</p>
+            </article>
+            <article>
+              <h3>{bestDayInsightTitle}</h3>
+              <p>{tradingInsights.bestDayLabel} · {distributionAmountLabel(tradingInsights.bestDayAmount)}</p>
+            </article>
+            <article>
+              <h3>Mejor dia para operar</h3>
+              <p>{tradingInsights.bestWeekdayLabel} · {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</p>
+              <span>
+                {tradingInsights.bestWeekdayTrades} operaciones · Promedio {distributionAmountLabel(tradingInsights.bestWeekdayAverage)}
+              </span>
+            </article>
+          </section>
         </article>
 
         <article className="chart-card">
@@ -401,13 +983,18 @@ function DashboardSummaryContent({
           <table>
             <thead>
               <tr>
+                <th className="table-expand-col" aria-label="Expandir fila" />
                 <th>Fecha</th>
-                <th>Par</th>
-                <th>Tipo</th>
+                <th className="table-mobile-hidden">Par</th>
+                <th className="table-mobile-hidden">Tipo</th>
+                <th>Invertido</th>
                 <th>Resultado</th>
-                <th>Estado</th>
+                <th className="table-mobile-hidden">Tecnico</th>
+                <th className="table-mobile-hidden">Estado</th>
+                <th className="table-mobile-hidden">Acciones</th>
               </tr>
               <tr className="table-filter-row">
+                <td className="table-expand-col" aria-label="Sin filtro de expansión" />
                 <td>
                   <input
                     type="text"
@@ -417,7 +1004,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, date: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar par"
@@ -426,7 +1013,7 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, pair: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar tipo"
@@ -438,13 +1025,31 @@ function DashboardSummaryContent({
                 <td>
                   <input
                     type="text"
+                    placeholder="Filtrar invertido"
+                    className="table-filter-input"
+                    value={tableFilters.investedAmount}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, investedAmount: event.target.value }))}
+                  />
+                </td>
+                <td>
+                  <input
+                    type="text"
                     placeholder="Filtrar resultado"
                     className="table-filter-input"
                     value={tableFilters.result}
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, result: event.target.value }))}
                   />
                 </td>
-                <td>
+                <td className="table-mobile-hidden">
+                  <input
+                    type="text"
+                    placeholder="Filtrar tecnico"
+                    className="table-filter-input"
+                    value={tableFilters.technicalOutcome}
+                    onChange={(event) => setTableFilters((prev) => ({ ...prev, technicalOutcome: event.target.value }))}
+                  />
+                </td>
+                <td className="table-mobile-hidden">
                   <input
                     type="text"
                     placeholder="Filtrar estado"
@@ -453,26 +1058,139 @@ function DashboardSummaryContent({
                     onChange={(event) => setTableFilters((prev) => ({ ...prev, status: event.target.value }))}
                   />
                 </td>
+                <td className="table-mobile-hidden" aria-label="Sin filtro de acciones" />
               </tr>
             </thead>
             <tbody>
               {filteredRecentTrades.length === 0 ? (
                 <tr>
-                  <td colSpan={5}>No hay operaciones para el filtro seleccionado.</td>
+                  <td colSpan={9}>No hay operaciones para el filtro seleccionado.</td>
                 </tr>
               ) : (
-                filteredRecentTrades
-                  .map((trade) => (
-                    <tr key={`${trade.date}-${trade.pair}-${trade.type}`}>
+                filteredRecentTrades.flatMap((trade) => {
+                  const isExpanded = expandedTradeIds[trade.entryId] === true;
+
+                  const rows = [
+                    <tr key={trade.entryId}>
+                      <td className="table-expand-cell">
+                        <button
+                          type="button"
+                          className="table-expand-btn"
+                          onClick={() => toggleTradeDetails(trade.entryId)}
+                          aria-label={isExpanded ? `Ocultar detalles de ${trade.pair}` : `Mostrar detalles de ${trade.pair}`}
+                          aria-expanded={isExpanded}
+                        >
+                          {isExpanded ? '−' : '+'}
+                        </button>
+                      </td>
                       <td>{trade.date}</td>
-                      <td>{trade.pair}</td>
-                      <td>{trade.type}</td>
-                      <td className={tradeResultClass(trade.result)}>{trade.result}</td>
-                      <td>{trade.status}</td>
-                    </tr>
-                  ))
+                      <td className="table-mobile-hidden">{trade.pair}</td>
+                      <td className="table-mobile-hidden">{trade.type}</td>
+                      <td>{trade.investedAmount}</td>
+                      <td className={tradeResultClass(trade.result, trade.isTechnicalBreak)}>{trade.result}</td>
+                      <td className="table-mobile-hidden">{trade.technicalOutcome}</td>
+                      <td className="table-mobile-hidden">{trade.status}</td>
+                      <td className="table-mobile-hidden">
+                        <div className="table-actions-group">
+                          <button
+                            type="button"
+                            className="table-action-btn"
+                            onClick={() => onOpenEntry(trade.entryId)}
+                            aria-label={`Editar entrada ${trade.pair}`}
+                            title="Ver y editar entrada"
+                          >
+                            <AppIcon name="eye" />
+                          </button>
+                          <button
+                            type="button"
+                            className="table-action-btn"
+                            onClick={() => onOpenLink(trade.operationLink)}
+                            aria-label={`Abrir link de ${trade.pair}`}
+                            title="Abrir link de operación"
+                            disabled={!trade.operationLink}
+                          >
+                            <AppIcon name="link" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>,
+                  ];
+
+                  if (isExpanded) {
+                    rows.push(
+                      <tr key={`${trade.entryId}-details`} className="table-expanded-row open">
+                        <td colSpan={9}>
+                          <div className="table-expanded-content">
+                            <div className="table-expanded-grid">
+                              <div className="table-expanded-item">
+                                <span>Par</span>
+                                <strong>{trade.pair}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Tipo</span>
+                                <strong>{trade.type}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Tecnico</span>
+                                <strong>{trade.technicalOutcome}</strong>
+                              </div>
+                              <div className="table-expanded-item">
+                                <span>Estado</span>
+                                <strong>{trade.status}</strong>
+                              </div>
+                            </div>
+                            <div className="table-expanded-actions">
+                              <button
+                                type="button"
+                                className="table-action-btn"
+                                onClick={() => onOpenEntry(trade.entryId)}
+                                aria-label={`Editar entrada ${trade.pair}`}
+                                title="Ver y editar entrada"
+                              >
+                                <AppIcon name="eye" />
+                              </button>
+                              <button
+                                type="button"
+                                className="table-action-btn"
+                                onClick={() => onOpenLink(trade.operationLink)}
+                                aria-label={`Abrir link de ${trade.pair}`}
+                                title="Abrir link de operación"
+                                disabled={!trade.operationLink}
+                              >
+                                <AppIcon name="link" />
+                              </button>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>,
+                    );
+                  }
+
+                  return rows;
+                })
               )}
             </tbody>
+            <tfoot>
+              <tr className="table-totals-row table-totals-desktop">
+                <td className="table-expand-col" />
+                <td colSpan={3}>Totales filtrados</td>
+                <td>{formatCurrency(filteredTradesTotals.invested)}</td>
+                <td className={filteredTotalResultClass}>{distributionAmountLabel(filteredTradesTotals.result)}</td>
+                <td />
+                <td>{filteredTradesTotals.withResultCount} con resultado</td>
+                <td />
+              </tr>
+              <tr className="table-totals-row table-totals-mobile">
+                <td colSpan={9}>
+                  <div className="table-totals-mobile-summary">
+                    <strong>Totales filtrados</strong>
+                    <span>Invertido: {formatCurrency(filteredTradesTotals.invested)}</span>
+                    <span className={filteredTotalResultClass}>Resultado: {distributionAmountLabel(filteredTradesTotals.result)}</span>
+                    <span>{filteredTradesTotals.withResultCount} con resultado</span>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
         </div>
       </section>
@@ -625,46 +1343,37 @@ function useDashboardModulePrefetch(isAdmin: boolean): void {
   }, [isAdmin]);
 }
 
-export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) {
-  const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
-  const [userRole, setUserRole] = useState<Role | null>(initialRole ?? null);
-  const [collapsedSections, setCollapsedSections] = useState({
-    principal: false,
-    gestion: false,
-    cuenta: false,
-  });
-  const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
-  const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
-  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
-  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
-  const isAdmin = userRole?.name === 'admin';
-  const roleLabel = roleNameLabel(userRole?.name);
-  const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
-  const pageTitle = pageTitleByTab[activeTab];
-
-  useDashboardModulePrefetch(isAdmin);
-
-  function toggleSidebarSection(section: 'principal' | 'gestion' | 'cuenta') {
-    setCollapsedSections((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  }
-
+function useEnsureSelectedAccountExists(
+  selectedAccountId: string,
+  summaryAccounts: TradingAccount[],
+  setSelectedAccountId: (value: string) => void,
+): void {
   useEffect(() => {
-    if (activeTab === 'usuarios' && !isAdmin) {
-      setActiveTab('resumen');
+    if (selectedAccountId === 'all') return;
+    if (!summaryAccounts.some((account) => account.id === selectedAccountId)) {
+      setSelectedAccountId('all');
     }
-  }, [activeTab, isAdmin]);
+  }, [selectedAccountId, summaryAccounts, setSelectedAccountId]);
+}
 
+function useEnsureSelectedMonthExists(
+  selectedMonth: string,
+  availableMonths: number[],
+  setSelectedMonth: (value: string) => void,
+): void {
   useEffect(() => {
-    try {
-      localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
-    } catch {
-      // ignore
+    if (selectedMonth === 'all') return;
+    const month = Number.parseInt(selectedMonth, 10);
+    if (!availableMonths.includes(month)) {
+      setSelectedMonth('all');
     }
-  }, [activeTab]);
+  }, [selectedMonth, availableMonths, setSelectedMonth]);
+}
 
+function useResolvedUserRole(
+  initialRole: Role | null | undefined,
+  setUserRole: (role: Role | null) => void,
+): void {
   useEffect(() => {
     if (initialRole !== undefined) {
       setUserRole(initialRole);
@@ -691,14 +1400,21 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return () => {
       isMounted = false;
     };
-  }, [initialRole]);
+  }, [initialRole, setUserRole]);
+}
 
+function useSummaryData(
+  activeTab: DashboardTab,
+  userEmail: string,
+  setSummaryAccounts: (accounts: TradingAccount[]) => void,
+  setSummaryEntries: (entries: MarketEntry[]) => void,
+): void {
   useEffect(() => {
     if (activeTab !== 'resumen') return;
 
     let isMounted = true;
 
-    async function loadSummaryData() {
+    async function loadSummaryDataInternal() {
       try {
         const accounts = await listTradingAccounts();
         if (!isMounted) return;
@@ -712,85 +1428,165 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       }
     }
 
-    void loadSummaryData();
+    void loadSummaryDataInternal();
 
     return () => {
       isMounted = false;
     };
-  }, [activeTab, userEmail]);
+  }, [activeTab, userEmail, setSummaryAccounts, setSummaryEntries]);
+}
+
+function useEnsureAdminTabAccess(
+  activeTab: DashboardTab,
+  isAdmin: boolean,
+  setActiveTab: (tab: DashboardTab) => void,
+): void {
+  useEffect(() => {
+    if (activeTab === 'usuarios' && !isAdmin) {
+      setActiveTab('resumen');
+    }
+  }, [activeTab, isAdmin, setActiveTab]);
+}
+
+function usePersistDashboardTab(activeTab: DashboardTab): void {
+  useEffect(() => {
+    try {
+      localStorage.setItem(DASHBOARD_TAB_STORAGE_KEY, activeTab);
+    } catch {
+      // ignore
+    }
+  }, [activeTab]);
+}
+
+export default function DashboardPage({ userEmail, initialRole, onSignOut }: Readonly<DashboardPageProps>) { // NOSONAR
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => loadStoredDashboardTab());
+  const [userRole, setUserRole] = useState<Role | null>(initialRole ?? null);
+  const [collapsedSections, setCollapsedSections] = useState({
+    principal: false,
+    gestion: false,
+    cuenta: false,
+  });
+  const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
+  const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
+  const [editingEntry, setEditingEntry] = useState<MarketEntry | null>(null);
+  const [dashboardEditForm, setDashboardEditForm] = useState<DashboardEditForm | null>(null);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [selectedAccountId, setSelectedAccountId] = useState<string>('all');
+  const [selectedYear, setSelectedYear] = useState<string>(String(new Date().getFullYear()));
+  const [selectedMonth, setSelectedMonth] = useState<string>('all');
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const isAdmin = userRole?.name === 'admin';
+  const roleLabel = roleNameLabel(userRole?.name);
+  const sidebarUserName = userEmail.includes('@') ? userEmail.split('@')[0] : userEmail;
+  const pageTitle = pageTitleByTab[activeTab];
+
+  const editModalOpen = editingEntry !== null && dashboardEditForm !== null;
+  const dashboardEditModalRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
-    if (selectedAccountId === 'all') return;
-    if (!summaryAccounts.some((account) => account.id === selectedAccountId)) {
-      setSelectedAccountId('all');
+    if (!editModalOpen) {
+      return;
     }
-  }, [selectedAccountId, summaryAccounts]);
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (dashboardEditModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeEditEntryModal();
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [editModalOpen]);
+
+  useDashboardModulePrefetch(isAdmin);
+  useEnsureSelectedAccountExists(selectedAccountId, summaryAccounts, setSelectedAccountId);
+  useResolvedUserRole(initialRole, setUserRole);
+  useSummaryData(activeTab, userEmail, setSummaryAccounts, setSummaryEntries);
+  useEnsureAdminTabAccess(activeTab, isAdmin, setActiveTab);
+  usePersistDashboardTab(activeTab);
+
+  function toggleSidebarSection(section: 'principal' | 'gestion' | 'cuenta') {
+    setCollapsedSections((prev) => ({
+      ...prev,
+      [section]: !prev[section],
+    }));
+  }
+
+  function activateTab(tab: DashboardTab) {
+    setActiveTab(tab);
+    setMobileSidebarOpen(false);
+  }
 
   const filteredEntries = useMemo(() => {
-    let entries = summaryEntries;
-    
-    if (selectedAccountId !== 'all') {
-      entries = entries.filter((entry) => entry.accountId === selectedAccountId);
-    }
-    
-    if (selectedYear !== 'all') {
-      const year = parseInt(selectedYear, 10);
-      entries = entries.filter((entry) => {
-        const entryDate = new Date(entry.updatedAt || entry.createdAt);
-        return !Number.isNaN(entryDate.getTime()) && entryDate.getFullYear() === year;
-      });
-    }
-    
-    return entries;
+    return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, selectedMonth);
+  }, [selectedAccountId, selectedYear, selectedMonth, summaryEntries]);
+
+  const monthSelectorEntries = useMemo(() => {
+    return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, 'all');
   }, [selectedAccountId, selectedYear, summaryEntries]);
 
-  const monthlyProfit = useMemo(() => {
-    const now = new Date();
-    const currentMonth = now.getMonth();
-    const currentYear = now.getFullYear();
+  const availableMonths = useMemo(() => {
+    const months = new Set<number>();
+    for (const entry of monthSelectorEntries) {
+      const date = new Date(getEntryExecutionDate(entry));
+      if (!Number.isNaN(date.getTime())) {
+        months.add(date.getMonth());
+      }
+    }
 
+    return Array.from(months).sort((a, b) => a - b);
+  }, [monthSelectorEntries]);
+
+  useEnsureSelectedMonthExists(selectedMonth, availableMonths, setSelectedMonth);
+
+  const monthlyProfit = useMemo(() => {
     return filteredEntries
-      .filter((entry) => {
-        if (entry.resultR === null) return false;
-        const updatedAt = new Date(entry.updatedAt);
-        return updatedAt.getMonth() === currentMonth && updatedAt.getFullYear() === currentYear;
-      })
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .filter((entry) => entry.resultR !== null)
+      .reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
   }, [filteredEntries]);
 
   const winRate = useMemo(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) return 0;
-    const wins = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0).length;
+    const wins = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
     return (wins / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
   const lossRate = useMemo(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) return 0;
-    const losses = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0).length;
+    const losses = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
     return (losses / entriesWithResult.length) * 100;
   }, [filteredEntries]);
 
   const winTotal = useMemo(() => {
     return filteredEntries
-      .filter((entry) => (entry.resultR ?? 0) > 0)
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .reduce((sum, entry) => sum + Math.max(financialResultAmount(entry) ?? 0, 0), 0);
   }, [filteredEntries]);
 
   const lossTotal = useMemo(() => {
     return filteredEntries
-      .filter((entry) => (entry.resultR ?? 0) < 0)
-      .reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
+      .reduce((sum, entry) => {
+        const value = financialResultAmount(entry) ?? 0;
+        return value < 0 ? sum + value : sum;
+      }, 0);
   }, [filteredEntries]);
 
-  const openRisk = useMemo(() => {
-    return filteredEntries
-      .filter((entry) => entry.status === 'planned' || entry.status === 'open')
-      .reduce((sum, entry) => sum + entry.riskAmount, 0);
-  }, [filteredEntries]);
+  const monthlyProfitData = useMemo(() => {
+    const referenceDate = resolveMonthlyReferenceDate(filteredEntries, selectedYear);
+    if (selectedMonth !== 'all') {
+      return calculateDailyProfitData(filteredEntries, referenceDate);
+    }
 
-  const monthlyProfitData = useMemo(() => calculateMonthlyProfitData(filteredEntries), [filteredEntries]);
+    return calculateMonthlyProfitData(filteredEntries, referenceDate, 'fullYear');
+  }, [filteredEntries, selectedYear, selectedMonth]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
@@ -802,17 +1598,17 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       ];
     }
 
-    const winningEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) > 0);
-    const losingEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) < 0);
-    const breakevenEntries = entriesWithResult.filter((entry) => (entry.resultR ?? 0) === 0);
+    const winningEntries = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia');
+    const losingEntries = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida');
+    const breakevenEntries = entriesWithResult.filter((entry) => isTechnicalBreakEven(entry));
 
     const wins = winningEntries.length;
     const losses = losingEntries.length;
     const breakeven = breakevenEntries.length;
 
-    const winsTotal = winningEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
-    const lossesTotal = losingEntries.reduce((sum, entry) => sum + entry.riskAmount * (entry.resultR ?? 0), 0);
-    const breakevenTotal = 0;
+    const winsTotal = winningEntries.reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
+    const lossesTotal = losingEntries.reduce((sum, entry) => sum + (financialResultAmount(entry) ?? 0), 0);
+    const breakevenTotal = breakevenEntries.reduce((sum, entry) => sum + (entry.riskAmount * (entry.resultR ?? 0)), 0);
 
     return [
       {
@@ -836,7 +1632,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         value: Number(((breakeven / entriesWithResult.length) * 100).toFixed(1)),
         operations: breakeven,
         totalAmount: breakevenTotal,
-        averageAmount: 0,
+        averageAmount: breakeven === 0 ? 0 : breakevenTotal / breakeven,
         color: pieColors[2],
       },
     ];
@@ -855,24 +1651,93 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [distributionData]);
 
   const recentTrades = useMemo(() => {
-    return filteredEntries
-      .sort((a, b) => {
-        const dateA = new Date(a.updatedAt || a.createdAt).getTime();
-        const dateB = new Date(b.updatedAt || b.createdAt).getTime();
+    const sortedEntries = [...filteredEntries].sort((a, b) => {
+        const dateA = new Date(getEntryExecutionDate(a)).getTime();
+        const dateB = new Date(getEntryExecutionDate(b)).getTime();
         return dateB - dateA;
-      })
+      });
+
+    return sortedEntries
       .slice(0, 8)
       .map((entry) => {
         const resultValue = entry.resultR === null ? 'N/A' : formatCurrency(entry.riskAmount * entry.resultR);
         return {
-          date: formatDate(entry.updatedAt || entry.createdAt),
+          entryId: entry.id,
+          date: formatDate(getEntryExecutionDate(entry)),
           pair: entry.symbol,
           type: entry.direction.toUpperCase(),
+          investedAmount: formatCurrency(entry.riskAmount),
+          investedAmountValue: entry.riskAmount,
           result: resultValue,
+          resultAmountValue: entry.resultR === null ? null : entry.riskAmount * entry.resultR,
+          technicalOutcome: technicalOutcomeLabel(entry),
+          isTechnicalBreak: isTechnicalBreakEven(entry),
+          operationLink: entry.operationLink,
           status: statusLabel(entry.status),
         };
       });
   }, [filteredEntries]);
+
+  function openEditEntryModal(entry: MarketEntry) {
+    setEditingEntry(entry);
+    setDashboardEditForm({
+      status: entry.status,
+      plannedAt: toDateTimeLocalValue(entry.plannedAt),
+      riskAmount: String(entry.riskAmount),
+      investmentPercent: String(entry.investmentPercent),
+      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      operationLink: entry.operationLink ?? '',
+      note: entry.note,
+      noEntryReason: entry.noEntryReason ?? '',
+    });
+    setEditError('');
+  }
+
+  function closeEditEntryModal() {
+    setEditingEntry(null);
+    setDashboardEditForm(null);
+    setEditError('');
+  }
+
+  function openEntryFromSummary(entryId: string) {
+    const entry = summaryEntries.find((item) => item.id === entryId);
+    if (!entry) {
+      return;
+    }
+
+    openEditEntryModal(entry);
+  }
+
+  async function saveEntryFromDashboard() {
+    if (!editingEntry || !dashboardEditForm || isSavingEdit) {
+      return;
+    }
+
+    setIsSavingEdit(true);
+    setEditError('');
+
+    try {
+      const { resultRValue, riskAmount, investmentPercent } = parseDashboardEditValues(dashboardEditForm);
+
+      await updateMarketEntryById(userEmail, editingEntry.id, {
+        status: dashboardEditForm.status,
+        plannedAt: dashboardEditForm.plannedAt,
+        riskAmount,
+        investmentPercent,
+        resultR: dashboardEditForm.status === 'closed' ? resultRValue : null,
+        operationLink: dashboardEditForm.operationLink,
+        noEntryReason: dashboardEditForm.noEntryReason,
+        note: dashboardEditForm.note,
+      });
+
+      setSummaryEntries(await listMarketEntriesByUser(userEmail));
+      closeEditEntryModal();
+    } catch (error) {
+      setEditError(error instanceof Error ? error.message : 'No se pudo actualizar la entrada.');
+    } finally {
+      setIsSavingEdit(false);
+    }
+  }
 
   const mainContent = (
     <DashboardSummaryContent
@@ -885,7 +1750,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       winTotal={winTotal}
       lossRate={lossRate}
       lossTotal={lossTotal}
-      openRisk={openRisk}
       monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
       netResult={netResult}
@@ -894,12 +1758,17 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       recentTrades={recentTrades}
       selectedYear={selectedYear}
       setSelectedYear={setSelectedYear}
+      selectedMonth={selectedMonth}
+      setSelectedMonth={setSelectedMonth}
+      availableMonths={availableMonths}
+      onOpenEntry={openEntryFromSummary}
+      onOpenLink={openOperationLink}
     />
   );
 
   return (
     <main className="dashboard-shell">
-      <aside className="dashboard-sidebar" aria-label="Menu lateral del dashboard">
+      <aside id="dashboard-mobile-sidebar" className={`dashboard-sidebar ${mobileSidebarOpen ? 'open' : ''}`} aria-label="Menu lateral del dashboard">
         <div className="sidebar-brand">
           <AppIcon name="brand" className="sidebar-brand-icon" />
           <span className="sidebar-brand-text">Inversiones</span>
@@ -927,7 +1796,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-principal" className={`sidebar-section-content ${collapsedSections.principal ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`} onClick={() => setActiveTab('resumen')}>
+              <button type="button" className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`} onClick={() => activateTab('resumen')}>
                 <AppIcon name="dashboard" className="menu-btn-icon" />
                 <span>Resumen</span>
               </button>
@@ -955,20 +1824,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-gestion" className={`sidebar-section-content ${collapsedSections.gestion ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => setActiveTab('noticias')} onMouseEnter={() => prefetchDashboardTab('noticias', isAdmin)} onFocus={() => prefetchDashboardTab('noticias', isAdmin)}>
+              <button type="button" className={`menu-btn menu-news ${activeTab === 'noticias' ? 'active' : ''}`} onClick={() => activateTab('noticias')} onMouseEnter={() => prefetchDashboardTab('noticias', isAdmin)} onFocus={() => prefetchDashboardTab('noticias', isAdmin)}>
                 <AppIcon name="article" className="menu-btn-icon" />
                 <span>Mis noticias</span>
               </button>
-              <button type="button" className={`menu-btn menu-entries ${activeTab === 'entradas' ? 'active' : ''}`} onClick={() => setActiveTab('entradas')} onMouseEnter={() => prefetchDashboardTab('entradas', isAdmin)} onFocus={() => prefetchDashboardTab('entradas', isAdmin)}>
+              <button type="button" className={`menu-btn menu-entries ${activeTab === 'entradas' ? 'active' : ''}`} onClick={() => activateTab('entradas')} onMouseEnter={() => prefetchDashboardTab('entradas', isAdmin)} onFocus={() => prefetchDashboardTab('entradas', isAdmin)}>
                 <AppIcon name="entry" className="menu-btn-icon" />
                 <span>Entradas mercado</span>
               </button>
-              <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => setActiveTab('cuentas')} onMouseEnter={() => prefetchDashboardTab('cuentas', isAdmin)} onFocus={() => prefetchDashboardTab('cuentas', isAdmin)}>
+              <button type="button" className={`menu-btn menu-accounts ${activeTab === 'cuentas' ? 'active' : ''}`} onClick={() => activateTab('cuentas')} onMouseEnter={() => prefetchDashboardTab('cuentas', isAdmin)} onFocus={() => prefetchDashboardTab('cuentas', isAdmin)}>
                 <AppIcon name="accounts" className="menu-btn-icon" />
                 <span>Gestionar cuentas</span>
               </button>
               {isAdmin && (
-                <button type="button" className={`menu-btn menu-users ${activeTab === 'usuarios' ? 'active' : ''}`} onClick={() => setActiveTab('usuarios')} onMouseEnter={() => prefetchDashboardTab('usuarios', isAdmin)} onFocus={() => prefetchDashboardTab('usuarios', isAdmin)}>
+                <button type="button" className={`menu-btn menu-users ${activeTab === 'usuarios' ? 'active' : ''}`} onClick={() => activateTab('usuarios')} onMouseEnter={() => prefetchDashboardTab('usuarios', isAdmin)} onFocus={() => prefetchDashboardTab('usuarios', isAdmin)}>
                   <AppIcon name="users" className="menu-btn-icon" />
                   <span>Gestionar usuarios</span>
                 </button>
@@ -997,7 +1866,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
             </button>
 
             <div id="sidebar-cuenta" className={`sidebar-section-content ${collapsedSections.cuenta ? 'collapsed' : ''}`}>
-              <button type="button" className={`menu-btn menu-settings ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => setActiveTab('configuracion')} onMouseEnter={() => prefetchDashboardTab('configuracion', isAdmin)} onFocus={() => prefetchDashboardTab('configuracion', isAdmin)}>
+              <button type="button" className={`menu-btn menu-settings ${activeTab === 'configuracion' ? 'active' : ''}`} onClick={() => activateTab('configuracion')} onMouseEnter={() => prefetchDashboardTab('configuracion', isAdmin)} onFocus={() => prefetchDashboardTab('configuracion', isAdmin)}>
                 <AppIcon name="settings" className="menu-btn-icon" />
                 <span>Configuración</span>
               </button>
@@ -1017,12 +1886,29 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         </div>
       </aside>
 
+      <button
+        type="button"
+        className={`mobile-sidebar-overlay ${mobileSidebarOpen ? 'visible' : ''}`}
+        onClick={() => setMobileSidebarOpen(false)}
+        aria-label="Cerrar menu lateral"
+      />
+
       <section className="dashboard-layout">
         <header className="dashboard-header">
           <div className="dashboard-header-title">
             <h1>{pageTitle}</h1>
           </div>
           <div className="header-right">
+            <button
+              type="button"
+              className="mobile-menu-btn"
+              onClick={() => setMobileSidebarOpen((prev) => !prev)}
+              aria-label="Mostrar u ocultar menu"
+              aria-expanded={mobileSidebarOpen}
+              aria-controls="dashboard-mobile-sidebar"
+            >
+              <AppIcon name={mobileSidebarOpen ? 'close' : 'menu'} />
+            </button>
             <span className="system-status"><AppIcon name="system" /> <span>Sistema online</span></span>
             <button className="secondary-btn" type="button" onClick={onSignOut}>
               <AppIcon name="logout" />
@@ -1033,6 +1919,129 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
 
         <DashboardTabPanels activeTab={activeTab} mainContent={mainContent} userEmail={userEmail} isAdmin={isAdmin} />
       </section>
+
+      {editModalOpen && dashboardEditForm && (
+        <dialog
+          className="dashboard-edit-overlay"
+          open
+          aria-labelledby="dashboard-edit-title"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeEditEntryModal();
+          }}
+        >
+          <div className="dashboard-edit-modal" ref={dashboardEditModalRef}>
+            <header className="dashboard-edit-header">
+              <h2 id="dashboard-edit-title">Editar entrada</h2>
+              <button type="button" className="dashboard-edit-close" onClick={closeEditEntryModal} aria-label="Cerrar modal">
+                <AppIcon name="close" />
+              </button>
+            </header>
+
+            <div className="dashboard-edit-grid">
+              <label>
+                <span>Estado</span>
+                <select
+                  value={dashboardEditForm.status}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, status: event.target.value as MarketEntryStatus } : prev)}
+                >
+                  <option value="planned">Planificada</option>
+                  <option value="open">Abierta</option>
+                  <option value="closed">Completada</option>
+                  <option value="no_entry">Sin entrada</option>
+                  <option value="cancelled">Cancelada</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Fecha de ejecución</span>
+                <input
+                  type="datetime-local"
+                  value={dashboardEditForm.plannedAt}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                  inputMode="none"
+                  onFocus={openDatePicker}
+                  onClick={openDatePicker}
+                  onKeyDown={preventManualDateTyping}
+                  onPaste={preventManualDatePasteOrDrop}
+                  onDrop={preventManualDatePasteOrDrop}
+                />
+              </label>
+
+              <label>
+                <span>Riesgo por cuenta (USD)</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={dashboardEditForm.riskAmount}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: event.target.value } : prev)}
+                />
+              </label>
+
+              <label>
+                <span>% inversión</span>
+                <input
+                  type="number"
+                  step="0.01"
+                  min="0"
+                  value={dashboardEditForm.investmentPercent}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, investmentPercent: event.target.value } : prev)}
+                />
+              </label>
+
+              <label>
+                <span>Resultado R</span>
+                <input
+                  type="number"
+                  step="0.1"
+                  value={dashboardEditForm.resultR}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, resultR: event.target.value } : prev)}
+                  disabled={dashboardEditForm.status !== 'closed'}
+                />
+              </label>
+
+              <label>
+                <span>Link de operación</span>
+                <input
+                  type="url"
+                  value={dashboardEditForm.operationLink}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, operationLink: event.target.value } : prev)}
+                  placeholder="https://..."
+                />
+              </label>
+
+              {dashboardEditForm.status === 'no_entry' && (
+                <label className="dashboard-edit-span-2">
+                  <span>Motivo sin entrada</span>
+                  <input
+                    value={dashboardEditForm.noEntryReason}
+                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, noEntryReason: event.target.value } : prev)}
+                  />
+                </label>
+              )}
+
+              <label className="dashboard-edit-span-2">
+                <span>Notas</span>
+                <textarea
+                  rows={3}
+                  value={dashboardEditForm.note}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, note: event.target.value } : prev)}
+                />
+              </label>
+            </div>
+
+            {editError && <p className="dashboard-edit-error">{editError}</p>}
+
+            <footer className="dashboard-edit-actions">
+              <button type="button" className="secondary-btn" onClick={closeEditEntryModal} disabled={isSavingEdit}>Cancelar</button>
+              <button type="button" className="primary-btn" onClick={() => void saveEntryFromDashboard()} disabled={isSavingEdit}>
+                {isSavingEdit ? 'Guardando...' : 'Guardar cambios'}
+              </button>
+            </footer>
+          </div>
+        </dialog>
+      )}
     </main>
   );
 }

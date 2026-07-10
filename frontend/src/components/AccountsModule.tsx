@@ -12,6 +12,7 @@ import {
   updateTradingAccount,
   UpsertTradingAccountInput,
 } from '@services/accounts';
+import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 import { useSystemConfig } from '@hooks/useSystemConfig';
 import '../styles/accounts-module.css';
 
@@ -361,6 +362,7 @@ export default function AccountsModule() {
   const [editingAccountId, setEditingAccountId] = useState<string | null>(null);
   const [form, setForm] = useState<AccountFormState>(DEFAULT_FORM);
   const [isSavingAccount, setIsSavingAccount] = useState(false);
+  const accountsModalRef = useRef<HTMLDivElement | null>(null);
   const saveAccountLockRef = useRef(false);
 
   useEffect(() => {
@@ -374,6 +376,25 @@ export default function AccountsModule() {
     }
     document.addEventListener('keydown', handleEscape);
     return () => document.removeEventListener('keydown', handleEscape);
+  }, [modalOpen]);
+
+  useEffect(() => {
+    if (!modalOpen) return;
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (accountsModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeModal();
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
   }, [modalOpen]);
 
   async function loadAccounts() {
@@ -655,8 +676,16 @@ export default function AccountsModule() {
       {accountsContent}
 
       {modalOpen && (
-        <dialog className="accounts-modal-overlay" open aria-label="Formulario cuenta">
-          <div className="accounts-modal">
+        <dialog
+          className="accounts-modal-overlay"
+          open
+          aria-label="Formulario cuenta"
+          onCancel={(event) => {
+            event.preventDefault();
+            closeModal();
+          }}
+        >
+          <div className="accounts-modal" ref={accountsModalRef}>
             <h2>{modalMode === 'create' ? 'Crear cuenta' : 'Editar cuenta'}</h2>
             <p className="accounts-modal-description">
               {modalMode === 'create'
@@ -772,6 +801,12 @@ export default function AccountsModule() {
                   type="date"
                   value={form.opened_at}
                   onChange={(event) => handleFormChange('opened_at', event.target.value)}
+                  inputMode="none"
+                  onFocus={openDatePicker}
+                  onClick={openDatePicker}
+                  onKeyDown={preventManualDateTyping}
+                  onPaste={preventManualDatePasteOrDrop}
+                  onDrop={preventManualDatePasteOrDrop}
                   required
                 />
               </label>

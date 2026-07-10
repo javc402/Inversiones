@@ -13,6 +13,7 @@ import {
   toggleNewsPublication,
   updateNewsArticle,
 } from '@services/news';
+import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 import '../styles/news-module.css';
 
 type ModalMode = 'create' | 'edit';
@@ -244,6 +245,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [form, setForm] = useState<NewsFormState>(emptyForm);
+  const newsModalRef = useRef<HTMLDialogElement | null>(null);
 
   useEffect(() => {
     let isMounted = true;
@@ -311,6 +313,42 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
     setModalMode(null);
     setEditingArticle(null);
     setError('');
+  }
+
+  useEffect(() => {
+    if (!modalMode) {
+      return;
+    }
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (newsModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeModal();
+    }
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeModal();
+      }
+    }
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    document.addEventListener('keydown', handleEscape);
+
+    return () => {
+      document.removeEventListener('mousedown', handleOutsideClick);
+      document.removeEventListener('keydown', handleEscape);
+    };
+  }, [modalMode]);
+
+  let submitLabel = 'Guardar noticia';
+  if (isSubmitting) {
+    submitLabel = 'Guardando...';
+  } else if (modalMode === 'edit') {
+    submitLabel = 'Actualizar noticia';
   }
 
   async function handleSubmit(event: FormEvent) {
@@ -387,14 +425,23 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
   const modal = modalMode
     ? createPortal(
         <div className="news-modal-overlay">
-          <dialog className="news-modal-shell" open aria-labelledby="news-modal-title">
+          <dialog
+            className="news-modal-shell"
+            open
+            aria-labelledby="news-modal-title"
+            ref={newsModalRef}
+            onCancel={(event) => {
+              event.preventDefault();
+              closeModal();
+            }}
+          >
             <div className="news-modal-header">
               <div>
                 <p className="news-modal-kicker">Gestión de noticias</p>
                 <h2 id="news-modal-title">{modalMode === 'create' ? 'Nueva noticia' : 'Editar noticia'}</h2>
               </div>
               <button type="button" className="news-modal-close" onClick={closeModal}>
-                <AppIcon name="delete" />
+                <AppIcon name="close" />
               </button>
             </div>
 
@@ -484,7 +531,17 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
 
               <label>
                 <NewsFieldLabel text="Programar publicacion" help="Fecha y hora para publicación automática si aplica." />
-                <input type="datetime-local" value={form.scheduledAt} onChange={(event) => setForm((prev) => ({ ...prev, scheduledAt: event.target.value }))} />
+                <input
+                  type="datetime-local"
+                  value={form.scheduledAt}
+                  onChange={(event) => setForm((prev) => ({ ...prev, scheduledAt: event.target.value }))}
+                  inputMode="none"
+                  onFocus={openDatePicker}
+                  onClick={openDatePicker}
+                  onKeyDown={preventManualDateTyping}
+                  onPaste={preventManualDatePasteOrDrop}
+                  onDrop={preventManualDatePasteOrDrop}
+                />
               </label>
 
               {error && <p className="news-form-error">{error}</p>}
@@ -494,7 +551,7 @@ export default function NewsModule({ userEmail }: Readonly<NewsModuleProps>) {
                   Cancelar
                 </button>
                 <button type="submit" className="primary-btn" disabled={isSubmitting}>
-                  {isSubmitting ? 'Guardando...' : modalMode === 'create' ? 'Guardar noticia' : 'Actualizar noticia'}
+                  {submitLabel}
                 </button>
               </div>
             </form>

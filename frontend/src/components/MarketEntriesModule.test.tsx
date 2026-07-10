@@ -76,7 +76,7 @@ describe('MarketEntriesModule', () => {
 
     await waitFor(() => {
       const selects = container.querySelectorAll('.entries-accounts-row select');
-      expect(selects.length).toBe(2);
+      expect(selects).toHaveLength(2);
     });
 
     const selects = container.querySelectorAll('.entries-accounts-row select');
@@ -464,6 +464,48 @@ describe('MarketEntriesModule', () => {
 
     expect(await screen.findByText(/EURUSD/)).toBeInTheDocument();
     expect(screen.getByText(/GBPUSD/)).toBeInTheDocument();
+    expect(screen.getByText(/Tecnico: TP extendido/)).toBeInTheDocument();
+    expect(screen.getByText(/Financiero: Ganancia/)).toBeInTheDocument();
+  });
+
+  it('should classify R=1.0 as break tecnico and financial gain', async () => {
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        riskAmount: 150,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Real',
+        alias: 'Real',
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    expect(await screen.findByText(/EURUSD/)).toBeInTheDocument();
+    expect(screen.getByText(/Tecnico: Break tecnico 1:1/)).toBeInTheDocument();
+    expect(screen.getByText(/Financiero: Ganancia/)).toBeInTheDocument();
+    expect(screen.getByText(/Resultado cuenta: \$150.00/)).toBeInTheDocument();
   });
 
   it('should show error alert when loading entries fails', async () => {
@@ -601,6 +643,47 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    expect(await screen.findByText('Editar entrada por cuenta')).toBeInTheDocument();
+  });
+
+  it('should open edit modal immediately on dashboard event without refresh', async () => {
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+    await screen.findByText(/EURUSD/);
+
+    window.dispatchEvent(new CustomEvent('inversiones:open-entry-edit', { detail: { entryId: 'entry-1' } }));
+
     expect(await screen.findByText('Editar entrada por cuenta')).toBeInTheDocument();
   });
 
@@ -900,6 +983,150 @@ describe('MarketEntriesModule', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+  });
+
+  it('should close help popover on outside click and keep it stable on viewport resize', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Contexto/Noticia' }));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    window.dispatchEvent(new Event('resize'));
+    expect(screen.getByRole('tooltip')).toBeInTheDocument();
+
+    fireEvent.mouseDown(document.body);
+    await waitFor(() => {
+      expect(screen.queryByRole('tooltip')).not.toBeInTheDocument();
+    });
+  });
+
+  it('should toggle context tabs and select a news article in create modal', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'IPC de EE.UU',
+        source: 'Bloomberg',
+        published_at: '2026-07-01T10:00:00.000Z',
+        impact: 'high',
+        summary: 'Resumen',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-07-01T10:00:00.000Z',
+        updated_at: '2026-07-01T10:00:00.000Z',
+      } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Noticias registradas' }));
+    expect(screen.getByPlaceholderText('Buscar por titulo o categoria')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByPlaceholderText('Buscar por titulo o categoria'), { target: { value: 'IPC' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
+
+    fireEvent.click(screen.getByRole('tab', { name: 'Texto libre' }));
+    expect(screen.queryByPlaceholderText('Buscar por titulo o categoria')).not.toBeInTheDocument();
+  });
+
+  it('should add and remove account rows in create modal', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+      { id: 'acc-2', name: 'Cuenta Demo', alias: 'Demo' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
+
+    const { container } = render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Agregar cuenta/i }));
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.entries-accounts-row')).toHaveLength(2);
+    });
+
+    const removeButtons = screen.getAllByRole('button', { name: /Quitar/i });
+    fireEvent.click(removeButtons[removeButtons.length - 1]);
+
+    await waitFor(() => {
+      expect(container.querySelectorAll('.entries-accounts-row')).toHaveLength(1);
+    });
+  });
+
+  it('should trigger datetime picker handlers in create and edit modals and close with cancel', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    const createDatetime = document.querySelector('dialog input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.focus(createDatetime);
+    fireEvent.click(createDatetime);
+    fireEvent.keyDown(createDatetime, { key: '1' });
+    fireEvent.keyDown(createDatetime, { key: 'Tab' });
+    fireEvent.paste(createDatetime, { clipboardData: { getData: () => '2026-07-10T09:00' } as unknown as DataTransfer });
+    fireEvent.change(createDatetime, { target: { value: '2026-07-10T09:00' } });
+
+    fireEvent.mouseDown(screen.getByText('Nueva entrada al mercado'));
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+
+    const createDialog = screen.getByRole('dialog');
+    fireEvent(createDialog, new Event('cancel', { cancelable: true }));
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    const editDatetime = document.querySelector('dialog input[type="datetime-local"]') as HTMLInputElement;
+    fireEvent.focus(editDatetime);
+    fireEvent.click(editDatetime);
+    fireEvent.keyDown(editDatetime, { key: '2' });
+    fireEvent.keyDown(editDatetime, { key: 'Tab' });
+    fireEvent.paste(editDatetime, { clipboardData: { getData: () => '2026-07-11T10:00' } as unknown as DataTransfer });
+    fireEvent.change(editDatetime, { target: { value: '2026-07-11T10:00' } });
   });
 
 });

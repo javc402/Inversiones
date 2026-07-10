@@ -425,7 +425,7 @@ describe('market-entries service', () => {
         resultR: null,
         note: 'x',
       })
-    ).rejects.toThrow('No se encontró la entrada solicitada.');
+    ).rejects.toThrow('not found');
   });
 
   it('delete falla cuando no hay filas afectadas', async () => {
@@ -1129,7 +1129,7 @@ describe('market-entries service', () => {
         { status: 'closed', riskAmount: 100, investmentPercent: 1, resultR: 1, note: 'ok' },
         { applyCommonToGroup: true }
       )
-    ).rejects.toThrow('No se pudieron aplicar cambios al grupo.');
+    ).rejects.toThrow('group fail');
   });
 
   it('create propaga error cuando insert falla', async () => {

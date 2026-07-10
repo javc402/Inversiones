@@ -1,19 +1,25 @@
-import { fireEvent, render, screen } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage, {
+  calculateDailyProfitData,
   calculateMonthlyProfitData,
   calculateProfitFactor,
   distributionAmountLabel,
+  financialOutcomeLabel,
+  formatCurrency,
   formatDate,
+  getEntryExecutionDate,
   roleNameLabel,
   statusLabel,
+  technicalOutcomeLabel,
   tradeResultClass,
 } from './DashboardPage'
 
 const getCurrentUserRoleMock = vi.hoisted(() => vi.fn())
 const listTradingAccountsMock = vi.hoisted(() => vi.fn())
 const listMarketEntriesByUserMock = vi.hoisted(() => vi.fn())
+const updateMarketEntryByIdMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@components/AdminPanel', () => ({
   default: () => React.createElement('div', null, 'Panel de Administración'),
@@ -45,10 +51,29 @@ vi.mock('@services/accounts', () => ({
 
 vi.mock('@services/market-entries', () => ({
   listMarketEntriesByUser: listMarketEntriesByUserMock,
+  updateMarketEntryById: updateMarketEntryByIdMock,
 }))
 
 vi.mock('recharts', () => {
   const Wrapper = ({ children }: { children?: React.ReactNode }) => React.createElement('div', null, children)
+  const Tooltip = ({ formatter, labelFormatter }: {
+    formatter?: (value: number, name: string, props: { payload: { name: string; operations: number; totalAmount: number } }) => [string, string]
+    labelFormatter?: (label: string) => string
+  }) => {
+    if (typeof formatter === 'function') {
+      formatter(33.3, 'Ganadas', { payload: { name: 'Ganadas', operations: 1, totalAmount: 100 } })
+    }
+    if (typeof labelFormatter === 'function') {
+      labelFormatter('Ene')
+    }
+    return React.createElement('div', null)
+  }
+  const Legend = ({ formatter }: { formatter?: (value: string) => string }) => {
+    if (typeof formatter === 'function') {
+      formatter('Ganadas')
+    }
+    return React.createElement('div', null)
+  }
   return {
     ResponsiveContainer: Wrapper,
     AreaChart: Wrapper,
@@ -57,8 +82,8 @@ vi.mock('recharts', () => {
     Area: Wrapper,
     Cell: Wrapper,
     CartesianGrid: Wrapper,
-    Legend: Wrapper,
-    Tooltip: Wrapper,
+    Legend,
+    Tooltip,
     XAxis: Wrapper,
     YAxis: Wrapper,
   }
@@ -70,6 +95,7 @@ describe('DashboardPage', () => {
     vi.clearAllMocks()
     listTradingAccountsMock.mockResolvedValue([])
     listMarketEntriesByUserMock.mockResolvedValue([])
+    updateMarketEntryByIdMock.mockResolvedValue(undefined)
   })
 
   it('muestra menu de gestionar usuarios solo para admin', async () => {
@@ -118,13 +144,13 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Mis noticias' }))
     expect(await screen.findByText('Modulo de Noticias')).toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: /Resumen|Dashboard/ }))
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
   })
 
   it('filtra operaciones por año desde el combo superior', async () => {
@@ -277,13 +303,314 @@ describe('DashboardPage', () => {
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
     expect(await screen.findByLabelText('Filtrar por cuenta')).toBeInTheDocument()
-    expect(await screen.findByText('EURUSD')).toBeInTheDocument()
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
     expect(screen.getByText('GBPUSD')).toBeInTheDocument()
 
     fireEvent.change(screen.getByLabelText('Filtrar por cuenta'), { target: { value: 'acc-1' } })
 
     expect(screen.getByText('EURUSD')).toBeInTheDocument()
     expect(screen.queryByText('GBPUSD')).not.toBeInTheDocument()
+  })
+
+  it('filtra operaciones por mes desde el combo superior y actualiza el resumen', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Real',
+        alias: 'Real',
+      },
+    ])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-jun',
+        groupId: 'group-jun',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 2,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-jul',
+        groupId: 'group-jul',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 80,
+        investmentPercent: 0.8,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-21T10:00:00.000Z',
+        createdAt: '2026-07-21T10:00:00.000Z',
+        updatedAt: '2026-07-21T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByLabelText('Filtrar por mes')).toBeInTheDocument()
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
+    expect(screen.getByText('GBPUSD')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByLabelText('Filtrar por mes'), { target: { value: '5' } })
+
+    expect(screen.getByText('EURUSD')).toBeInTheDocument()
+    expect(screen.queryByText('GBPUSD')).not.toBeInTheDocument()
+    expect(screen.getByText('Ganancias del mes')).toBeInTheDocument()
+    const monthlyProfitCard = screen.getByText('Ganancias del mes').closest('article')
+    const normalizedCardText = monthlyProfitCard?.textContent?.replace(/\s+/g, ' ') ?? ''
+    const normalizedAmount = formatCurrency(200).replace(/\s+/g, ' ')
+    expect(normalizedCardText).toContain(normalizedAmount)
+    expect(screen.getByText('1 operaciones')).toBeInTheDocument()
+  })
+
+  it('aplica filtros de cuenta, año y mes en todos los KPI del resumen', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Real',
+        alias: 'Real',
+      },
+      {
+        id: 'acc-2',
+        name: 'Cuenta Demo',
+        alias: 'Demo',
+      },
+    ])
+
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-win-jun-2026',
+        groupId: 'group-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 2,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-10T10:00:00.000Z',
+        createdAt: '2026-06-10T10:00:00.000Z',
+        updatedAt: '2026-06-10T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-loss-jun-2026',
+        groupId: 'group-2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 50,
+        investmentPercent: 1,
+        resultR: -1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-12T10:00:00.000Z',
+        createdAt: '2026-06-12T10:00:00.000Z',
+        updatedAt: '2026-06-12T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-open-jun-2026',
+        groupId: 'group-3',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'USDJPY',
+        marketContext: 'PMI',
+        setup: 'Range',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 157.1,
+        stopLoss: 156.9,
+        takeProfit: 157.6,
+        riskAmount: 70,
+        investmentPercent: 0.7,
+        resultR: null,
+        note: '',
+        status: 'open',
+        plannedAt: '2026-06-14T10:00:00.000Z',
+        createdAt: '2026-06-14T10:00:00.000Z',
+        updatedAt: '2026-06-14T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-break-jul-2026',
+        groupId: 'group-4',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'AUDUSD',
+        marketContext: 'RBA',
+        setup: 'Breakout',
+        session: 'ASIA',
+        direction: 'buy',
+        entryPrice: 0.67,
+        stopLoss: 0.665,
+        takeProfit: 0.68,
+        riskAmount: 30,
+        investmentPercent: 0.5,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-02T10:00:00.000Z',
+        createdAt: '2026-07-02T10:00:00.000Z',
+        updatedAt: '2026-07-02T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-other-account',
+        groupId: 'group-5',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-2',
+        accountName: 'Demo',
+        symbol: 'XAUUSD',
+        marketContext: 'FOMC',
+        setup: 'Momentum',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 2350,
+        stopLoss: 2345,
+        takeProfit: 2365,
+        riskAmount: 40,
+        investmentPercent: 0.8,
+        resultR: 1.5,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-18T10:00:00.000Z',
+        createdAt: '2026-06-18T10:00:00.000Z',
+        updatedAt: '2026-06-18T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-other-year',
+        groupId: 'group-6',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'NZDUSD',
+        marketContext: 'GDP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 0.62,
+        stopLoss: 0.625,
+        takeProfit: 0.61,
+        riskAmount: 20,
+        investmentPercent: 0.4,
+        resultR: 3,
+        note: '',
+        status: 'closed',
+        plannedAt: '2025-06-18T10:00:00.000Z',
+        createdAt: '2025-06-18T10:00:00.000Z',
+        updatedAt: '2025-06-18T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.change(await screen.findByLabelText('Filtrar por cuenta'), { target: { value: 'acc-1' } })
+    fireEvent.change(screen.getByLabelText('Filtrar por año'), { target: { value: '2026' } })
+    fireEvent.change(screen.getByLabelText('Filtrar por mes'), { target: { value: '5' } })
+
+    const gananciaCardText = screen.getByText('Ganancias del mes').closest('article')?.textContent ?? ''
+    const exitoCardText = screen.getByText('Tasa de exito').closest('article')?.textContent ?? ''
+    const perdidaCardText = screen.getByText('Tasa de perdida').closest('article')?.textContent ?? ''
+    const mejorDiaCardText = screen.getAllByText('Mejor dia para operar')[0]?.closest('article')?.textContent ?? ''
+    const resumenDistribucion = screen.getByLabelText('Métricas de desempeño').textContent ?? ''
+
+    const normalizedGananciaCardText = gananciaCardText.replace(/\s+/g, ' ').trim()
+    const normalizedExitoCardText = exitoCardText.replace(/\s+/g, ' ').trim()
+    const normalizedPerdidaCardText = perdidaCardText.replace(/\s+/g, ' ').trim()
+    const normalizedMejorDiaCardText = mejorDiaCardText.replace(/\s+/g, ' ').trim()
+
+    expect(normalizedGananciaCardText).toContain('3 operaciones')
+    expect(normalizedGananciaCardText).toContain(formatCurrency(150).replace(/\s+/g, ' ').trim())
+
+    expect(normalizedExitoCardText).toContain('50.0%')
+    expect(normalizedExitoCardText).toContain(formatCurrency(200).replace(/\s+/g, ' ').trim())
+
+    expect(normalizedPerdidaCardText).toContain('50.0%')
+    expect(normalizedPerdidaCardText).toContain(formatCurrency(-50).replace(/\s+/g, ' ').trim())
+
+    expect(normalizedMejorDiaCardText).toContain('Mejor dia para operar')
+    expect(normalizedMejorDiaCardText).toContain(distributionAmountLabel(200).replace(/\s+/g, ' ').trim())
+
+    expect(resumenDistribucion).toContain('Profit Factor')
+    expect(resumenDistribucion).toContain('4.00')
+    expect(resumenDistribucion).toContain('Win/Loss ratio')
+    expect(resumenDistribucion).toContain('1:1')
   })
 
   it('formatea moneda correctamente en los KPIs', async () => {
@@ -330,29 +657,29 @@ describe('DashboardPage', () => {
   it('calcula ganancia correcta del mes cuando hay operaciones cerradas', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([
-      {
-        id: 'entry-1',
-        groupId: 'group-1',
-        userEmail: 'usuario@demo.com',
-        accountId: 'acc-1',
-        accountName: 'Real',
-        symbol: 'EURUSD',
-        marketContext: 'CPI',
-        setup: 'Breakout',
-        session: 'NEW YORK',
-        direction: 'buy',
-        entryPrice: 1.1,
-        stopLoss: 1,
-        takeProfit: 1.2,
-        riskAmount: 500,
-        investmentPercent: 1,
-        resultR: 3,
-        note: '',
-        status: 'closed',
-        plannedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        updatedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-      },
+        {
+          id: 'entry-1',
+          groupId: 'group-1',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1,
+          takeProfit: 1.2,
+          riskAmount: 500,
+          investmentPercent: 1,
+          resultR: 3,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-20T10:00:00.000Z',
+          createdAt: '2026-06-20T10:00:00.000Z',
+          updatedAt: '2026-06-20T10:00:00.000Z',
+        },
     ])
 
     getCurrentUserRoleMock.mockResolvedValueOnce({
@@ -363,7 +690,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    const gananciaNota = await screen.findByText('Ganancia del mes')
+    const gananciaNota = await screen.findByText('Ganancias del año')
     expect(gananciaNota).toBeInTheDocument()
     expect(screen.getByText('1 operaciones')).toBeInTheDocument()
   })
@@ -465,7 +792,7 @@ describe('DashboardPage', () => {
     expect(zeroRates.length).toBeGreaterThan(0)
   })
 
-  it('calcula riesgo abierto solo de operaciones abiertas', async () => {
+  it('muestra KPI de mejor día para operar con operaciones cerradas', async () => {
     listTradingAccountsMock.mockResolvedValueOnce([])
     listMarketEntriesByUserMock.mockResolvedValueOnce([
       {
@@ -524,8 +851,9 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    const riesgoSeccion = await screen.findByText('Riesgo abierto')
-    expect(riesgoSeccion).toBeInTheDocument()
+    const mejorDiaSeccion = await screen.findAllByText('Mejor dia para operar')
+    expect(mejorDiaSeccion.length).toBeGreaterThan(0)
+    expect(screen.getAllByText((content) => content.includes('Total: +USD') && content.includes('600.00')).length).toBeGreaterThan(0)
   })
 
   it('muestra tabla de operaciones recientes ordenadas por fecha', async () => {
@@ -590,6 +918,451 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
     expect(screen.getByText('EURUSD')).toBeInTheDocument()
     expect(screen.getByText('GBPUSD')).toBeInTheDocument()
+  })
+
+  it('muestra total y promedio en Breakeven cuando hay breaks tecnicos', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-break-1',
+        groupId: 'group-break-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 150,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+      {
+        id: 'entry-break-2',
+        groupId: 'group-break-2',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 10,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Distribucion de operaciones')).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('Total: +USD') && content.includes('160.00'))).toBeInTheDocument()
+    expect(screen.getByText((content) => content.includes('Promedio: +USD') && content.includes('80.00'))).toBeInTheDocument()
+  })
+
+  it('aplica filtros por columnas en la tabla de operaciones recientes', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-filter-1',
+        groupId: 'group-filter-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: 'nota',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+
+    fireEvent.change(screen.getByPlaceholderText('Filtrar fecha'), { target: { value: '20/06/2026' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar par'), { target: { value: 'EUR' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar tipo'), { target: { value: 'BUY' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar invertido'), { target: { value: '100' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar resultado'), { target: { value: '100' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar tecnico'), { target: { value: 'Break tecnico' } })
+    fireEvent.change(screen.getByPlaceholderText('Filtrar estado'), { target: { value: 'Completada' } })
+
+    expect(screen.getByText('EURUSD')).toBeInTheDocument()
+  })
+
+  it('permite editar entrada desde modal, cancelar y guardar cambios', async () => {
+    const baseEntry = {
+      id: 'entry-edit-1',
+      groupId: 'group-edit-1',
+      userEmail: 'usuario@demo.com',
+      accountId: 'acc-1',
+      accountName: 'Real',
+      symbol: 'EURUSD',
+      marketContext: 'CPI',
+      setup: 'Breakout',
+      session: 'NEW YORK',
+      direction: 'buy' as const,
+      entryPrice: 1.1,
+      stopLoss: 1,
+      takeProfit: 1.2,
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: 1,
+      note: 'nota inicial',
+      status: 'closed' as const,
+      operationLink: 'https://example.com/old',
+      plannedAt: '2026-06-20T10:00:00.000Z',
+      createdAt: '2026-06-20T10:00:00.000Z',
+      updatedAt: '2026-06-20T10:00:00.000Z',
+      contextSource: null,
+      newsArticleId: null,
+      noEntryReason: null,
+    }
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock
+      .mockResolvedValueOnce([baseEntry])
+      .mockResolvedValueOnce([
+        {
+          ...baseEntry,
+          riskAmount: 125,
+          investmentPercent: 1.5,
+          resultR: 2,
+          operationLink: 'https://example.com/new',
+          note: 'nota actualizada',
+          noEntryReason: 'No vi confirmacion',
+        },
+      ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+    expect(await screen.findByText('Editar entrada')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cerrar modal' }))
+    expect(screen.queryByText('Editar entrada')).not.toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
+    fireEvent.change(screen.getByLabelText('Motivo sin entrada'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.change(screen.getByDisplayValue('Sin entrada'), { target: { value: 'closed' } })
+    fireEvent.change(screen.getByLabelText('Fecha de ejecución'), { target: { value: '2026-06-21T12:30' } })
+    fireEvent.change(screen.getByLabelText('Riesgo por cuenta (USD)'), { target: { value: '125' } })
+    fireEvent.change(screen.getByLabelText('% inversión'), { target: { value: '1.5' } })
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '2.0' } })
+    fireEvent.change(screen.getByLabelText('Link de operación'), { target: { value: 'https://example.com/new' } })
+    fireEvent.change(screen.getByLabelText('Notas'), { target: { value: 'nota actualizada' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      expect(updateMarketEntryByIdMock).toHaveBeenCalledWith('usuario@demo.com', 'entry-edit-1', expect.objectContaining({
+        status: 'closed',
+        riskAmount: 125,
+        investmentPercent: 1.5,
+        resultR: 2,
+        operationLink: 'https://example.com/new',
+        note: 'nota actualizada',
+        noEntryReason: 'No vi confirmacion',
+      }))
+      expect(listMarketEntriesByUserMock).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('muestra error al guardar con resultado R inválido en estado completada', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-edit-error',
+        groupId: 'group-edit-error',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: 'NaN' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    expect(await screen.findByText('El Resultado R debe ser valido para estado Completada.')).toBeInTheDocument()
+    expect(updateMarketEntryByIdMock).not.toHaveBeenCalled()
+  })
+
+  it('abre modal de edición en dashboard desde el botón de ojo sin redirección', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-eye-1',
+        groupId: 'group-eye',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    expect(await screen.findByText('Editar entrada')).toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Resumen' })).toHaveClass('active')
+  })
+
+  it('usa handlers de fecha readonly y cierra modal con evento cancel', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-cancel-1',
+        groupId: 'group-cancel',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada EURUSD' }))
+    const dateInput = screen.getByLabelText('Fecha de ejecución') as HTMLInputElement
+    fireEvent.focus(dateInput)
+    fireEvent.click(dateInput)
+    fireEvent.keyDown(dateInput, { key: '1' })
+    fireEvent.keyDown(dateInput, { key: 'Tab' })
+    fireEvent.paste(dateInput, { clipboardData: { getData: () => '2026-07-10T12:00' } as unknown as DataTransfer })
+    fireEvent.change(dateInput, { target: { value: '2026-07-10T12:00' } })
+
+    fireEvent.mouseDown(screen.getByText('Editar entrada'))
+    expect(screen.getByRole('dialog', { name: 'Editar entrada' })).toBeInTheDocument()
+
+    const dialog = screen.getByRole('dialog', { name: 'Editar entrada' })
+    fireEvent(dialog, new Event('cancel', { cancelable: true }))
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Editar entrada' })).not.toBeInTheDocument()
+    })
+  })
+
+  it('abre el link de operación desde el botón de navegación', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-link-1',
+        groupId: 'group-link',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        operationLink: 'https://example.com/trade/1',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Abrir link de EURUSD' }))
+
+    expect(openSpy).toHaveBeenCalledWith('https://example.com/trade/1', '_blank', 'noopener,noreferrer')
+    openSpy.mockRestore()
+  })
+
+  it('activa controles móviles y expande detalles de operación en la tabla', async () => {
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-mobile-1',
+        groupId: 'group-mobile-1',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        operationLink: 'https://example.com/mobile',
+        plannedAt: '2026-07-10T10:00:00.000Z',
+        createdAt: '2026-07-10T10:00:00.000Z',
+        updatedAt: '2026-07-10T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Mostrar u ocultar menu' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Mostrar u ocultar filtros' }))
+    fireEvent.click(screen.getByRole('button', { name: /Mostrar detalles de EURUSD/i }))
+
+    expect((await screen.findAllByText('EURUSD')).length).toBeGreaterThan(0)
+    fireEvent.click(screen.getAllByRole('button', { name: /Abrir link de EURUSD/i })[0])
+    expect(openSpy).toHaveBeenCalledWith('https://example.com/mobile', '_blank', 'noopener,noreferrer')
+
+    openSpy.mockRestore()
   })
 
   it('muestra mensaje cuando no hay operaciones recientes', async () => {
@@ -671,7 +1444,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.getByText('0 operaciones')).toBeInTheDocument()
   })
 
@@ -687,7 +1460,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
   })
 
   it('calcula profit factor con ramas de pérdida cero y normal', () => {
@@ -798,8 +1571,188 @@ describe('DashboardPage', () => {
     )
 
     expect(monthlyData).toHaveLength(6)
-    expect(monthlyData.some((item) => item.amount !== 0)).toBe(true)
+    expect(monthlyData.some((item) => item.lossAmount !== 0)).toBe(true)
     expect(monthlyData[0]).toHaveProperty('month')
+  })
+
+  it('la serie mensual separa monto de break tecnico en su indicador dedicado', () => {
+    const fixedNow = new Date('2026-07-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-break-jun',
+          groupId: 'group-break',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 150,
+          investmentPercent: 1,
+          resultR: 1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-10T10:00:00.000Z',
+          createdAt: '2026-06-10T10:00:00.000Z',
+          updatedAt: '2026-07-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      fixedNow,
+    )
+
+    const jun = monthlyData.find((item) => item.month === 'Jun')
+    expect(jun?.amount).toBe(0)
+    expect(jun?.breakevenAmount).toBe(150)
+  })
+
+  it('la serie mensual muestra todo el año cuando se seleccionan todos los meses', () => {
+    const fixedNow = new Date('2026-07-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-jan',
+          groupId: 'group-jan',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 100,
+          investmentPercent: 1,
+          resultR: 2,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-01-10T10:00:00.000Z',
+          createdAt: '2026-01-10T10:00:00.000Z',
+          updatedAt: '2026-01-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      fixedNow,
+      'fullYear',
+    )
+
+    expect(monthlyData).toHaveLength(12)
+    expect(monthlyData[0]?.month).toBe('Ene')
+    expect(monthlyData[11]?.month).toBe('Dic')
+    expect(monthlyData.find((item) => item.month === 'Ene')?.amount).toBe(200)
+  })
+
+  it('la serie mensual centrada muestra 2 meses antes y 2 después del mes seleccionado', () => {
+    const fixedNow = new Date('2026-06-15T00:00:00.000Z')
+    const monthlyData = calculateMonthlyProfitData(
+      [
+        {
+          id: 'entry-jun-centered',
+          groupId: 'group-jun-centered',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 120,
+          investmentPercent: 1,
+          resultR: 2,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-06-10T10:00:00.000Z',
+          createdAt: '2026-06-10T10:00:00.000Z',
+          updatedAt: '2026-06-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      fixedNow,
+      'centered5',
+    )
+
+    expect(monthlyData).toHaveLength(5)
+    expect(monthlyData.map((item) => item.month)).toEqual(['Abr', 'May', 'Jun', 'Jul', 'Ago'])
+    expect(monthlyData.find((item) => item.month === 'Jun')?.amount).toBe(240)
+  })
+
+  it('la serie diaria incluye todos los días del mes seleccionado', () => {
+    const referenceDate = new Date('2026-07-15T00:00:00.000Z')
+    const dailyData = calculateDailyProfitData(
+      [
+        {
+          id: 'entry-day-win',
+          groupId: 'group-day-win',
+          userEmail: 'usuario@demo.com',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          symbol: 'EURUSD',
+          symbolDetail: null,
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          newsArticleId: null,
+          newsImpact: null,
+          setup: 'Breakout',
+          session: 'NEW YORK',
+          candleProtocol: 'ob',
+          direction: 'buy',
+          entryPrice: 1.1,
+          stopLoss: 1.0,
+          takeProfit: 1.2,
+          closePrice: null,
+          operationLink: null,
+          riskAmount: 200,
+          investmentPercent: 1,
+          resultR: 1,
+          note: '',
+          status: 'closed',
+          plannedAt: '2026-07-10T10:00:00.000Z',
+          createdAt: '2026-07-10T10:00:00.000Z',
+          updatedAt: '2026-07-10T10:00:00.000Z',
+          noEntryReason: null,
+        },
+      ] as never,
+      referenceDate,
+    )
+
+    expect(dailyData).toHaveLength(31)
+    expect(dailyData[0]?.month).toBe('1')
+    expect(dailyData[30]?.month).toBe('31')
+    expect(dailyData.find((item) => item.month === '10')?.breakevenAmount).toBe(200)
   })
 
   it('formatea montos de distribución con signo', () => {
@@ -822,6 +1775,20 @@ describe('DashboardPage', () => {
     expect(tradeResultClass('-USD 10.00')).toBe('negative')
     expect(tradeResultClass('N/A')).toBe('neutral')
     expect(tradeResultClass('USD 10.00')).toBe('positive')
+    expect(tradeResultClass('USD 100.00', true)).toBe('breakeven')
+
+    expect(technicalOutcomeLabel({ status: 'closed', resultR: -1 } as never)).toBe('SL')
+    expect(technicalOutcomeLabel({ status: 'closed', resultR: 0 } as never)).toBe('Sin avance')
+    expect(technicalOutcomeLabel({ status: 'closed', resultR: 1 } as never)).toBe('Break tecnico 1:1')
+    expect(technicalOutcomeLabel({ status: 'closed', resultR: 1.5 } as never)).toBe('TP extendido')
+    expect(technicalOutcomeLabel({ status: 'closed', resultR: 0.5 } as never)).toBe('TP parcial')
+    expect(financialOutcomeLabel({ status: 'closed', resultR: -1 } as never)).toBe('Perdida')
+    expect(financialOutcomeLabel({ status: 'closed', resultR: 0 } as never)).toBe('Breakeven')
+    expect(financialOutcomeLabel({ status: 'closed', resultR: 1 } as never)).toBe('Breakeven')
+    expect(financialOutcomeLabel({ status: 'open', resultR: 1 } as never)).toBe('N/A')
+
+    expect(getEntryExecutionDate({ status: 'closed', plannedAt: '2026-06-20T10:00:00.000Z', updatedAt: '2026-06-22T10:00:00.000Z', createdAt: '2026-06-10T10:00:00.000Z' } as never)).toBe('2026-06-20T10:00:00.000Z')
+    expect(getEntryExecutionDate({ status: 'planned', plannedAt: '2026-06-20T10:00:00.000Z', updatedAt: '2026-06-22T10:00:00.000Z', createdAt: '2026-06-10T10:00:00.000Z' } as never)).toBe('2026-06-20T10:00:00.000Z')
 
     expect(formatDate('invalid-date')).toBe('invalid-date')
   })
@@ -833,7 +1800,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
   })
 
@@ -851,7 +1818,7 @@ describe('DashboardPage', () => {
       />
     )
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.getByRole('button', { name: 'Gestionar usuarios' })).toBeInTheDocument()
     expect(getCurrentUserRoleMock).not.toHaveBeenCalled()
   })
@@ -867,7 +1834,7 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Ganancia del mes')).toBeInTheDocument()
+    expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: 'Gestionar usuarios' })).not.toBeInTheDocument()
 
     fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))

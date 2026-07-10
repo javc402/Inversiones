@@ -61,8 +61,7 @@
 
 .accounts-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 320px));
-  justify-content: start;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 16px;
 }
 
@@ -571,16 +570,6 @@
     width: 100%;
   }
 
-  .accounts-grid {
-    grid-template-columns: 1fr;
-    justify-items: center;
-  }
-
-  .account-card {
-    max-width: 420px;
-    width: 100%;
-  }
-
   .accounts-form {
     grid-template-columns: 1fr;
   }
@@ -593,5 +582,17 @@
   .accounts-form-actions .primary-btn,
   .accounts-form-actions .secondary-btn {
     width: min(320px, 100%);
+  }
+}
+
+@media (min-width: 641px) and (max-width: 1024px) {
+  .accounts-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 640px) {
+  .accounts-grid {
+    grid-template-columns: 1fr;
   }
 }
