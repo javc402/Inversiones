@@ -497,6 +497,11 @@ function openOperationLink(operationLink: string | null) {
   window.open(operationLink, '_blank', 'noopener,noreferrer');
 }
 
+function notifyEntriesChangedFromDashboard() {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('inversiones:entries-changed', { detail: { action: 'dashboard_update' } }));
+}
+
 function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYear: string): Date {
   if (filteredEntries.length > 0) {
     const latestTimestamp = filteredEntries.reduce((latest, entry) => {
@@ -1604,6 +1609,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       });
 
       setSummaryEntries(await listMarketEntriesByUser(userEmail));
+      notifyEntriesChangedFromDashboard();
       closeEditEntryModal();
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'No se pudo actualizar la entrada.');

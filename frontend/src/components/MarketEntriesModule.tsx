@@ -1125,6 +1125,11 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const isNewsContextMode = commonForm.contextSource === 'news';
   const pendingEditStorageKey = 'inversiones_pending_entry_edit_id';
 
+  function notifyEntriesChanged(action: 'create' | 'update' | 'delete') {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('inversiones:entries-changed', { detail: { action } }));
+  }
+
   function openPendingEntryById(entryId: string): boolean {
     const pendingEntry = entries.find((entry) => entry.id === entryId);
     if (!pendingEntry) {
@@ -1462,6 +1467,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       setEntries(await listMarketEntriesByUser(userEmail));
       setMostUsedContexts(await listMostUsedMarketContexts(userEmail));
       setSuccess(`Entrada creada en ${created.length} cuenta(s).`);
+      notifyEntriesChanged('create');
 
       void logAuditActivity('market_entries.create_batch', {
         module: 'market_entries',
@@ -1532,6 +1538,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
           ? `Cambios comunes aplicados a ${result.affectedEntries} registro(s) del grupo. Riesgo y % quedaron por cuenta.`
           : `Entrada actualizada para ${result.updatedEntry.accountName}.`
       );
+      notifyEntriesChanged('update');
 
       void logAuditActivity('market_entries.update', {
         module: 'market_entries',
@@ -1564,6 +1571,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       await deleteMarketEntryById(userEmail, entry.id);
       setEntries(await listMarketEntriesByUser(userEmail));
       setSuccess('Entrada eliminada.');
+      notifyEntriesChanged('delete');
 
       void logAuditActivity('market_entries.delete', {
         module: 'market_entries',

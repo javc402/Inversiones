@@ -455,6 +455,18 @@ export default function AccountsModule() {
   }, []);
 
   useEffect(() => {
+    function handleEntriesChanged() {
+      void loadAccounts();
+    }
+
+    window.addEventListener('inversiones:entries-changed', handleEntriesChanged as EventListener);
+
+    return () => {
+      window.removeEventListener('inversiones:entries-changed', handleEntriesChanged as EventListener);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!modalOpen) return;
     function handleEscape(e: KeyboardEvent) {
       if (e.key === 'Escape') closeModal();
