@@ -91,7 +91,7 @@ const defaultCommonForm: EntryCommonForm = {
   session: 'NEW YORK',
   candleProtocol: 'no',
   direction: 'buy',
-  resultR: '0.0',
+  resultR: '0.00',
   operationLink: '',
   noEntryReason: '',
   note: '',
@@ -107,7 +107,7 @@ const defaultEditForm: EditForm = {
   accountName: '',
   direction: '',
   riskAmount: '',
-  resultR: '0.0',
+  resultR: '0.00',
   operationLink: '',
   noEntryReason: '',
   note: '',
@@ -225,7 +225,7 @@ export function normalizeResultR(value: number): number | null {
     return null;
   }
 
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 100) / 100;
 }
 
 export function calculateAccountResultAmount(riskAmount: number, resultR: number | null): number | null {
@@ -811,13 +811,13 @@ function MarketEntriesCreateForm({
       {isCompletedOnCreate && (
         <>
           <label>
-            <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
+            <EntryFieldLabel text="Resultado R" help="Usa hasta dos decimales. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
             <input
               type="number"
-              step="0.1"
+              step="0.01"
               value={commonForm.resultR}
               onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
-              placeholder="0.0"
+              placeholder="0.00"
               required
             />
           </label>
@@ -1055,8 +1055,8 @@ function MarketEntriesEditForm({
       {editForm.status === 'closed' && (
         <>
           <label>
-            <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
-            <input type="number" step="0.1" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required />
+            <EntryFieldLabel text="Resultado R" help="Usa hasta dos decimales. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
+            <input type="number" step="0.01" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required />
           </label>
 
           <label>
@@ -1330,7 +1330,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       accountName: entry.accountName,
       direction: entry.direction ?? '',
       riskAmount: String(entry.riskAmount),
-      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
       noEntryReason: entry.noEntryReason ?? '',
       note: entry.note,

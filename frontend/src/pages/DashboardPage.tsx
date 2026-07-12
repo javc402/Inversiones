@@ -1559,7 +1559,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       marketContext: entry.marketContext,
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
       riskAmount: String(entry.riskAmount),
-      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
       note: entry.note,
       noEntryReason: entry.noEntryReason ?? '',
@@ -1875,7 +1875,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                 <span>Resultado R</span>
                 <input
                   type="number"
-                  step="0.1"
+                  step="0.01"
                   value={dashboardEditForm.resultR}
                   onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, resultR: event.target.value } : prev)}
                   disabled={dashboardEditForm.status !== 'closed'}

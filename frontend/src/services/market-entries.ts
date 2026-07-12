@@ -210,8 +210,8 @@ function validateOptionalUrl(value: string | undefined): string {
   }
 }
 
-function hasSingleDecimalPrecision(value: number): boolean {
-  return Number.isInteger(value * 10);
+function hasUpToTwoDecimalPrecision(value: number): boolean {
+  return Number.isInteger(value * 100);
 }
 
 function validateResultR(value: number | null | undefined): void {
@@ -219,8 +219,8 @@ function validateResultR(value: number | null | undefined): void {
     throw new Error('El Resultado R es obligatorio para entradas completadas.');
   }
 
-  if (!hasSingleDecimalPrecision(value)) {
-    throw new Error('El Resultado R debe tener un único decimal.');
+  if (!hasUpToTwoDecimalPrecision(value)) {
+    throw new Error('El Resultado R debe tener como máximo dos decimales.');
   }
 }
 
