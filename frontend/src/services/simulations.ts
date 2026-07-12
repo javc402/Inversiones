@@ -467,7 +467,9 @@ function toSimulationPayload(input: SimulationInput, weekdays: SimulationWeekday
 
 function toLegacySimulationPayload(input: SimulationInput, weekdays: SimulationWeekday[]) {
   const payload = toSimulationPayload(input, weekdays);
-  const { risk_pct_min: _riskPctMin, risk_pct_max: _riskPctMax, ...legacyPayload } = payload;
+  const { risk_pct_min, risk_pct_max, ...legacyPayload } = payload;
+  void risk_pct_min;
+  void risk_pct_max;
   return legacyPayload;
 }
 
