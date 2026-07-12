@@ -1,18 +1,6 @@
 import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
-import {
-  Area,
-  AreaChart,
-  CartesianGrid,
-  Legend,
-  Pie,
-  PieChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-  Cell,
-} from 'recharts';
 import { AppIcon } from '@components/AppIcon';
+import DashboardSummaryLayout from '@components/DashboardSummaryLayout';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
 import { listMarketEntriesByUser, MarketEntry, MarketEntryStatus, updateMarketEntryById } from '@services/market-entries';
 import { getCurrentUserRole, Role } from '@services/roles';
@@ -23,11 +11,13 @@ const loadAccountsModule = () => import('@components/AccountsModule');
 const loadSettingsModule = () => import('@components/SettingsModule');
 const loadNewsModule = () => import('@components/NewsModule');
 const loadMarketEntriesModule = () => import('@components/MarketEntriesModule');
+const loadSimulationsModule = () => import('@components/SimulationsModule');
 const AdminPanel = lazy(loadAdminPanelModule);
 const AccountsModule = lazy(loadAccountsModule);
 const SettingsModule = lazy(loadSettingsModule);
 const NewsModule = lazy(loadNewsModule);
 const MarketEntriesModule = lazy(loadMarketEntriesModule);
+const SimulationsModule = lazy(loadSimulationsModule);
 
 interface DashboardPageProps {
   userEmail: string;
@@ -35,12 +25,12 @@ interface DashboardPageProps {
   onSignOut: () => Promise<void>;
 }
 
-type DashboardTab = 'resumen' | 'noticias' | 'entradas' | 'cuentas' | 'usuarios' | 'configuracion';
+type DashboardTab = 'resumen' | 'simulacion' | 'noticias' | 'entradas' | 'cuentas' | 'usuarios' | 'configuracion';
 
 const DASHBOARD_TAB_STORAGE_KEY = 'inversiones_dashboard_active_tab';
 
 export function isDashboardTab(value: string | null): value is DashboardTab {
-  return value === 'resumen' || value === 'noticias' || value === 'entradas' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
+  return value === 'resumen' || value === 'simulacion' || value === 'noticias' || value === 'entradas' || value === 'cuentas' || value === 'usuarios' || value === 'configuracion';
 }
 
 export function loadStoredDashboardTab(): DashboardTab {
@@ -424,6 +414,7 @@ export function calculateDailyProfitData(filteredEntries: MarketEntry[], referen
 }
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
+  simulacion: 'Simulaciones',
   noticias: 'Noticias',
   entradas: 'Entradas al mercado',
   cuentas: 'Cuentas',
@@ -461,6 +452,10 @@ export function statusLabel(status: MarketEntry['status']): string {
   return 'Cancelada';
 }
 
+function normalizeDashboardEntryStatus(status: MarketEntry['status']): MarketEntry['status'] {
+  return status === 'no_entry' ? 'no_entry' : 'closed';
+}
+
 export function roleNameLabel(roleName: Role['name'] | null | undefined): string {
   if (roleName === 'admin') return 'Administrador';
   if (roleName === 'user') return 'Usuario';
@@ -476,9 +471,9 @@ export function tradeResultClass(result: string, isTechnicalBreak = false): 'neg
 
 type DashboardEditForm = {
   status: MarketEntryStatus;
+  marketContext: string;
   plannedAt: string;
   riskAmount: string;
-  investmentPercent: string;
   resultR: string;
   operationLink: string;
   note: string;
@@ -528,7 +523,6 @@ function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYea
 function parseDashboardEditValues(form: DashboardEditForm): {
   resultRValue: number | null;
   riskAmount: number;
-  investmentPercent: number;
 } {
   const resultRValue = form.status === 'closed' ? Number.parseFloat(form.resultR) : null;
 
@@ -539,7 +533,6 @@ function parseDashboardEditValues(form: DashboardEditForm): {
   return {
     resultRValue,
     riskAmount: Number.parseFloat(form.riskAmount),
-    investmentPercent: Number.parseFloat(form.investmentPercent),
   };
 }
 
@@ -585,6 +578,7 @@ interface DashboardSummaryContentProps {
   selectedAccountId: string;
   setSelectedAccountId: (value: string) => void;
   summaryAccounts: TradingAccount[];
+  availableYears: number[];
   monthlyProfit: number;
   filteredEntries: MarketEntry[];
   winRate: number;
@@ -645,6 +639,7 @@ function DashboardSummaryContent({
   selectedAccountId,
   setSelectedAccountId,
   summaryAccounts,
+  availableYears,
   monthlyProfit,
   filteredEntries,
   winRate,
@@ -668,18 +663,17 @@ function DashboardSummaryContent({
   const profitKpiTitle = selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes';
   const insightsTitlePeriod = selectedMonth === 'all' ? 'año' : 'mes';
   const bestDayInsightTitle = 'Mejor dia para operar';
-  const [filtersPanelOpen, setFiltersPanelOpen] = useState(false);
 
-  const availableYears = useMemo(() => {
-    const years = new Set<number>();
-    for (const entry of filteredEntries) {
-      const date = new Date(getEntryExecutionDate(entry));
-      if (!Number.isNaN(date.getTime())) {
-        years.add(date.getFullYear());
-      }
+  function handleYearFilterChange(value: string) {
+    setSelectedYear(value);
+    if (value === 'all') {
+      setSelectedMonth('all');
     }
-    return Array.from(years).sort((a, b) => b - a);
-  }, [filteredEntries]);
+  }
+
+  function handleMonthFilterChange(value: string) {
+    setSelectedMonth(value);
+  }
   const [tableFilters, setTableFilters] = useState<RecentTradeFilters>({
     date: '',
     pair: '',
@@ -756,227 +750,58 @@ function DashboardSummaryContent({
   }
 
   return (
-    <>
-      <button
-        type="button"
-        className="dashboard-filters-fab"
-        aria-label="Mostrar u ocultar filtros"
-        aria-expanded={filtersPanelOpen}
-        onClick={() => setFiltersPanelOpen((prev) => !prev)}
-      >
-        <AppIcon name="settings" />
-        <span>Filtros</span>
-      </button>
-
-      <button
-        type="button"
-        className={`dashboard-filters-overlay ${filtersPanelOpen ? 'visible' : ''}`}
-        aria-label="Cerrar panel de filtros"
-        onClick={() => setFiltersPanelOpen(false)}
-      />
-
-      <section className={`dashboard-summary-toolbar ${filtersPanelOpen ? 'open' : ''}`}>
-        <div className="dashboard-summary-toolbar-mobile-head">
-          <p>Filtros del dashboard</p>
-          <button
-            type="button"
-            className="dashboard-summary-toolbar-close"
-            aria-label="Cerrar filtros"
-            onClick={() => setFiltersPanelOpen(false)}
-          >
-            <AppIcon name="close" />
-          </button>
-        </div>
-
-        <label htmlFor="dashboard-account-filter" className="dashboard-summary-filter-label">Filtrar por cuenta</label>
-        <select
-          id="dashboard-account-filter"
-          className="dashboard-summary-filter"
-          value={selectedAccountId}
-          onChange={(event) => setSelectedAccountId(event.target.value)}
-        >
-          <option value="all">Todas las cuentas</option>
-          {summaryAccounts.map((account) => (
-            <option key={account.id} value={account.id}>{account.alias || account.name}</option>
-          ))}
-        </select>
-
-        <label htmlFor="dashboard-year-filter" className="dashboard-summary-filter-label">Filtrar por año</label>
-        <select
-          id="dashboard-year-filter"
-          className="dashboard-summary-filter"
-          value={selectedYear}
-          onChange={(event) => setSelectedYear(event.target.value)}
-        >
-          <option value="all">Todos los años</option>
-          {availableYears.map((year) => (
-            <option key={year} value={year}>{year}</option>
-          ))}
-        </select>
-
-        <label htmlFor="dashboard-month-filter" className="dashboard-summary-filter-label">Filtrar por mes</label>
-        <select
-          id="dashboard-month-filter"
-          className="dashboard-summary-filter"
-          value={selectedMonth}
-          onChange={(event) => setSelectedMonth(event.target.value)}
-        >
-          <option value="all">Todos los meses</option>
-          {availableMonths.map((month) => (
-            <option key={month} value={month}>{monthFilterLabels[month]}</option>
-          ))}
-        </select>
-      </section>
-
-      <section className="kpi-grid">
-        <article className="kpi-card">
-          <h2>{profitKpiTitle}</h2>
-          <p className="kpi-value">{formatCurrency(monthlyProfit)}</p>
-          <span className={`kpi-trend ${monthlyProfit >= 0 ? 'positive' : 'negative'}`}>
-            {filteredEntries.length} operaciones
-          </span>
-        </article>
-        <article className="kpi-card">
-          <h2>Tasa de exito</h2>
-          <p className="kpi-value">{winRate.toFixed(1)}%</p>
-          <span className="kpi-trend positive">Total ganado: {formatCurrency(winTotal)}</span>
-        </article>
-        <article className="kpi-card">
-          <h2>Tasa de perdida</h2>
-          <p className="kpi-value">{lossRate.toFixed(1)}%</p>
-          <span className="kpi-trend negative">Total perdido: {formatCurrency(lossTotal)}</span>
-        </article>
-        <article className="kpi-card">
-          <h2>Mejor dia para operar</h2>
-          <p className="kpi-value">{tradingInsights.bestWeekdayLabel}</p>
-          <span className="kpi-trend positive">Total: {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</span>
-        </article>
-      </section>
-
-      <section className="chart-grid">
-        <article className="chart-card">
-          <h2>Evolucion de ganancias</h2>
-          <div className="chart-wrapper">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={monthlyProfitData}>
-                <CartesianGrid strokeDasharray="4 4" stroke="#dbeafe" />
-                <XAxis dataKey="month" />
-                <YAxis />
-                <Tooltip
-                  labelFormatter={(label: string) => {
-                    if (selectedMonth !== 'all') {
-                      const monthIndex = Number.parseInt(selectedMonth, 10);
-                      const fullMonth = monthFilterLabels[monthIndex] ?? '';
-                      return `Dia ${label} de ${fullMonth}`;
-                    }
-
-                    return fullMonthLabelFromShort(label);
-                  }}
-                  formatter={(value: number, name: string) => {
-                    if (name === 'perdidas') return [formatCurrency(value), 'Perdidas'];
-                    if (name === 'breakeven') return [formatCurrency(value), 'Breakeven'];
-                    return [formatCurrency(value), 'Resultado neto (solo ganancias)'];
-                  }}
-                />
-                <Area type="monotone" dataKey="amount" name="neto" stroke="#1e5ba8" fill="#bfdbfe" fillOpacity={0.42} strokeWidth={2} />
-                <Area type="monotone" dataKey="lossAmount" name="perdidas" stroke="#dc2626" fill="#fecaca" fillOpacity={0.5} strokeWidth={2} />
-                <Area type="monotone" dataKey="breakevenAmount" name="breakeven" stroke="#ea580c" fill="#fed7aa" fillOpacity={0.45} strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-          <div className="chart-color-legend" aria-label="Leyenda de colores de la gráfica">
-            <span className="chart-color-legend-item">
-              <span className="chart-color-dot chart-color-dot-net" aria-hidden="true" />
-              <span>Resultado neto (solo ganancias)</span>
-            </span>
-            <span className="chart-color-legend-item">
-              <span className="chart-color-dot chart-color-dot-loss" aria-hidden="true" />
-              <span>Perdidas</span>
-            </span>
-            <span className="chart-color-legend-item">
-              <span className="chart-color-dot chart-color-dot-breakeven" aria-hidden="true" />
-              <span>Breakeven</span>
-            </span>
-          </div>
-          <div className="chart-insights-separator" aria-hidden="true" />
-          <section className="chart-insights" aria-label="Indicadores clave de la gráfica">
-            <article>
-              <h3>Mejor semana del {insightsTitlePeriod}</h3>
-              <p>{tradingInsights.bestWeekLabel} · {distributionAmountLabel(tradingInsights.bestWeekAmount)}</p>
-            </article>
-            <article>
-              <h3>{bestDayInsightTitle}</h3>
-              <p>{tradingInsights.bestDayLabel} · {distributionAmountLabel(tradingInsights.bestDayAmount)}</p>
-            </article>
-            <article>
-              <h3>Mejor dia para operar</h3>
-              <p>{tradingInsights.bestWeekdayLabel} · {distributionAmountLabel(tradingInsights.bestWeekdayTotal)}</p>
-              <span>
-                {tradingInsights.bestWeekdayTrades} operaciones · Promedio {distributionAmountLabel(tradingInsights.bestWeekdayAverage)}
-              </span>
-            </article>
-          </section>
-        </article>
-
-        <article className="chart-card">
-          <h2>Distribucion de operaciones</h2>
-          <div className="chart-distribution-layout">
-            <div className="chart-wrapper chart-wrapper-distribution">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={distributionData}
-                    dataKey="value"
-                    nameKey="name"
-                    cx="50%"
-                    cy="50%"
-                    outerRadius={110}
-                    innerRadius={64}
-                  >
-                    {distributionData.map((item) => (
-                      <Cell key={item.name} fill={item.color} />
-                    ))}
-                  </Pie>
-                  <Tooltip
-                    formatter={(value, _name, props) => {
-                      const item = props.payload as DistributionSlice;
-                      return [`${Number(value).toFixed(1)}% · ${item.operations} ops · ${distributionAmountLabel(item.totalAmount)}`, item.name];
-                    }}
-                  />
-                  <Legend formatter={(value) => `${value} ${(distributionData.find((entry) => entry.name === value)?.value ?? 0).toFixed(1)}%`} />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-
-            <div className="distribution-details" aria-label="Resumen de distribución de operaciones">
-              {distributionData.map((item) => (
-                <article key={item.name} className="distribution-row">
-                  <h3 style={{ color: item.color }}>{item.name}</h3>
-                  <p>{item.value.toFixed(1)}% · {item.operations} operaciones</p>
-                  <p>Total: {distributionAmountLabel(item.totalAmount)}</p>
-                  <p>Promedio: {distributionAmountLabel(item.averageAmount)}</p>
-                </article>
-              ))}
-            </div>
-          </div>
-
-          <div className="distribution-summary" aria-label="Métricas de desempeño">
-            <article>
-              <h3>Neto del periodo</h3>
-              <p className={netResult >= 0 ? 'positive' : 'negative'}>{distributionAmountLabel(netResult)}</p>
-            </article>
-            <article>
-              <h3>Profit Factor</h3>
-              <p>{profitFactor}</p>
-            </article>
-            <article>
-              <h3>Win/Loss ratio</h3>
-              <p>{winLossRatio}</p>
-            </article>
-          </div>
-        </article>
-      </section>
-
+    <DashboardSummaryLayout
+      idPrefix="dashboard"
+      accountFilterValue={selectedAccountId}
+      onAccountFilterChange={setSelectedAccountId}
+      accountOptions={[
+        { value: 'all', label: 'Todas las cuentas' },
+        ...summaryAccounts.map((account) => ({ value: account.id, label: account.alias || account.name })),
+      ]}
+      yearFilterValue={selectedYear}
+      onYearFilterChange={handleYearFilterChange}
+      yearOptions={[
+        { value: 'all', label: 'Todos los años' },
+        ...availableYears.map((year) => ({ value: String(year), label: String(year) })),
+      ]}
+      monthFilterValue={selectedMonth}
+      onMonthFilterChange={handleMonthFilterChange}
+      monthOptions={[
+        { value: 'all', label: 'Todos los meses' },
+        ...availableMonths.map((month) => ({ value: String(month), label: monthFilterLabels[month] })),
+      ]}
+      monthFilterDisabled={selectedYear === 'all'}
+      kpis={[
+        { title: profitKpiTitle, value: formatCurrency(monthlyProfit), trend: `${filteredEntries.length} operaciones`, trendClass: monthlyProfit >= 0 ? 'positive' : 'negative' },
+        { title: 'Tasa de exito', value: `${winRate.toFixed(1)}%`, trend: `Total ganado: ${formatCurrency(winTotal)}`, trendClass: 'positive' },
+        { title: 'Tasa de perdida', value: `${lossRate.toFixed(1)}%`, trend: `Total perdido: ${formatCurrency(lossTotal)}`, trendClass: 'negative' },
+        { title: 'Mejor dia para operar', value: tradingInsights.bestWeekdayLabel, trend: `Total: ${distributionAmountLabel(tradingInsights.bestWeekdayTotal)}`, trendClass: 'positive' },
+      ]}
+      chartTitle="Evolucion de ganancias"
+      chartData={monthlyProfitData}
+      chartLabelFormatter={(label) => {
+        if (selectedMonth !== 'all') {
+          const monthIndex = Number.parseInt(selectedMonth, 10);
+          const fullMonth = monthFilterLabels[monthIndex] ?? '';
+          return `Dia ${label} de ${fullMonth}`;
+        }
+        return fullMonthLabelFromShort(label);
+      }}
+      amountFormatter={formatCurrency}
+      distributionAmountFormatter={distributionAmountLabel}
+      chartInsights={[
+        { title: `Mejor semana del ${insightsTitlePeriod}`, value: `${tradingInsights.bestWeekLabel} · ${distributionAmountLabel(tradingInsights.bestWeekAmount)}` },
+        { title: bestDayInsightTitle, value: `${tradingInsights.bestDayLabel} · ${distributionAmountLabel(tradingInsights.bestDayAmount)}` },
+        { title: 'Mejor dia para operar', value: `${tradingInsights.bestWeekdayLabel} · ${distributionAmountLabel(tradingInsights.bestWeekdayTotal)}`, detail: `${tradingInsights.bestWeekdayTrades} operaciones · Promedio ${distributionAmountLabel(tradingInsights.bestWeekdayAverage)}` },
+      ]}
+      distributionTitle="Distribucion de operaciones"
+      distributionData={distributionData}
+      distributionMetrics={[
+        { title: 'Neto del periodo', value: distributionAmountLabel(netResult), valueClass: netResult >= 0 ? 'positive' : 'negative' },
+        { title: 'Profit Factor', value: profitFactor },
+        { title: 'Win/Loss ratio', value: winLossRatio },
+      ]}
+    >
       <section className="table-card">
         <h2>Operaciones recientes</h2>
         <div className="table-wrapper">
@@ -1194,7 +1019,7 @@ function DashboardSummaryContent({
           </table>
         </div>
       </section>
-    </>
+    </DashboardSummaryLayout>
   );
 }
 
@@ -1203,6 +1028,19 @@ function DashboardTabPanels({ activeTab, mainContent, userEmail, isAdmin }: Read
     <>
       <div style={{ display: activeTab === 'resumen' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-resumen">
         {mainContent}
+      </div>
+
+      <div style={{ display: activeTab === 'simulacion' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-simulacion">
+        <Suspense
+          fallback={
+            <section className="table-card">
+              <h2>Simulaciones</h2>
+              <p>Cargando simulaciones...</p>
+            </section>
+          }
+        >
+          <SimulationsModule userEmail={userEmail} />
+        </Suspense>
       </div>
 
       <div style={{ display: activeTab === 'noticias' ? 'block' : 'none' }} role="tabpanel" aria-labelledby="tab-noticias">
@@ -1283,6 +1121,11 @@ function DashboardTabPanels({ activeTab, mainContent, userEmail, isAdmin }: Read
 }
 
 export function prefetchDashboardTab(tab: DashboardTab, isAdmin: boolean): void {
+  if (tab === 'simulacion') {
+    void loadSimulationsModule();
+    return;
+  }
+
   if (tab === 'noticias') {
     void loadNewsModule();
     return;
@@ -1538,6 +1381,22 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, selectedMonth);
   }, [selectedAccountId, selectedYear, selectedMonth, summaryEntries]);
 
+  const yearSelectorEntries = useMemo(() => {
+    return filterEntriesForSummary(summaryEntries, selectedAccountId, 'all', 'all');
+  }, [selectedAccountId, summaryEntries]);
+
+  const availableYears = useMemo(() => {
+    const years = new Set<number>();
+    for (const entry of yearSelectorEntries) {
+      const date = new Date(getEntryExecutionDate(entry));
+      if (!Number.isNaN(date.getTime())) {
+        years.add(date.getFullYear());
+      }
+    }
+
+    return Array.from(years).sort((a, b) => b - a);
+  }, [yearSelectorEntries]);
+
   const monthSelectorEntries = useMemo(() => {
     return filterEntriesForSummary(summaryEntries, selectedAccountId, selectedYear, 'all');
   }, [selectedAccountId, selectedYear, summaryEntries]);
@@ -1691,10 +1550,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   function openEditEntryModal(entry: MarketEntry) {
     setEditingEntry(entry);
     setDashboardEditForm({
-      status: entry.status,
+      status: normalizeDashboardEntryStatus(entry.status),
+      marketContext: entry.marketContext,
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
       riskAmount: String(entry.riskAmount),
-      investmentPercent: String(entry.investmentPercent),
       resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
       operationLink: entry.operationLink ?? '',
       note: entry.note,
@@ -1727,16 +1586,20 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     setEditError('');
 
     try {
-      const { resultRValue, riskAmount, investmentPercent } = parseDashboardEditValues(dashboardEditForm);
+      const { resultRValue, riskAmount } = parseDashboardEditValues(dashboardEditForm);
 
       await updateMarketEntryById(userEmail, editingEntry.id, {
         status: dashboardEditForm.status,
+        marketContext: dashboardEditForm.marketContext,
         plannedAt: dashboardEditForm.plannedAt,
+        accountId: editingEntry.accountId,
+        accountName: editingEntry.accountName,
+        direction: dashboardEditForm.status === 'no_entry' ? undefined : editingEntry.direction,
         riskAmount,
-        investmentPercent,
+        investmentPercent: 1,
         resultR: dashboardEditForm.status === 'closed' ? resultRValue : null,
         operationLink: dashboardEditForm.operationLink,
-        noEntryReason: dashboardEditForm.noEntryReason,
+        noEntryReason: dashboardEditForm.status === 'no_entry' ? dashboardEditForm.marketContext : dashboardEditForm.noEntryReason,
         note: dashboardEditForm.note,
       });
 
@@ -1754,6 +1617,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       selectedAccountId={selectedAccountId}
       setSelectedAccountId={setSelectedAccountId}
       summaryAccounts={summaryAccounts}
+      availableYears={availableYears}
       monthlyProfit={monthlyProfit}
       filteredEntries={filteredEntries}
       winRate={winRate}
@@ -1798,7 +1662,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   <AppIcon name="dashboard" />
                 </span>
                 Principal{' '}
-                <span className="sidebar-count">1</span>
+                <span className="sidebar-count">2</span>
               </span>
               <span className="sidebar-section-arrow" aria-hidden="true">
                 <AppIcon name={collapsedSections.principal ? 'chevronRight' : 'chevronDown'} />
@@ -1809,6 +1673,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
               <button type="button" className={`menu-btn menu-dashboard ${activeTab === 'resumen' ? 'active' : ''}`} onClick={() => activateTab('resumen')}>
                 <AppIcon name="dashboard" className="menu-btn-icon" />
                 <span>Resumen</span>
+              </button>
+              <button type="button" className={`menu-btn menu-simulation ${activeTab === 'simulacion' ? 'active' : ''}`} onClick={() => activateTab('simulacion')} onMouseEnter={() => prefetchDashboardTab('simulacion', isAdmin)} onFocus={() => prefetchDashboardTab('simulacion', isAdmin)}>
+                <AppIcon name="simulation" className="menu-btn-icon" />
+                <span>Simulación</span>
               </button>
             </div>
           </div>
@@ -1955,11 +1823,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   value={dashboardEditForm.status}
                   onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, status: event.target.value as MarketEntryStatus } : prev)}
                 >
-                  <option value="planned">Planificada</option>
-                  <option value="open">Abierta</option>
                   <option value="closed">Completada</option>
                   <option value="no_entry">Sin entrada</option>
-                  <option value="cancelled">Cancelada</option>
                 </select>
               </label>
 
@@ -1978,6 +1843,17 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                 />
               </label>
 
+              {dashboardEditForm.status === 'no_entry' && (
+                <label className="dashboard-edit-span-2">
+                  <span>Contexto/Noticia</span>
+                  <input
+                    value={dashboardEditForm.marketContext}
+                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, marketContext: event.target.value } : prev)}
+                    placeholder="CPI, FOMC, PRE market..."
+                  />
+                </label>
+              )}
+
               <label>
                 <span>Riesgo por cuenta (USD)</span>
                 <input
@@ -1986,17 +1862,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   min="0"
                   value={dashboardEditForm.riskAmount}
                   onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: event.target.value } : prev)}
-                />
-              </label>
-
-              <label>
-                <span>% inversión</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={dashboardEditForm.investmentPercent}
-                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, investmentPercent: event.target.value } : prev)}
                 />
               </label>
 
@@ -2020,16 +1885,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   placeholder="https://..."
                 />
               </label>
-
-              {dashboardEditForm.status === 'no_entry' && (
-                <label className="dashboard-edit-span-2">
-                  <span>Motivo sin entrada</span>
-                  <input
-                    value={dashboardEditForm.noEntryReason}
-                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, noEntryReason: event.target.value } : prev)}
-                  />
-                </label>
-              )}
 
               <label className="dashboard-edit-span-2">
                 <span>Notas</span>

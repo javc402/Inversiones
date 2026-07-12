@@ -75,6 +75,10 @@ export interface CreateMarketEntriesInput {
 
 interface UpdateMarketEntryInput {
   status: MarketEntryStatus;
+  marketContext?: string;
+  accountId?: string;
+  accountName?: string;
+  direction?: MarketEntryDirection;
   riskAmount: number;
   investmentPercent: number;
   closePrice?: number | null;
@@ -249,9 +253,7 @@ function validateCommonInput(common: MarketEntryCommonInput): void {
   }
 }
 
-function validatePerAccount(perAccount: MarketEntryAccountInput[], status: MarketEntryStatus): void {
-  if (status === 'no_entry') return;
-
+function validatePerAccount(perAccount: MarketEntryAccountInput[], _status: MarketEntryStatus): void {
   if (perAccount.length === 0) {
     throw new Error('Debes asociar al menos una cuenta.');
   }
@@ -277,10 +279,11 @@ function validatePerAccount(perAccount: MarketEntryAccountInput[], status: Marke
   }
 }
 
-function validateUpdateMarketEntryInput(
-  next: UpdateMarketEntryInput,
-  isNoEntryFlow: boolean
-): void {
+function validateUpdateMarketEntryInput(next: UpdateMarketEntryInput): void {
+  if (next.marketContext !== undefined && !next.marketContext.trim()) {
+    throw new Error('El contexto/noticia es obligatorio.');
+  }
+
   if (next.plannedAt) {
     const executionDate = new Date(next.plannedAt);
     if (Number.isNaN(executionDate.getTime())) {
@@ -289,25 +292,6 @@ function validateUpdateMarketEntryInput(
   }
 
   validateOptionalUrl(next.operationLink);
-
-  if (isNoEntryFlow) {
-    if (next.status === 'no_entry' && !next.noEntryReason?.trim()) {
-      throw new Error('Debes indicar el motivo sin entrada.');
-    }
-    return;
-  }
-
-  if (!Number.isFinite(next.riskAmount) || next.riskAmount <= 0) {
-    throw new Error('El riesgo debe ser mayor que 0.');
-  }
-
-  if (!Number.isFinite(next.investmentPercent) || next.investmentPercent <= 0) {
-    throw new Error('El % de inversión debe ser mayor que 0.');
-  }
-
-  if (next.status === 'closed') {
-    validateResultR(next.resultR);
-  }
 }
 
 function buildMarketEntryUpdatePayload(
@@ -318,9 +302,20 @@ function buildMarketEntryUpdatePayload(
   isNoEntryFlow: boolean
 ) {
   if (isNoEntryFlow) {
+    const accountId = next.accountId ?? previous.account_id ?? null;
+    const accountName = next.accountName?.trim() || previous.account_name || null;
+    const hasAssociatedAccount = Boolean(accountId && accountName);
+
     return {
       status: next.status,
+      market_context: next.marketContext?.trim() || previous.market_context,
       planned_at: next.plannedAt ?? previous.planned_at,
+      account_id: accountId,
+      account_name: accountName,
+      direction: null,
+      risk_amount: hasAssociatedAccount ? next.riskAmount : null,
+      investment_percent: hasAssociatedAccount ? next.investmentPercent : null,
+      result_r: null,
       note: trimmedNote,
       no_entry_reason: next.status === 'no_entry' ? (next.noEntryReason?.trim() ?? previous.no_entry_reason ?? '') : null,
       operation_link: next.operationLink?.trim() || null,
@@ -330,7 +325,11 @@ function buildMarketEntryUpdatePayload(
 
   return {
     status: next.status,
+    market_context: next.marketContext?.trim() || previous.market_context,
     planned_at: next.plannedAt ?? previous.planned_at,
+    account_id: next.accountId ?? previous.account_id,
+    account_name: next.accountName?.trim() || previous.account_name,
+    direction: next.direction ?? previous.direction,
     risk_amount: next.riskAmount,
     investment_percent: next.investmentPercent,
     result_r: next.resultR,
@@ -339,6 +338,57 @@ function buildMarketEntryUpdatePayload(
     no_entry_reason: null,
     updated_at: timestamp,
   };
+}
+
+function validateFinalUpdatePayload(
+  payload: Record<string, unknown>,
+  status: MarketEntryStatus
+): void {
+  if (status === 'no_entry') {
+    if (payload.no_entry_reason === undefined || payload.no_entry_reason === null || String(payload.no_entry_reason).trim() === '') {
+      throw new Error('Debes indicar el motivo sin entrada.');
+    }
+
+    if (payload.account_id) {
+      if (!payload.account_name || !String(payload.account_name).trim()) {
+        throw new Error('Debes asociar un nombre de cuenta válido.');
+      }
+
+      if (!Number.isFinite(Number(payload.risk_amount)) || Number(payload.risk_amount) <= 0) {
+        throw new Error('El riesgo debe ser mayor que 0.');
+      }
+
+      if (!Number.isFinite(Number(payload.investment_percent)) || Number(payload.investment_percent) <= 0) {
+        throw new Error('El % de inversión debe ser mayor que 0.');
+      }
+    }
+
+    return;
+  }
+
+  if (!payload.account_id || !String(payload.account_id).trim()) {
+    throw new Error('Debes asociar una cuenta válida.');
+  }
+
+  if (!payload.account_name || !String(payload.account_name).trim()) {
+    throw new Error('Debes asociar un nombre de cuenta válido.');
+  }
+
+  if (payload.direction !== 'buy' && payload.direction !== 'sell') {
+    throw new Error('Debes indicar una dirección válida.');
+  }
+
+  if (!Number.isFinite(Number(payload.risk_amount)) || Number(payload.risk_amount) <= 0) {
+    throw new Error('El riesgo debe ser mayor que 0.');
+  }
+
+  if (!Number.isFinite(Number(payload.investment_percent)) || Number(payload.investment_percent) <= 0) {
+    throw new Error('El % de inversión debe ser mayor que 0.');
+  }
+
+  if (status === 'closed') {
+    validateResultR(Number(payload.result_r));
+  }
 }
 
 export async function listMarketEntriesByUser(_userEmail: string): Promise<MarketEntry[]> {
@@ -395,34 +445,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
   const timestamp = nowIso();
   const groupId = createGroupId();
 
-  const payload = input.common.status === 'no_entry'
-    ? [{
-        user_id: userId,
-        group_id: groupId,
-        account_id: null,
-        account_name: null,
-        symbol: (input.common.symbol ?? '').trim().toUpperCase(),
-        symbol_detail: input.common.symbolDetail?.trim().toUpperCase() || null,
-        market_context: input.common.marketContext.trim(),
-        context_source: input.common.contextSource,
-        news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
-        news_impact: input.common.contextSource === 'news' ? (input.common.newsImpact ?? null) : null,
-        setup: (input.common.setup ?? '').trim(),
-        session: (input.common.session ?? '').trim(),
-        candle_protocol: input.common.candleProtocol ?? 'no',
-        direction: null,
-        operation_link: validateOptionalUrl(input.common.operationLink) || null,
-        risk_amount: null,
-        investment_percent: null,
-        result_r: null,
-        no_entry_reason: (input.common.noEntryReason as string).trim(),
-        note: input.common.note.trim(),
-        status: input.common.status,
-        planned_at: input.common.plannedAt,
-        created_at: timestamp,
-        updated_at: timestamp,
-      }]
-    : normalizedPerAccount.map((item) => ({
+  const payload = normalizedPerAccount.map((item) => ({
         user_id: userId,
         group_id: groupId,
         account_id: item.accountId,
@@ -433,15 +456,15 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         context_source: input.common.contextSource,
         news_article_id: input.common.contextSource === 'news' ? (input.common.newsArticleId ?? null) : null,
         news_impact: input.common.contextSource === 'news' ? (input.common.newsImpact ?? null) : null,
-        setup: (input.common.setup as string).trim(),
-        session: (input.common.session as string).trim(),
+        setup: (input.common.setup ?? '').trim(),
+        session: (input.common.session ?? '').trim(),
         candle_protocol: input.common.candleProtocol ?? 'no',
-        direction: input.common.direction,
+        direction: input.common.status === 'no_entry' ? null : input.common.direction,
         operation_link: validateOptionalUrl(input.common.operationLink) || null,
         risk_amount: item.riskAmount,
         investment_percent: item.investmentPercent,
-        result_r: input.common.resultR ?? null,
-        no_entry_reason: null,
+        result_r: input.common.status === 'closed' ? (input.common.resultR ?? null) : null,
+        no_entry_reason: input.common.status === 'no_entry' ? (input.common.noEntryReason as string).trim() : null,
         note: input.common.note.trim(),
         status: input.common.status,
         planned_at: input.common.plannedAt,
@@ -479,12 +502,13 @@ export async function updateMarketEntryById(
   }
 
   const previous = previousRow as MarketEntryRow;
-  const isNoEntryFlow = previous.status === 'no_entry' || next.status === 'no_entry';
-  validateUpdateMarketEntryInput(next, isNoEntryFlow);
+  const isNoEntryFlow = next.status === 'no_entry';
+  validateUpdateMarketEntryInput(next);
 
   const timestamp = nowIso();
   const trimmedNote = next.note.trim();
   const baseUpdate = buildMarketEntryUpdatePayload(previous, next, timestamp, trimmedNote, isNoEntryFlow);
+  validateFinalUpdatePayload(baseUpdate, next.status);
 
   const { data: updatedRows, error: updateError } = await supabase
     .from('market_entries')

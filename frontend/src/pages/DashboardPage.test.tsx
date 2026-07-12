@@ -41,6 +41,10 @@ vi.mock('@components/MarketEntriesModule', () => ({
   default: () => React.createElement('div', null, 'Modulo de Entradas'),
 }))
 
+vi.mock('@components/SimulationsModule', () => ({
+  default: () => React.createElement('div', null, 'Modulo de Simulaciones'),
+}))
+
 vi.mock('@services/roles', () => ({
   getCurrentUserRole: getCurrentUserRoleMock,
 }))
@@ -153,6 +157,19 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Ganancias del año')).toBeInTheDocument()
   })
 
+  it('muestra menu de simulacion y cambia a su tab', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Simulación' }))
+    expect(await screen.findByText('Modulo de Simulaciones')).toBeInTheDocument()
+  })
+
   it('filtra operaciones por año desde el combo superior', async () => {
     const today = new Date()
     const lastYear = new Date(today.getFullYear() - 1, 0, 15)
@@ -224,6 +241,10 @@ describe('DashboardPage', () => {
     const yearFilter = await screen.findByLabelText('Filtrar por año')
     expect(yearFilter).toBeInTheDocument()
     expect((yearFilter as HTMLSelectElement).querySelector(`option[value="${today.getFullYear()}"]`)).toBeInTheDocument()
+
+    fireEvent.change(yearFilter, { target: { value: 'all' } })
+
+    expect(screen.getByLabelText('Filtrar por mes')).toBeDisabled()
   })
 
   it('filtra operaciones por cuenta desde el combo superior', async () => {
@@ -397,6 +418,86 @@ describe('DashboardPage', () => {
     const normalizedAmount = formatCurrency(200).replace(/\s+/g, ' ')
     expect(normalizedCardText).toContain(normalizedAmount)
     expect(screen.getByText('1 operaciones')).toBeInTheDocument()
+  })
+
+  it('mantiene todas las opciones de año después de seleccionar una', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Real',
+        alias: 'Real',
+      },
+    ])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-2027',
+        groupId: 'group-2027',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 2,
+        note: '',
+        status: 'closed',
+        plannedAt: '2027-01-10T10:00:00.000Z',
+        createdAt: '2027-01-10T10:00:00.000Z',
+        updatedAt: '2027-01-10T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+      {
+        id: 'entry-2026',
+        groupId: 'group-2026',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'GBPUSD',
+        marketContext: 'NFP',
+        setup: 'Pullback',
+        session: 'LONDON',
+        direction: 'sell',
+        entryPrice: 1.3,
+        stopLoss: 1.31,
+        takeProfit: 1.28,
+        riskAmount: 80,
+        investmentPercent: 0.8,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-07-21T10:00:00.000Z',
+        createdAt: '2026-07-21T10:00:00.000Z',
+        updatedAt: '2026-07-21T10:00:00.000Z',
+        contextSource: null,
+        newsArticleId: null,
+        noEntryReason: null,
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const yearFilter = await screen.findByLabelText('Filtrar por año')
+
+    fireEvent.change(yearFilter, { target: { value: '2027' } })
+
+    const yearOptions = Array.from((yearFilter as HTMLSelectElement).options).map((option) => option.value)
+    expect(yearOptions).toContain('2027')
+    expect(yearOptions).toContain('2026')
   })
 
   it('aplica filtros de cuenta, año y mes en todos los KPI del resumen', async () => {
@@ -1096,11 +1197,10 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
 
     fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
-    fireEvent.change(screen.getByLabelText('Motivo sin entrada'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.change(screen.getByLabelText('Contexto/Noticia'), { target: { value: 'No vi confirmacion' } })
     fireEvent.change(screen.getByDisplayValue('Sin entrada'), { target: { value: 'closed' } })
     fireEvent.change(screen.getByLabelText('Fecha de ejecución'), { target: { value: '2026-06-21T12:30' } })
     fireEvent.change(screen.getByLabelText('Riesgo por cuenta (USD)'), { target: { value: '125' } })
-    fireEvent.change(screen.getByLabelText('% inversión'), { target: { value: '1.5' } })
     fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '2.0' } })
     fireEvent.change(screen.getByLabelText('Link de operación'), { target: { value: 'https://example.com/new' } })
     fireEvent.change(screen.getByLabelText('Notas'), { target: { value: 'nota actualizada' } })
@@ -1110,14 +1210,77 @@ describe('DashboardPage', () => {
     await waitFor(() => {
       expect(updateMarketEntryByIdMock).toHaveBeenCalledWith('usuario@demo.com', 'entry-edit-1', expect.objectContaining({
         status: 'closed',
+        accountId: 'acc-1',
+        accountName: 'Real',
         riskAmount: 125,
-        investmentPercent: 1.5,
+        investmentPercent: 1,
         resultR: 2,
         operationLink: 'https://example.com/new',
         note: 'nota actualizada',
-        noEntryReason: 'No vi confirmacion',
+        noEntryReason: '',
       }))
       expect(listMarketEntriesByUserMock).toHaveBeenCalledTimes(2)
+    })
+  })
+
+  it('mantiene la cuenta asociada al cambiar a sin entrada desde el dashboard', async () => {
+    const baseEntry = {
+      id: 'entry-no-entry-1',
+      groupId: 'group-no-entry-1',
+      userEmail: 'usuario@demo.com',
+      accountId: 'acc-1',
+      accountName: 'Real',
+      symbol: 'EURUSD',
+      marketContext: 'CPI',
+      setup: 'Breakout',
+      session: 'NEW YORK',
+      direction: 'buy' as const,
+      entryPrice: 1.1,
+      stopLoss: 1,
+      takeProfit: 1.2,
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: null,
+      note: 'nota inicial',
+      status: 'open' as const,
+      operationLink: 'https://example.com/old',
+      plannedAt: '2026-06-20T10:00:00.000Z',
+      createdAt: '2026-06-20T10:00:00.000Z',
+      updatedAt: '2026-06-20T10:00:00.000Z',
+      contextSource: null,
+      newsArticleId: null,
+      noEntryReason: null,
+    }
+
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock
+      .mockResolvedValueOnce([baseEntry])
+      .mockResolvedValueOnce([{ ...baseEntry, status: 'no_entry', noEntryReason: 'No vi confirmacion' }])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
+    fireEvent.change(screen.getByLabelText('Contexto/Noticia'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      expect(updateMarketEntryByIdMock).toHaveBeenCalledWith('usuario@demo.com', 'entry-no-entry-1', expect.objectContaining({
+        status: 'no_entry',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        investmentPercent: 1,
+        marketContext: 'No vi confirmacion',
+        noEntryReason: 'No vi confirmacion',
+      }))
     })
   })
 
@@ -1160,7 +1323,7 @@ describe('DashboardPage', () => {
     expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
     fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
 
-    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: 'NaN' } })
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     expect(await screen.findByText('El Resultado R debe ser valido para estado Completada.')).toBeInTheDocument()
