@@ -12,6 +12,7 @@ import {
   updateTradingAccount,
   UpsertTradingAccountInput,
 } from '@services/accounts';
+import { listMarketEntriesByUser, MarketEntry } from '@services/market-entries';
 import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 import { useSystemConfig } from '@hooks/useSystemConfig';
 import '../styles/accounts-module.css';
@@ -348,9 +349,93 @@ export function getSummaryRows(): AccountSummaryRow[] {
   ];
 }
 
+function parseEntryReferenceDate(entry: Pick<MarketEntry, 'plannedAt' | 'updatedAt' | 'createdAt'>): Date | null {
+  const planned = new Date(entry.plannedAt);
+  if (!Number.isNaN(planned.getTime())) return planned;
+
+  const updated = new Date(entry.updatedAt);
+  if (!Number.isNaN(updated.getTime())) return updated;
+
+  const created = new Date(entry.createdAt);
+  if (!Number.isNaN(created.getTime())) return created;
+
+  return null;
+}
+
+function isInSameWeek(reference: Date, now: Date): boolean {
+  const start = new Date(now);
+  const day = start.getDay();
+  start.setHours(0, 0, 0, 0);
+  start.setDate(start.getDate() - day);
+
+  const end = new Date(start);
+  end.setDate(end.getDate() + 7);
+
+  return reference >= start && reference < end;
+}
+
+function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountSummaryRow[] {
+  const baseRows = getSummaryRows();
+
+  const closedEntries = entries.filter((entry) => entry.status === 'closed' && entry.resultR !== null);
+
+  const segmented = {
+    Total: closedEntries,
+    Año: closedEntries.filter((entry) => {
+      const date = parseEntryReferenceDate(entry);
+      return Boolean(date && date.getFullYear() === now.getFullYear());
+    }),
+    Mes: closedEntries.filter((entry) => {
+      const date = parseEntryReferenceDate(entry);
+      return Boolean(
+        date &&
+        date.getFullYear() === now.getFullYear() &&
+        date.getMonth() === now.getMonth()
+      );
+    }),
+    Semana: closedEntries.filter((entry) => {
+      const date = parseEntryReferenceDate(entry);
+      return Boolean(date && isInSameWeek(date, now));
+    }),
+  } as const;
+
+  return baseRows.map((row) => {
+    const periodEntries = segmented[row.label as keyof typeof segmented] ?? [];
+
+    return {
+      ...row,
+      operations: periodEntries.length,
+      sl: periodEntries.filter((entry) => (entry.resultR ?? 0) < 0).length,
+      tpNoProfit: periodEntries.filter((entry) => {
+        const result = entry.resultR ?? 0;
+        return result >= 0 && result <= 1;
+      }).length,
+      tpProfit: periodEntries.filter((entry) => (entry.resultR ?? 0) > 1).length,
+    };
+  });
+}
+
+function buildSummaryRowsByAccount(entries: MarketEntry[], now: Date): Map<string, AccountSummaryRow[]> {
+  const byAccount = new Map<string, MarketEntry[]>();
+
+  for (const entry of entries) {
+    const bucket = byAccount.get(entry.accountId) ?? [];
+    bucket.push(entry);
+    byAccount.set(entry.accountId, bucket);
+  }
+
+  const result = new Map<string, AccountSummaryRow[]>();
+  for (const [accountId, accountEntries] of byAccount.entries()) {
+    result.set(accountId, buildSummaryRowsForAccount(accountEntries, now));
+  }
+
+  return result;
+}
+
 export default function AccountsModule() {
   const { config } = useSystemConfig();
   const [accounts, setAccounts] = useState<TradingAccount[]>([]);
+  const [entries, setEntries] = useState<MarketEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState('');
@@ -402,8 +487,12 @@ export default function AccountsModule() {
     setError(null);
 
     try {
-      const data = await listTradingAccounts();
+      const [data, loadedEntries] = await Promise.all([
+        listTradingAccounts(),
+        listMarketEntriesByUser('accounts-module'),
+      ]);
       setAccounts(data);
+      setEntries(loadedEntries);
     } catch (requestError) {
       setError('No fue posible cargar las cuentas.');
       console.error(requestError);
@@ -432,6 +521,10 @@ export default function AccountsModule() {
     });
   }, [accounts, query, typeFilter, statusFilter]);
 
+  const summaryRowsByAccount = useMemo(() => {
+    return buildSummaryRowsByAccount(entries, new Date());
+  }, [entries]);
+
   const accountsContent = useMemo(() => {
     if (loading) {
       return <p className="accounts-loading">Cargando cuentas...</p>;
@@ -440,8 +533,6 @@ export default function AccountsModule() {
     if (filteredAccounts.length === 0) {
       return <p className="accounts-empty">Aun no tienes cuentas registradas.</p>;
     }
-
-    const summaryRows = getSummaryRows();
 
     return (
       <div className="accounts-grid">
@@ -498,6 +589,9 @@ export default function AccountsModule() {
               </p>
             </div>
 
+          {(() => {
+            const summaryRows = summaryRowsByAccount.get(account.id) ?? getSummaryRows();
+            return (
             <div className="account-summary-wrap">
               <p className="account-summary-title">Resumen operativo</p>
               <div className="account-summary-table-scroll">
@@ -525,6 +619,8 @@ export default function AccountsModule() {
                 </table>
               </div>
             </div>
+            );
+          })()}
 
             <div className="account-card-footer">
               <p className="account-footer-date">Apertura: {account.opened_at.slice(0, 10)}</p>
@@ -553,7 +649,7 @@ export default function AccountsModule() {
         ))}
       </div>
     );
-  }, [filteredAccounts, loading]);
+  }, [filteredAccounts, loading, summaryRowsByAccount]);
 
   function openCreateModal() {
     setModalMode('create');
