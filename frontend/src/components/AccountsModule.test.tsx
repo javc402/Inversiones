@@ -179,7 +179,8 @@ describe('AccountsModule', () => {
     expect(cells[0]).toHaveTextContent('2');
     expect(cells[1]).toHaveTextContent('1');
     expect(cells[2]).toHaveTextContent('0');
-    expect(cells[3]).toHaveTextContent('1');
+    expect(cells[3]).toHaveTextContent('0');
+    expect(cells[4]).toHaveTextContent('1');
   });
 
   it('abre popup de crear cuenta', async () => {

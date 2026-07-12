@@ -313,6 +313,7 @@ interface AccountSummaryRow {
   label: string;
   operations: number;
   sl: number;
+  breakeven: number;
   tpNoProfit: number;
   tpProfit: number;
 }
@@ -343,6 +344,7 @@ export function getSummaryRows(referenceDate: Date = new Date()): AccountSummary
       label: 'Total',
       operations: 0,
       sl: 0,
+      breakeven: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
@@ -351,6 +353,7 @@ export function getSummaryRows(referenceDate: Date = new Date()): AccountSummary
       label: `Año ${referenceDate.getFullYear()}`,
       operations: 0,
       sl: 0,
+      breakeven: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
@@ -359,6 +362,7 @@ export function getSummaryRows(referenceDate: Date = new Date()): AccountSummary
       label: `Mes ${getCurrentMonthLabel(referenceDate)}`,
       operations: 0,
       sl: 0,
+      breakeven: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
@@ -367,6 +371,7 @@ export function getSummaryRows(referenceDate: Date = new Date()): AccountSummary
       label: `Semana ${isoWeek.week}`,
       operations: 0,
       sl: 0,
+      breakeven: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
@@ -425,9 +430,10 @@ function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountS
       ...row,
       operations: periodEntries.length,
       sl: periodEntries.filter((entry) => (entry.resultR ?? 0) < 0).length,
+      breakeven: periodEntries.filter((entry) => (entry.resultR ?? 0) === 1).length,
       tpNoProfit: periodEntries.filter((entry) => {
         const result = entry.resultR ?? 0;
-        return result >= 0 && result <= 1;
+        return result >= 0 && result < 1;
       }).length,
       tpProfit: periodEntries.filter((entry) => (entry.resultR ?? 0) > 1).length,
     };
@@ -632,6 +638,7 @@ export default function AccountsModule() {
                       <th scope="col" className="account-summary-header">Tiempo</th>
                       <TableHeaderWithPopover description="Número total de operaciones">Ops</TableHeaderWithPopover>
                       <TableHeaderWithPopover description="Operaciones cerradas con Stop Loss">SL</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones en punto de equilibrio técnico (R = 1)">Breakeven</TableHeaderWithPopover>
                       <TableHeaderWithPopover description="Operaciones en Take Profit sin ganancia">TP (-)</TableHeaderWithPopover>
                       <TableHeaderWithPopover description="Operaciones en Take Profit con ganancia">TP (+)</TableHeaderWithPopover>
                     </tr>
@@ -642,6 +649,7 @@ export default function AccountsModule() {
                         <th scope="row">{row.label}</th>
                         <td>{row.operations}</td>
                         <td>{row.sl}</td>
+                        <td>{row.breakeven}</td>
                         <td>{row.tpNoProfit}</td>
                         <td>{row.tpProfit}</td>
                       </tr>
