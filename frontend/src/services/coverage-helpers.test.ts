@@ -227,7 +227,10 @@ describe('coverage helpers', () => {
       ], false)
     ).toThrow('esta repetida');
 
-    expect(buildCreatePerAccountSelection(accounts, rows, true)).toEqual(selection);
+    expect(buildCreatePerAccountSelection(accounts, rows, true)).toEqual([
+      { accountId: 'acc-1', accountName: 'C1', riskAmount: 0, investmentPercent: 1 },
+      { accountId: 'acc-2', accountName: 'C2', riskAmount: 0, investmentPercent: 1 },
+    ]);
   });
 
   it('market buildCreateMarketEntryRequest valida y transforma', () => {
@@ -288,7 +291,7 @@ describe('coverage helpers', () => {
       false,
       false
     );
-    expect(newsRequest.createInput.common.newsArticleId).toBe('');
+    expect(newsRequest.createInput.common.newsArticleId).toBeNull();
 
     const invalidNumbersRequest = buildCreateMarketEntryRequest(
       {
