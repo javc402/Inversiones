@@ -28,6 +28,7 @@ export type AppIconName =
   | 'shield'
   | 'article'
   | 'entry'
+  | 'simulation'
   | 'menu'
   | 'eye'
   | 'close'
@@ -65,6 +66,7 @@ const iconNames: Record<AppIconName, string> = {
   shield: 'shield',
   article: 'article',
   entry: 'playlist_add_check_circle',
+  simulation: 'monitoring',
   menu: 'menu',
   eye: 'visibility',
   close: 'close',

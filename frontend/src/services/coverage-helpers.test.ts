@@ -205,26 +205,27 @@ describe('coverage helpers', () => {
     ] as never;
 
     const rows = [
-      { id: '1', accountId: 'acc-1', riskAmount: '100', investmentPercent: '1' },
-      { id: '2', accountId: 'acc-2', riskAmount: '80', investmentPercent: '0.8' },
+      { id: '1', accountId: 'acc-1', riskAmount: '100' },
+      { id: '2', accountId: 'acc-2', riskAmount: '80' },
     ];
 
     const selection = buildCreatePerAccountSelection(accounts, rows, false);
     expect(selection).toHaveLength(2);
     expect(selection[0].riskAmount).toBe(100);
+    expect(selection[0].investmentPercent).toBe(1);
 
     expect(() =>
-      buildCreatePerAccountSelection(accounts, [{ id: '1', accountId: 'nope', riskAmount: '1', investmentPercent: '1' }], false)
+      buildCreatePerAccountSelection(accounts, [{ id: '1', accountId: 'nope', riskAmount: '1' }], false)
     ).toThrow('Selecciona una cuenta valida');
 
     expect(() =>
       buildCreatePerAccountSelection(accounts, [
-        { id: '1', accountId: 'acc-1', riskAmount: '1', investmentPercent: '1' },
-        { id: '2', accountId: 'acc-1', riskAmount: '2', investmentPercent: '2' },
+        { id: '1', accountId: 'acc-1', riskAmount: '1' },
+        { id: '2', accountId: 'acc-1', riskAmount: '2' },
       ], false)
     ).toThrow('esta repetida');
 
-    expect(buildCreatePerAccountSelection(accounts, rows, true)).toEqual([]);
+    expect(buildCreatePerAccountSelection(accounts, rows, true)).toEqual(selection);
   });
 
   it('market buildCreateMarketEntryRequest valida y transforma', () => {
@@ -251,7 +252,7 @@ describe('coverage helpers', () => {
     expect(completedRequest.createInput.common.resultR).toBe(2);
 
     const request = buildCreateMarketEntryRequest(
-      { ...common, status: 'no_entry', noEntryReason: 'No setup', resultR: '1.2' },
+      { ...common, status: 'no_entry', marketContext: 'No setup', noEntryReason: '', resultR: '1.2' },
       [],
       true,
       false

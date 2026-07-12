@@ -291,15 +291,15 @@ describe('market-entries service', () => {
     ).rejects.toThrow('Debes seleccionar una noticia registrada.');
   });
 
-  it('create no_entry inserta fila sin cuenta', async () => {
+  it('create no_entry inserta una fila por cuenta asociada', async () => {
     supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
     const mockInsertSelect = vi.fn().mockResolvedValueOnce({
       data: [
         {
           id: 'entry-1',
           group_id: 'group-1',
-          account_id: null,
-          account_name: null,
+          account_id: 'acc-1',
+          account_name: 'Cuenta 1',
           symbol: '',
           market_context: 'CPI',
           context_source: 'free_text',
@@ -310,8 +310,8 @@ describe('market-entries service', () => {
           entry_price: null,
           stop_loss: null,
           take_profit: null,
-          risk_amount: null,
-          investment_percent: null,
+          risk_amount: 100,
+          investment_percent: 1,
           result_r: null,
           no_entry_reason: 'No setup',
           note: '',
@@ -342,11 +342,12 @@ describe('market-entries service', () => {
         status: 'no_entry',
         noEntryReason: 'No setup',
       },
-      perAccount: [],
+      perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
     });
 
     expect(created).toHaveLength(1);
     expect(created[0].status).toBe('no_entry');
+    expect(created[0].accountId).toBe('acc-1');
   });
 
   it('create no_entry normaliza opcionales undefined a cadenas vacias', async () => {
@@ -357,8 +358,8 @@ describe('market-entries service', () => {
         {
           id: 'entry-undef',
           group_id: 'group-1',
-          account_id: null,
-          account_name: null,
+          account_id: 'acc-1',
+          account_name: 'Cuenta 1',
           symbol: '',
           market_context: 'CPI',
           context_source: 'free_text',
@@ -369,8 +370,8 @@ describe('market-entries service', () => {
           entry_price: null,
           stop_loss: null,
           take_profit: null,
-          risk_amount: null,
-          investment_percent: null,
+          risk_amount: 100,
+          investment_percent: 1,
           result_r: null,
           no_entry_reason: 'Sin setup',
           note: '',
@@ -402,13 +403,14 @@ describe('market-entries service', () => {
         status: 'no_entry',
         noEntryReason: 'Sin setup',
       },
-      perAccount: [],
+      perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
     } as never);
 
     const payload = mockInsert.mock.calls[0][0] as Array<Record<string, unknown>>;
     expect(payload[0].symbol).toBe('');
     expect(payload[0].setup).toBe('');
     expect(payload[0].session).toBe('');
+    expect(payload[0].account_id).toBe('acc-1');
   });
 
   it('update falla cuando no existe entrada', async () => {
@@ -975,7 +977,22 @@ describe('market-entries service', () => {
     ).rejects.toThrow('Debes indicar el motivo sin entrada.');
   });
 
-  it('valida create: exige al menos una cuenta cuando no es no_entry', async () => {
+  it('valida create: exige al menos una cuenta también para no_entry', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: '',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'no_entry',
+          noEntryReason: 'Sin setup',
+        },
+        perAccount: [],
+      } as never)
+    ).rejects.toThrow('Debes asociar al menos una cuenta.');
+
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
@@ -1084,6 +1101,9 @@ describe('market-entries service', () => {
 
     const result = await updateMarketEntryById('user@example.com', 'entry-1', {
       status: 'open',
+      accountId: 'acc-1',
+      accountName: 'Cuenta 1',
+      direction: 'buy',
       riskAmount: 100,
       investmentPercent: 1,
       resultR: null,
@@ -1091,6 +1111,54 @@ describe('market-entries service', () => {
     });
 
     expect(result.updatedEntry.noEntryReason).toBeNull();
+  });
+
+  it('update no_entry a closed conserva riesgo y resultado R', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'entry-1', group_id: 'group-1', account_id: null, account_name: null,
+        symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+        setup: 'Breakout', session: 'NY', direction: null, entry_price: null, stop_loss: null, take_profit: null,
+        risk_amount: null, investment_percent: null, result_r: null, no_entry_reason: 'skip', note: '',
+        status: 'no_entry', planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+      },
+      error: null,
+    });
+
+    const mockSelectPrevious = vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: mockSingle }) }) });
+    const mockUpdateSelect = vi.fn().mockResolvedValueOnce({
+      data: [{
+        id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+        symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+        setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: null, stop_loss: null, take_profit: null,
+        risk_amount: 100, investment_percent: 1, result_r: 1.2, no_entry_reason: null, note: 'ok',
+        status: 'closed', planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T11:00:00.000Z',
+      }],
+      error: null,
+    });
+    const mockUpdateEntry = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ select: mockUpdateSelect }) }),
+    });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectPrevious })
+      .mockReturnValueOnce({ update: mockUpdateEntry });
+
+    const result = await updateMarketEntryById('user@example.com', 'entry-1', {
+      status: 'closed',
+      accountId: 'acc-1',
+      accountName: 'Cuenta 1',
+      direction: 'buy',
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: 1.2,
+      note: 'ok',
+    });
+
+    expect(result.updatedEntry.status).toBe('closed');
+    expect(result.updatedEntry.resultR).toBe(1.2);
   });
 
   it('update con applyCommonToGroup lanza si falla update grupal', async () => {
@@ -1233,6 +1301,61 @@ describe('market-entries service', () => {
     });
 
     expect(result.updatedEntry.noEntryReason).toBe('new reason');
+  });
+
+  it('update a no_entry conserva la cuenta asociada', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSingle = vi.fn().mockResolvedValueOnce({
+      data: {
+        id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+        symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+        setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+        risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+        planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+      },
+      error: null,
+    });
+
+    const mockSelectPrevious = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: mockSingle }) }),
+    });
+    const mockUpdateSelect = vi.fn().mockResolvedValueOnce({
+      data: [{
+        id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+        symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+        setup: 'Breakout', session: 'NY', direction: null, entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+        risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: 'Sin confirmación', note: 'ok', status: 'no_entry',
+        planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T11:00:00.000Z',
+      }],
+      error: null,
+    });
+    const mockUpdateEntry = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ select: mockUpdateSelect }) }),
+    });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectPrevious })
+      .mockReturnValueOnce({ update: mockUpdateEntry });
+
+    const result = await updateMarketEntryById('user@example.com', 'entry-1', {
+      status: 'no_entry',
+      accountId: 'acc-1',
+      accountName: 'Cuenta 1',
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: null,
+      note: 'ok',
+      noEntryReason: 'Sin confirmación',
+    });
+
+    expect(result.updatedEntry.accountId).toBe('acc-1');
+    expect(result.updatedEntry.accountName).toBe('Cuenta 1');
+
+    const updatePayload = mockUpdateEntry.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(updatePayload.account_id).toBe('acc-1');
+    expect(updatePayload.account_name).toBe('Cuenta 1');
+    expect(updatePayload.direction).toBeNull();
   });
 
   it('update con applyCommonToGroup usa affectedEntries=0 si query grupal retorna null', async () => {

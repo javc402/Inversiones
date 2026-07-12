@@ -745,9 +745,7 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
 
-    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
-      target: { value: 'No setup válido' },
-    });
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
 
@@ -776,9 +774,7 @@ describe('MarketEntriesModule', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
-    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
-      target: { value: 'No setup válido' },
-    });
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
     const saveButton = screen.getByRole('button', { name: 'Guardar entradas' });
     fireEvent.click(saveButton);
@@ -802,9 +798,7 @@ describe('MarketEntriesModule', () => {
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
-    fireEvent.change(await screen.findByPlaceholderText('Ej: no confirmo setup, spread alto, riesgo noticia'), {
-      target: { value: 'No setup válido' },
-    });
+    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
 
@@ -852,7 +846,6 @@ describe('MarketEntriesModule', () => {
 
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
-    await screen.findByText('Breakout');
     fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
@@ -983,6 +976,107 @@ describe('MarketEntriesModule', () => {
     });
 
     expect(screen.getByRole('button', { name: 'Guardar cambios' })).toBeInTheDocument();
+  });
+
+  it('should allow correcting a no-entry record into a closed trade', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: '',
+        accountName: '',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.09,
+        takeProfit: 1.12,
+        riskAmount: 0,
+        investmentPercent: 0,
+        resultR: null,
+        noEntryReason: 'Error al registrar',
+        note: '',
+        status: 'no_entry',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+    vi.mocked(marketEntriesService.updateMarketEntryById).mockResolvedValueOnce({
+      updatedEntry: {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        newsImpact: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.09,
+        takeProfit: 1.12,
+        closePrice: null,
+        operationLink: null,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1.2,
+        noEntryReason: null,
+        note: 'corregida',
+        status: 'closed',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+      affectedEntries: 1,
+      groupApplied: false,
+    } as never);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+
+    const dialog = screen.getByRole('dialog');
+    fireEvent.change(screen.getByRole('combobox', { name: 'Cuenta' }), { target: { value: 'acc-1' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Direccion' }), { target: { value: 'buy' } });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Estado' }), { target: { value: 'closed' } });
+    const spinbuttons = within(dialog).getAllByRole('spinbutton');
+    fireEvent.change(spinbuttons[0], { target: { value: '100' } });
+    fireEvent.change(spinbuttons[1], { target: { value: '1.2' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
+
+    await waitFor(() => {
+      expect(marketEntriesService.updateMarketEntryById).toHaveBeenCalledWith(
+        'test@example.com',
+        'entry-1',
+        expect.objectContaining({
+          status: 'closed',
+          accountId: 'acc-1',
+          accountName: 'Real',
+          direction: 'buy',
+          riskAmount: 100,
+          investmentPercent: 1,
+          resultR: 1.2,
+          noEntryReason: 'Error al registrar',
+          note: '',
+          operationLink: '',
+          plannedAt: expect.any(String),
+        }),
+        { applyCommonToGroup: false }
+      );
+    });
   });
 
   it('should close help popover on outside click and keep it stable on viewport resize', async () => {
