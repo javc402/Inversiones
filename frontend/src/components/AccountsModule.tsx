@@ -579,6 +579,11 @@ export default function AccountsModule() {
     setForm((prev) => ({ ...prev, [key]: value }));
   }
 
+  function notifyAccountsChanged(action: ModalMode) {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('inversiones:accounts-changed', { detail: { action } }));
+  }
+
   async function handleSaveAccount(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (saveAccountLockRef.current) return;
@@ -591,6 +596,7 @@ export default function AccountsModule() {
       const payload = mapFormToPayload(form);
 
       if (modalMode === 'create') {
+        payload.initial_equity = payload.initial_balance;
         await createTradingAccount(payload);
       } else if (editingAccountId) {
         await updateTradingAccount(editingAccountId, payload);
@@ -598,6 +604,7 @@ export default function AccountsModule() {
 
       closeModal();
       await loadAccounts();
+      notifyAccountsChanged(modalMode);
     } catch (requestError) {
       setError('No fue posible guardar la cuenta. Revisa los datos e intenta nuevamente.');
       console.error(requestError);
@@ -784,16 +791,18 @@ export default function AccountsModule() {
                 />
               </label>
 
-              <label>
-                <FieldLabel text="Equity inicial" help="Equity de referencia al inicio, útil para comparar desempeño y variación." />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.initial_equity}
-                  onChange={(event) => handleFormChange('initial_equity', event.target.value)}
-                />
-              </label>
+              {modalMode === 'edit' && (
+                <label>
+                  <FieldLabel text="Equity inicial" help="Equity de referencia al inicio, útil para comparar desempeño y variación." />
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={form.initial_equity}
+                    onChange={(event) => handleFormChange('initial_equity', event.target.value)}
+                  />
+                </label>
+              )}
 
               <label>
                 <FieldLabel text="Fecha apertura *" help="Fecha en la que la cuenta comenzó a operar o fue habilitada." />

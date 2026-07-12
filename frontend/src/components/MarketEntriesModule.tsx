@@ -78,6 +78,7 @@ interface EditForm {
 }
 
 const COMMON_SYMBOL_OPTIONS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'NAS100', 'US30', 'NZDUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'OTRO'] as const;
+const SETUP_OPTIONS = ['M3', 'M1', 'CONTINUACION', 'ORB', 'OTRA'] as const;
 
 const defaultCommonForm: EntryCommonForm = {
   symbol: '',
@@ -726,13 +727,20 @@ function MarketEntriesCreateForm({
       </div>
 
       <label>
-        <EntryFieldLabel text="Setup/Estrategia" help="Patrón o estrategia operativa concreta que define la ejecución." />
-        <input
+        <EntryFieldLabel text="Setup/Estrategia" help="Selecciona la estrategia de una lista fija para estandarizar el registro." />
+        <select
           value={commonForm.setup}
           onChange={(event) => setCommonForm((prev) => ({ ...prev, setup: event.target.value }))}
           required={!isNoEntryOnCreate}
           disabled={isNoEntryOnCreate}
-        />
+        >
+          <option value="">Selecciona setup</option>
+          {SETUP_OPTIONS.map((setupOption) => (
+            <option key={setupOption} value={setupOption}>
+              {setupOption === 'CONTINUACION' ? 'Continuacion' : setupOption === 'OTRA' ? 'Otra' : setupOption}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label>
@@ -773,6 +781,24 @@ function MarketEntriesCreateForm({
           required
         />
       </label>
+
+      {isCompletedOnCreate && (
+        <label>
+          <EntryFieldLabel text="Fecha de cierre" help="Se sincroniza con la fecha de ejecucion para registros en estado completada." />
+          <input
+            type="datetime-local"
+            value={commonForm.plannedAt}
+            inputMode="none"
+            onFocus={openDatePicker}
+            onClick={openDatePicker}
+            onKeyDown={preventManualDateTyping}
+            onPaste={preventManualDatePasteOrDrop}
+            onDrop={preventManualDatePasteOrDrop}
+            readOnly
+            aria-readonly="true"
+          />
+        </label>
+      )}
 
       <label>
         <EntryFieldLabel text="Estado" help="Define si la entrada queda planificada, abierta o completada al registrarla." />
@@ -1138,6 +1164,37 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   useEffect(() => {
     void loadData();
   }, [userEmail]);
+
+  useEffect(() => {
+    let active = true;
+
+    async function reloadAccountsForEntries() {
+      try {
+        const loadedAccounts = await listTradingAccounts();
+        if (!active) return;
+        setAccounts(loadedAccounts);
+        setPerAccountRows((prev) => {
+          if (prev.length === 1 && !prev[0].accountId) {
+            return buildDefaultAccountRows(loadedAccounts);
+          }
+          return prev;
+        });
+      } catch {
+        // ignore account refresh errors triggered by cross-module events
+      }
+    }
+
+    function handleAccountsChanged() {
+      void reloadAccountsForEntries();
+    }
+
+    window.addEventListener('inversiones:accounts-changed', handleAccountsChanged as EventListener);
+
+    return () => {
+      active = false;
+      window.removeEventListener('inversiones:accounts-changed', handleAccountsChanged as EventListener);
+    };
+  }, []);
 
   const filteredNewsArticles = useMemo(() => {
     const term = newsQuery.trim().toLowerCase();

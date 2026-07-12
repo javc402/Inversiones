@@ -100,7 +100,7 @@ export async function createTradingAccount(input: UpsertTradingAccountInput): Pr
     user_id: user.id,
     alias: input.alias ?? null,
     leverage: input.leverage ?? null,
-    initial_equity: input.initial_equity ?? null,
+    initial_equity: input.initial_equity ?? input.initial_balance ?? null,
     risk_per_trade_pct: input.risk_per_trade_pct ?? null,
     max_daily_risk_pct: input.max_daily_risk_pct ?? null,
     max_drawdown_pct: input.max_drawdown_pct ?? null,

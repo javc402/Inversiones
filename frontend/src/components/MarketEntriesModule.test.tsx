@@ -743,7 +743,7 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
 
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
 
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
@@ -773,7 +773,7 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
     const saveButton = screen.getByRole('button', { name: 'Guardar entradas' });
@@ -797,7 +797,7 @@ describe('MarketEntriesModule', () => {
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
     fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
     fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
