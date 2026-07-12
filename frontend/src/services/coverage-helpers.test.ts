@@ -3,12 +3,17 @@ import {
   buildCreateMarketEntryRequest,
   buildCreatePerAccountSelection,
   buildDefaultAccountRows,
+  calculateAccountResultAmount,
+  candleProtocolLabel,
   createAccountRow,
   directionLabel,
   entryDeletionLabel,
   financialOutcomeLabel,
   formatDate as formatEntryDate,
+  newsImpactLabel,
+  normalizeResultR,
   outcomeLabel,
+  resolveEntrySymbol,
   resolveFinancialOutcome,
   resolveEntryOutcome,
   resolveTechnicalOutcome,
@@ -159,11 +164,40 @@ describe('coverage helpers', () => {
     expect(resolveTechnicalOutcome({ status: 'closed', resultR: 0 } as never)).toBe('flat');
     expect(resolveEntryOutcome({ status: 'open', resultR: 1.1 } as never)).toBeNull();
     expect(outcomeLabel('tp_1_1')).toBe('Break tecnico 1:1');
+    expect(outcomeLabel('sl')).toBe('SL');
+    expect(outcomeLabel('flat')).toBe('Sin avance');
+    expect(outcomeLabel('tp_extended')).toBe('TP extendido');
     expect(technicalOutcomeLabel('tp_partial')).toBe('TP parcial');
     expect(resolveFinancialOutcome({ status: 'closed', resultR: 1 } as never)).toBe('profit');
     expect(resolveFinancialOutcome({ status: 'closed', resultR: 0 } as never)).toBe('breakeven');
     expect(resolveFinancialOutcome({ status: 'closed', resultR: -1 } as never)).toBe('loss');
     expect(financialOutcomeLabel('profit')).toBe('Ganancia');
+    expect(financialOutcomeLabel('loss')).toBe('Perdida');
+    expect(financialOutcomeLabel('breakeven')).toBe('Breakeven');
+  });
+
+  it('market helpers extra cubren ramas de utilidades', () => {
+    expect(normalizeResultR(Number.NaN)).toBeNull();
+    expect(normalizeResultR(1.236)).toBe(1.24);
+
+    expect(calculateAccountResultAmount(Number.NaN, 1)).toBeNull();
+    expect(calculateAccountResultAmount(0, 1)).toBeNull();
+    expect(calculateAccountResultAmount(100, null)).toBeNull();
+    expect(calculateAccountResultAmount(100, Number.NaN)).toBeNull();
+    expect(calculateAccountResultAmount(100, 1.5)).toBe(150);
+
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: ' DE40 ' } as never)).toBe('DE40');
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: '   ' } as never)).toBe('OTRO');
+    expect(resolveEntrySymbol({ symbol: 'EURUSD', symbolDetail: '' } as never)).toBe('EURUSD');
+
+    expect(candleProtocolLabel('ob')).toBe('OB');
+    expect(candleProtocolLabel('fvg')).toBe('FVG');
+    expect(candleProtocolLabel(null)).toBe('NO');
+
+    expect(newsImpactLabel('high')).toBe('Alto');
+    expect(newsImpactLabel('medium')).toBe('Medio');
+    expect(newsImpactLabel('low')).toBe('Bajo');
+    expect(newsImpactLabel(null)).toBe('Sin impacto');
   });
 
   it('market helpers cubren ramas adicionales', () => {
@@ -215,6 +249,12 @@ describe('coverage helpers', () => {
     expect(selection).toHaveLength(2);
     expect(selection[0].riskAmount).toBe(100);
     expect(selection[0].investmentPercent).toBe(1);
+    expect(selection[1].accountName).toBe('C2');
+
+    const noAliasSelection = buildCreatePerAccountSelection([
+      { id: 'acc-3', name: 'Cuenta 3', alias: '' },
+    ] as never, [{ id: '3', accountId: 'acc-3', riskAmount: '25' }], false);
+    expect(noAliasSelection[0].accountName).toBe('Cuenta 3');
 
     expect(() =>
       buildCreatePerAccountSelection(accounts, [{ id: '1', accountId: 'nope', riskAmount: '1' }], false)
@@ -292,6 +332,32 @@ describe('coverage helpers', () => {
       false
     );
     expect(newsRequest.createInput.common.newsArticleId).toBeNull();
+
+    const nasRequest = buildCreateMarketEntryRequest(
+      {
+        symbol: 'nas100',
+        symbolDetail: '',
+        marketContext: 'Evento',
+        contextSource: 'free_text',
+        newsArticleId: 'news-9',
+        newsImpact: '',
+        setup: 'Breakout',
+        session: 'NY',
+        candleProtocol: 'no',
+        direction: 'buy',
+        resultR: '1.0',
+        operationLink: '',
+        noEntryReason: '',
+        note: '',
+        plannedAt: '2026-06-20T10:00',
+        status: 'closed',
+      },
+      [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      true
+    );
+    expect(nasRequest.createInput.common.symbol).toBe('OTRO');
+    expect(nasRequest.createInput.common.symbolDetail).toBe('NAS100');
 
     const invalidNumbersRequest = buildCreateMarketEntryRequest(
       {
