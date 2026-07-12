@@ -309,6 +309,7 @@ export function mapFormToPayload(form: AccountFormState): UpsertTradingAccountIn
 }
 
 interface AccountSummaryRow {
+  key: 'total' | 'year' | 'month' | 'week';
   label: string;
   operations: number;
   sl: number;
@@ -316,9 +317,29 @@ interface AccountSummaryRow {
   tpProfit: number;
 }
 
-export function getSummaryRows(): AccountSummaryRow[] {
+function getIsoWeekInfo(date: Date): { year: number; week: number } {
+  const utcDate = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayOfWeek = utcDate.getUTCDay() || 7;
+  utcDate.setUTCDate(utcDate.getUTCDate() + 4 - dayOfWeek);
+
+  const isoYear = utcDate.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((utcDate.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+
+  return { year: isoYear, week };
+}
+
+function getCurrentMonthLabel(date: Date): string {
+  const month = new Intl.DateTimeFormat('es-ES', { month: 'long' }).format(date);
+  return month.charAt(0).toUpperCase() + month.slice(1);
+}
+
+export function getSummaryRows(referenceDate: Date = new Date()): AccountSummaryRow[] {
+  const isoWeek = getIsoWeekInfo(referenceDate);
+
   return [
     {
+      key: 'total',
       label: 'Total',
       operations: 0,
       sl: 0,
@@ -326,21 +347,24 @@ export function getSummaryRows(): AccountSummaryRow[] {
       tpProfit: 0,
     },
     {
-      label: 'Año',
+      key: 'year',
+      label: `Año ${referenceDate.getFullYear()}`,
       operations: 0,
       sl: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
     {
-      label: 'Mes',
+      key: 'month',
+      label: `Mes ${getCurrentMonthLabel(referenceDate)}`,
       operations: 0,
       sl: 0,
       tpNoProfit: 0,
       tpProfit: 0,
     },
     {
-      label: 'Semana',
+      key: 'week',
+      label: `Semana ${isoWeek.week}`,
       operations: 0,
       sl: 0,
       tpNoProfit: 0,
@@ -363,15 +387,10 @@ function parseEntryReferenceDate(entry: Pick<MarketEntry, 'plannedAt' | 'updated
 }
 
 function isInSameWeek(reference: Date, now: Date): boolean {
-  const start = new Date(now);
-  const day = start.getDay();
-  start.setHours(0, 0, 0, 0);
-  start.setDate(start.getDate() - day);
+  const referenceWeek = getIsoWeekInfo(reference);
+  const currentWeek = getIsoWeekInfo(now);
 
-  const end = new Date(start);
-  end.setDate(end.getDate() + 7);
-
-  return reference >= start && reference < end;
+  return referenceWeek.year === currentWeek.year && referenceWeek.week === currentWeek.week;
 }
 
 function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountSummaryRow[] {
@@ -380,12 +399,12 @@ function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountS
   const closedEntries = entries.filter((entry) => entry.status === 'closed' && entry.resultR !== null);
 
   const segmented = {
-    Total: closedEntries,
-    Año: closedEntries.filter((entry) => {
+    total: closedEntries,
+    year: closedEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(date && date.getFullYear() === now.getFullYear());
     }),
-    Mes: closedEntries.filter((entry) => {
+    month: closedEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(
         date &&
@@ -393,14 +412,14 @@ function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountS
         date.getMonth() === now.getMonth()
       );
     }),
-    Semana: closedEntries.filter((entry) => {
+    week: closedEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(date && isInSameWeek(date, now));
     }),
   } as const;
 
   return baseRows.map((row) => {
-    const periodEntries = segmented[row.label as keyof typeof segmented] ?? [];
+    const periodEntries = segmented[row.key] ?? [];
 
     return {
       ...row,
