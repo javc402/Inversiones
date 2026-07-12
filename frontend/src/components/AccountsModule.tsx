@@ -558,6 +558,7 @@ export default function AccountsModule() {
   function openCreateModal() {
     setModalMode('create');
     setEditingAccountId(null);
+    saveAccountLockRef.current = false;
     setForm(DEFAULT_FORM);
     setModalOpen(true);
   }
@@ -565,11 +566,13 @@ export default function AccountsModule() {
   function openEditModal(account: TradingAccount) {
     setModalMode('edit');
     setEditingAccountId(account.id);
+    saveAccountLockRef.current = false;
     setForm(mapAccountToForm(account));
     setModalOpen(true);
   }
 
   function closeModal() {
+    saveAccountLockRef.current = false;
     setModalOpen(false);
     setEditingAccountId(null);
     setForm(DEFAULT_FORM);
@@ -589,6 +592,7 @@ export default function AccountsModule() {
     if (saveAccountLockRef.current) return;
 
     saveAccountLockRef.current = true;
+    let saveSucceeded = false;
     setIsSavingAccount(true);
     setError(null);
 
@@ -605,11 +609,14 @@ export default function AccountsModule() {
       closeModal();
       await loadAccounts();
       notifyAccountsChanged(modalMode);
+      saveSucceeded = true;
     } catch (requestError) {
       setError('No fue posible guardar la cuenta. Revisa los datos e intenta nuevamente.');
       console.error(requestError);
     } finally {
-      saveAccountLockRef.current = false;
+      if (!saveSucceeded) {
+        saveAccountLockRef.current = false;
+      }
       setIsSavingAccount(false);
     }
   }
@@ -771,13 +778,15 @@ export default function AccountsModule() {
 
               <div className="accounts-section-title">Capital inicial y operativa</div>
 
-              <label>
-                <FieldLabel text="Apalancamiento" help="Relación de apalancamiento asignada por el broker o firma para esta cuenta." />
-                <input
-                  value={form.leverage}
-                  onChange={(event) => handleFormChange('leverage', event.target.value)}
-                />
-              </label>
+              {modalMode === 'edit' && (
+                <label>
+                  <FieldLabel text="Apalancamiento" help="Relación de apalancamiento asignada por el broker o firma para esta cuenta." />
+                  <input
+                    value={form.leverage}
+                    onChange={(event) => handleFormChange('leverage', event.target.value)}
+                  />
+                </label>
+              )}
 
               <label>
                 <FieldLabel text="Balance inicial *" help="Capital con el que inicia la cuenta al momento del registro." />
