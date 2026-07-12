@@ -1,4 +1,4 @@
-import { type Dispatch, FormEvent, type SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
+import { type Dispatch, FormEvent, type ReactNode, type SetStateAction, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { AppIcon } from './AppIcon';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
@@ -8,7 +8,6 @@ import {
   createMarketEntriesForAccounts,
   deleteMarketEntryById,
   listMarketEntriesByUser,
-  listMostUsedMarketContexts,
   MarketContextSource,
   MarketEntry,
   MarketEntryDirection,
@@ -31,13 +30,118 @@ type AccountRowForm = {
   riskAmount: string;
 };
 
-export function createAccountRow(accountId = ''): AccountRowForm {
+export function createAccountRow(accountId = '', riskAmount = ''): AccountRowForm {
   const cryptoApi = globalThis.crypto;
   return {
     id: cryptoApi?.randomUUID?.() ?? `account-row-${Date.now()}`,
     accountId,
-    riskAmount: '',
+    riskAmount,
   };
+}
+
+function parseCurrencyAmount(value: string): number {
+  const normalized = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!normalized) {
+    return Number.NaN;
+  }
+
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : Number.NaN;
+}
+
+function formatCurrencyAmountInput(value: string): string {
+  const normalized = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return '';
+  }
+
+  return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function sanitizeCurrencyAmountDraft(value: string): string {
+  const cleaned = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^\d.]/g, '');
+
+  if (!cleaned) {
+    return '';
+  }
+
+  const hasDecimal = cleaned.includes('.');
+  const [rawIntegerPart, ...decimalParts] = cleaned.split('.');
+  const integerPart = rawIntegerPart.replace(/^0+(?=\d)/, '') || '0';
+  const decimalPart = decimalParts.join('').slice(0, 2);
+
+  if (hasDecimal && decimalPart.length === 0) {
+    return `${integerPart}.`;
+  }
+
+  return decimalPart.length > 0 ? `${integerPart}.${decimalPart}` : integerPart;
+}
+
+function toEditableCurrencyAmount(value: string): string {
+  const normalized = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return sanitizeCurrencyAmountDraft(value);
+  }
+
+  return parsed.toString();
+}
+
+type AccordionSectionProps = {
+  open: boolean;
+  children: ReactNode;
+  className?: string;
+};
+
+function AccordionSection({ open, children, className }: Readonly<AccordionSectionProps>) {
+  const [shouldRender, setShouldRender] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+    }
+  }, [open]);
+
+  if (!shouldRender) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`entries-accordion ${open ? 'is-open' : 'is-closed'}${className ? ` ${className}` : ''}`}
+      onTransitionEnd={() => {
+        if (!open) {
+          setShouldRender(false);
+        }
+      }}
+    >
+      <div className="entries-accordion-inner">{children}</div>
+    </div>
+  );
 }
 
 interface MarketEntriesModuleProps {
@@ -66,6 +170,9 @@ interface EntryCommonForm {
 interface EditForm {
   status: MarketEntryStatus;
   marketContext: string;
+  contextSource: MarketContextSource;
+  newsArticleId: string;
+  newsImpact: MarketNewsImpact | '';
   plannedAt: string;
   accountId: string;
   accountName: string;
@@ -78,6 +185,7 @@ interface EditForm {
 }
 
 const COMMON_SYMBOL_OPTIONS = ['EURUSD', 'GBPUSD', 'USDJPY', 'XAUUSD', 'NAS100', 'US30', 'NZDUSD', 'AUDUSD', 'USDCHF', 'USDCAD', 'OTRO'] as const;
+const SETUP_OPTIONS = ['M3', 'M1', 'CONTINUACION', 'ORB', 'OTRA'] as const;
 
 const defaultCommonForm: EntryCommonForm = {
   symbol: '',
@@ -90,7 +198,7 @@ const defaultCommonForm: EntryCommonForm = {
   session: 'NEW YORK',
   candleProtocol: 'no',
   direction: 'buy',
-  resultR: '0.0',
+  resultR: '0.00',
   operationLink: '',
   noEntryReason: '',
   note: '',
@@ -101,12 +209,15 @@ const defaultCommonForm: EntryCommonForm = {
 const defaultEditForm: EditForm = {
   status: 'closed',
   marketContext: '',
+  contextSource: 'free_text',
+  newsArticleId: '',
+  newsImpact: '',
   plannedAt: new Date().toISOString().slice(0, 16),
   accountId: '',
   accountName: '',
   direction: '',
   riskAmount: '',
-  resultR: '0.0',
+  resultR: '0.00',
   operationLink: '',
   noEntryReason: '',
   note: '',
@@ -193,13 +304,13 @@ export function outcomeLabel(outcome: TechnicalOutcome): string {
 }
 
 export function toNumber(value: string): number {
-  return Number(value.trim());
+  return Number(value.trim().replace(',', '.'));
 }
 
 export function toNumberOrNull(value: string): number | null {
   const trimmed = value.trim();
   if (!trimmed) return null;
-  return Number(trimmed);
+  return Number(trimmed.replace(',', '.'));
 }
 
 function toErrorMessage(error: unknown, fallback: string): string {
@@ -224,7 +335,7 @@ export function normalizeResultR(value: number): number | null {
     return null;
   }
 
-  return Math.round(value * 10) / 10;
+  return Math.round(value * 100) / 100;
 }
 
 export function calculateAccountResultAmount(riskAmount: number, resultR: number | null): number | null {
@@ -271,7 +382,7 @@ export function entryDeletionLabel(entry: MarketEntry): string {
 export function buildCreatePerAccountSelection(
   accounts: TradingAccount[],
   perAccountRows: AccountRowForm[],
-  _isNoEntryOnCreate: boolean
+  isNoEntryOnCreate: boolean
 ) {
   const accountIds = new Set<string>();
   return perAccountRows.map((row, index) => {
@@ -289,7 +400,7 @@ export function buildCreatePerAccountSelection(
     return {
       accountId: account.id,
       accountName: account.alias || account.name,
-      riskAmount: toNumber(row.riskAmount),
+      riskAmount: isNoEntryOnCreate ? 0 : parseCurrencyAmount(row.riskAmount),
       investmentPercent: 1,
     };
   });
@@ -301,6 +412,13 @@ export function buildCreateMarketEntryRequest(
   isNoEntryOnCreate: boolean,
   isCompletedOnCreate: boolean
 ) {
+  const normalizedSymbol = commonForm.symbol.trim().toUpperCase();
+  const normalizedSymbolDetail = commonForm.symbolDetail.trim().toUpperCase();
+  const persistedSymbol = normalizedSymbol === 'NAS100' ? 'OTRO' : normalizedSymbol;
+  const persistedSymbolDetail = normalizedSymbol === 'NAS100'
+    ? 'NAS100'
+    : (persistedSymbol === 'OTRO' ? normalizedSymbolDetail : '');
+
   const resultRValue = isCompletedOnCreate && !isNoEntryOnCreate
     ? normalizeResultR(toNumber(commonForm.resultR))
     : null;
@@ -312,12 +430,12 @@ export function buildCreateMarketEntryRequest(
   return {
     createInput: {
       common: {
-        symbol: commonForm.symbol,
-        symbolDetail: commonForm.symbol === 'OTRO' ? commonForm.symbolDetail : null,
-        marketContext: commonForm.marketContext,
-        contextSource: commonForm.contextSource,
-        newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
-        newsImpact: commonForm.contextSource === 'news' ? (commonForm.newsImpact || null) : null,
+        symbol: persistedSymbol,
+        symbolDetail: persistedSymbol === 'OTRO' ? persistedSymbolDetail : null,
+        marketContext: isNoEntryOnCreate ? commonForm.marketContext : '',
+        contextSource: isNoEntryOnCreate ? 'news' : 'free_text',
+        newsArticleId: isNoEntryOnCreate ? commonForm.newsArticleId : null,
+        newsImpact: isNoEntryOnCreate ? (commonForm.newsImpact || null) : null,
         setup: commonForm.setup,
         session: commonForm.session,
         candleProtocol: commonForm.candleProtocol,
@@ -535,11 +653,7 @@ interface MarketEntriesCreateFormProps {
   setCommonForm: Dispatch<SetStateAction<EntryCommonForm>>;
   isNoEntryOnCreate: boolean;
   isCompletedOnCreate: boolean;
-  isNewsContextMode: boolean;
-  newsQuery: string;
-  setNewsQuery: Dispatch<SetStateAction<string>>;
   filteredNewsArticles: NewsArticle[];
-  mostUsedContexts: string[];
   perAccountRows: AccountRowForm[];
   updateAccountRow: (index: number, patch: Partial<AccountRowForm>) => void;
   accounts: TradingAccount[];
@@ -557,11 +671,7 @@ function MarketEntriesCreateForm({
   setCommonForm,
   isNoEntryOnCreate,
   isCompletedOnCreate,
-  isNewsContextMode,
-  newsQuery,
-  setNewsQuery,
   filteredNewsArticles,
-  mostUsedContexts,
   perAccountRows,
   updateAccountRow,
   accounts,
@@ -582,8 +692,7 @@ function MarketEntriesCreateForm({
         <select
           value={commonForm.symbol}
           onChange={(event) => setCommonForm((prev) => ({ ...prev, symbol: event.target.value, symbolDetail: event.target.value === 'OTRO' ? prev.symbolDetail : '' }))}
-          required={!isNoEntryOnCreate}
-          disabled={isNoEntryOnCreate}
+          required
         >
           <option value="">Selecciona símbolo</option>
           {COMMON_SYMBOL_OPTIONS.map((symbol) => (
@@ -616,123 +725,42 @@ function MarketEntriesCreateForm({
         </select>
       </label>
 
-      <div className="entries-context-editor entries-form-span-2">
-        <div className="entries-context-tabs" role="tablist" aria-label="Origen del contexto">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={!isNewsContextMode}
-            className={`entries-context-tab ${isNewsContextMode ? '' : 'active'}`}
-            onClick={() => setCommonForm((prev) => ({ ...prev, contextSource: 'free_text', newsArticleId: '' }))}
-          >
-            Texto libre
-          </button>
-          <button
-            type="button"
-            role="tab"
-            aria-selected={isNewsContextMode}
-            className={`entries-context-tab ${isNewsContextMode ? 'active' : ''}`}
-            onClick={() => setCommonForm((prev) => ({ ...prev, contextSource: 'news' }))}
-          >
-            Noticias registradas
-          </button>
-        </div>
-
-        {isNewsContextMode ? (
-          <div className="entries-context-panel">
-            <label>
-              <EntryFieldLabel text="Buscar noticia" help="Filtra noticias creadas para reutilizarlas como contexto de entrada." />
-              <input
-                value={newsQuery}
-                onChange={(event) => setNewsQuery(event.target.value)}
-                placeholder="Buscar por titulo o categoria"
-              />
-            </label>
-
-            <label>
-              <EntryFieldLabel text="Noticia" help="Selecciona una noticia existente para enlazarla con esta entrada." />
-              <select
-                value={commonForm.newsArticleId}
-                onChange={(event) => {
-                  const selectedId = event.target.value;
-                  const selectedNews = filteredNewsArticles.find((item) => item.id === selectedId);
-                  setCommonForm((prev) => ({
-                    ...prev,
-                    newsArticleId: selectedId,
-                    marketContext: selectedNews?.title ?? prev.marketContext,
-                  }));
-                }}
-                required
-              >
-                <option value="">Selecciona noticia</option>
-                {filteredNewsArticles.map((article) => (
-                  <option key={article.id} value={article.id}>{article.title}</option>
-                ))}
-              </select>
-            </label>
-
-            <label>
-              <EntryFieldLabel text="Impacto" help="Clasifica la noticia según su impacto esperado en la operación: alto, medio o bajo." />
-              <select
-                value={commonForm.newsImpact}
-                onChange={(event) => setCommonForm((prev) => ({ ...prev, newsImpact: event.target.value as MarketNewsImpact }))}
-                required
-              >
-                <option value="">Selecciona impacto</option>
-                <option value="high">Alto</option>
-                <option value="medium">Medio</option>
-                <option value="low">Bajo</option>
-              </select>
-            </label>
-
-            <label>
-              <EntryFieldLabel text="Contexto/Noticia" help="Se completa con el titulo de la noticia seleccionada, editable si necesitas precisión adicional." />
-              <input
-                value={commonForm.marketContext}
-                onChange={(event) => setCommonForm((prev) => ({ ...prev, marketContext: event.target.value }))}
-                placeholder="Contexto asociado"
-                required
-              />
-            </label>
-          </div>
-        ) : (
-          <div className="entries-context-panel">
-            <label>
-              <EntryFieldLabel text="Contexto/Noticia" help="Evento o contexto que respalda la hipótesis de entrada." />
-              <input
-                value={commonForm.marketContext}
-                onChange={(event) => setCommonForm((prev) => ({ ...prev, marketContext: event.target.value }))}
-                placeholder="CPI, FOMC, PRE market..."
-                required
-              />
-            </label>
-
-            {mostUsedContexts.length > 0 && (
-              <div className="entries-context-suggestions" aria-label="Contextos más usados">
-                {mostUsedContexts.map((contextText) => (
-                  <button
-                    key={contextText}
-                    type="button"
-                    className="entries-context-chip"
-                    onClick={() => setCommonForm((prev) => ({ ...prev, marketContext: contextText }))}
-                  >
-                    {contextText}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+      <label>
+        <EntryFieldLabel text="Estado" help="Define si la entrada queda planificada, abierta o completada al registrarla." />
+        <select
+          value={commonForm.status}
+          onChange={(event) => {
+            const nextStatus = event.target.value as MarketEntryStatus;
+            setCommonForm((prev) => ({
+              ...prev,
+              status: nextStatus,
+              contextSource: nextStatus === 'no_entry' ? 'news' : 'free_text',
+              newsArticleId: nextStatus === 'no_entry' ? prev.newsArticleId : '',
+              newsImpact: nextStatus === 'no_entry' ? prev.newsImpact : '',
+              marketContext: nextStatus === 'no_entry' ? prev.marketContext : '',
+            }));
+          }}
+        >
+          <option value="closed">Completada</option>
+          <option value="no_entry">Sin entrada</option>
+        </select>
+      </label>
 
       <label>
-        <EntryFieldLabel text="Setup/Estrategia" help="Patrón o estrategia operativa concreta que define la ejecución." />
-        <input
+        <EntryFieldLabel text="Setup/Estrategia" help="Selecciona la estrategia de una lista fija para estandarizar el registro." />
+        <select
           value={commonForm.setup}
           onChange={(event) => setCommonForm((prev) => ({ ...prev, setup: event.target.value }))}
           required={!isNoEntryOnCreate}
           disabled={isNoEntryOnCreate}
-        />
+        >
+          <option value="">Selecciona setup</option>
+          {SETUP_OPTIONS.map((setupOption) => (
+            <option key={setupOption} value={setupOption}>
+              {setupOption === 'CONTINUACION' ? 'Continuacion' : setupOption === 'OTRA' ? 'Otra' : setupOption}
+            </option>
+          ))}
+        </select>
       </label>
 
       <label>
@@ -758,50 +786,98 @@ function MarketEntriesCreateForm({
         </select>
       </label>
 
-      <label>
-        <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora real (pasada) o prevista (futura) en la que se ejecuta/ejecutará la operación." />
-        <input
-          type="datetime-local"
-          value={commonForm.plannedAt}
-          onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
-          inputMode="none"
-          onFocus={openDatePicker}
-          onClick={openDatePicker}
-          onKeyDown={preventManualDateTyping}
-          onPaste={preventManualDatePasteOrDrop}
-          onDrop={preventManualDatePasteOrDrop}
-          required
-        />
-      </label>
+      <AccordionSection open={isNoEntryOnCreate} className="entries-form-span-2">
+        <div className="entries-context-editor">
+          <div className="entries-context-panel entries-accordion-surface">
+            <label>
+              <EntryFieldLabel text="Noticia" help="Selecciona una noticia existente para enlazarla con esta entrada sin operar." />
+              <select
+                value={commonForm.newsArticleId}
+                onChange={(event) => {
+                  const selectedId = event.target.value;
+                  const selectedNews = filteredNewsArticles.find((item) => item.id === selectedId);
+                  setCommonForm((prev) => ({
+                    ...prev,
+                    contextSource: 'news',
+                    newsArticleId: selectedId,
+                    marketContext: selectedNews?.title ?? prev.marketContext,
+                  }));
+                }}
+                required={isNoEntryOnCreate}
+              >
+                <option value="">Selecciona noticia</option>
+                {filteredNewsArticles.map((article) => (
+                  <option key={article.id} value={article.id}>{article.title}</option>
+                ))}
+              </select>
+            </label>
 
-      <label>
-        <EntryFieldLabel text="Estado" help="Define si la entrada queda planificada, abierta o completada al registrarla." />
-        <select value={commonForm.status} onChange={(event) => setCommonForm((prev) => ({ ...prev, status: event.target.value as MarketEntryStatus }))}>
-          <option value="closed">Completada</option>
-          <option value="no_entry">Sin entrada</option>
-        </select>
-      </label>
+            <label>
+              <EntryFieldLabel text="Impacto" help="Clasifica la noticia según su impacto esperado en la operación: alto, medio o bajo." />
+              <select
+                value={commonForm.newsImpact}
+                onChange={(event) => setCommonForm((prev) => ({ ...prev, contextSource: 'news', newsImpact: event.target.value as MarketNewsImpact }))}
+                required={isNoEntryOnCreate}
+              >
+                <option value="">Selecciona impacto</option>
+                <option value="high">Alto</option>
+                <option value="medium">Medio</option>
+                <option value="low">Bajo</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </AccordionSection>
 
-      {isCompletedOnCreate && (
-        <>
-          <label>
-            <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
+      <div className="entries-dates-row entries-form-span-2">
+        <label className="entries-dates-field">
+          <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora real (pasada) o prevista (futura) en la que se ejecuta/ejecutará la operación." />
+          <input
+            type="datetime-local"
+            value={commonForm.plannedAt}
+            onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+            inputMode="none"
+            onFocus={openDatePicker}
+            onClick={openDatePicker}
+            onKeyDown={preventManualDateTyping}
+            onPaste={preventManualDatePasteOrDrop}
+            onDrop={preventManualDatePasteOrDrop}
+            required
+          />
+        </label>
+
+        <AccordionSection open={isCompletedOnCreate}>
+          <label className="entries-dates-field">
+            <EntryFieldLabel text="Fecha de cierre" help="Se sincroniza con la fecha de ejecucion para registros en estado completada." />
             <input
-              type="number"
-              step="0.1"
-              value={commonForm.resultR}
-              onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
-              placeholder="0.0"
-              required
+              type="datetime-local"
+              value={commonForm.plannedAt}
+              inputMode="none"
+              onFocus={openDatePicker}
+              onClick={openDatePicker}
+              onKeyDown={preventManualDateTyping}
+              onPaste={preventManualDatePasteOrDrop}
+              onDrop={preventManualDatePasteOrDrop}
+              readOnly
+              aria-readonly="true"
             />
           </label>
+        </AccordionSection>
+      </div>
 
-          <label>
-            <EntryFieldLabel text="Resultado cuenta estimado" help="Se obtiene al multiplicar el Riesgo por cuenta por el Resultado R cuando guardes la entrada." />
-            <input value="Se calcula por cuenta al guardar" disabled />
-          </label>
-        </>
-      )}
+      <AccordionSection open={isCompletedOnCreate}>
+        <label>
+          <EntryFieldLabel text="Resultado R" help="Usa hasta dos decimales. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
+          <input
+            type="text"
+            inputMode="decimal"
+            value={commonForm.resultR}
+            onChange={(event) => setCommonForm((prev) => ({ ...prev, resultR: event.target.value }))}
+            placeholder="0.00"
+            required={isCompletedOnCreate}
+          />
+        </label>
+      </AccordionSection>
 
       <label className="entries-form-span-2">
         <EntryFieldLabel text="Link de la operación" help="Enlace a TradingView, broker o evidencia visual para consultar rápidamente la operación." />
@@ -851,11 +927,14 @@ function MarketEntriesCreateForm({
               </select>
 
               <input
-                type="number"
-                step="0.01"
-                min="0"
+                type="text"
+                inputMode="decimal"
                 value={row.riskAmount}
-                onChange={(event) => updateAccountRow(index, { riskAmount: event.target.value })}
+                onFocus={(event) => updateAccountRow(index, { riskAmount: toEditableCurrencyAmount(event.target.value) })}
+                onChange={(event) => updateAccountRow(index, { riskAmount: sanitizeCurrencyAmountDraft(event.target.value) })}
+                onBlur={(event) => updateAccountRow(index, { riskAmount: formatCurrencyAmountInput(event.target.value) })}
+                placeholder="$0.00"
+                disabled={isNoEntryOnCreate}
                 required
               />
 
@@ -883,6 +962,7 @@ function MarketEntriesCreateForm({
 
 interface MarketEntriesEditFormProps {
   accounts: TradingAccount[];
+  filteredNewsArticles: NewsArticle[];
   editingEntry: MarketEntry | null;
   editForm: EditForm;
   setEditForm: Dispatch<SetStateAction<EditForm>>;
@@ -896,6 +976,7 @@ interface MarketEntriesEditFormProps {
 
 function MarketEntriesEditForm({
   accounts,
+  filteredNewsArticles,
   editingEntry,
   editForm,
   setEditForm,
@@ -906,13 +987,8 @@ function MarketEntriesEditForm({
   closeModal,
   handleEditSubmit,
 }: Readonly<MarketEntriesEditFormProps>) {
-  const calculatedEditResultR = editForm.status === 'closed'
-    ? normalizeResultR(toNumber(editForm.resultR))
-    : null;
-  const calculatedEditAccountResult = editForm.status === 'closed'
-    ? calculateAccountResultAmount(toNumber(editForm.riskAmount), calculatedEditResultR)
-    : null;
-  const showEntryReference = Boolean(editingEntry && editingEntry.status !== 'no_entry');
+  const isNoEntryOnEdit = editForm.status === 'no_entry';
+  const isCompletedOnEdit = editForm.status === 'closed';
   const canCorrectNoEntry = editingEntry?.status === 'no_entry';
 
   return (
@@ -945,100 +1021,161 @@ function MarketEntriesEditForm({
       </label>
 
       <label>
-        <EntryFieldLabel text="Simbolo" help="Activo asociado a la entrada; en edición se muestra como referencia." />
+        <EntryFieldLabel text="Simbolo" help="Par de mercado o activo sobre el que se registró la entrada." />
         <input value={editingEntry ? resolveEntrySymbol(editingEntry) : ''} disabled />
       </label>
 
-      {showEntryReference && editingEntry && (
-        <section className="entries-reference-panel entries-form-span-2" aria-label="Parametros de entrada en solo lectura">
-          <h3>Referencia de entrada (solo lectura)</h3>
-          <div className="entries-reference-grid">
-            <label>
-              <EntryFieldLabel text="Direccion" help="Dirección original de la operación registrada." />
-              <input value={directionLabel(editingEntry.direction)} disabled />
-            </label>
-            <label>
-              <EntryFieldLabel text="Protocolo vela" help="Clasificación técnica guardada para esta entrada." />
-              <input value={candleProtocolLabel(editingEntry.candleProtocol)} disabled />
-            </label>
-            <label>
-              <EntryFieldLabel text="Impacto noticia" help="Impacto asociado a la noticia enlazada, cuando aplica." />
-              <input value={newsImpactLabel(editingEntry.newsImpact)} disabled />
-            </label>
-          </div>
-        </section>
-      )}
-
-      {canCorrectNoEntry && (
-        <label>
-          <EntryFieldLabel text="Direccion" help="Selecciona la dirección correcta si esta entrada se genero por error como sin entrada." />
-          <select
-            aria-label="Direccion"
-            value={editForm.direction}
-            onChange={(event) => setEditForm((prev) => ({ ...prev, direction: event.target.value as MarketEntryDirection | '' }))}
-            required
-          >
-            <option value="">Selecciona direccion</option>
-            <option value="buy">BUY</option>
-            <option value="sell">SELL</option>
-          </select>
-        </label>
-      )}
+      <label>
+        <EntryFieldLabel text="Direccion" help="Sentido de la operación: BUY para largos o SELL para cortos." />
+        <select
+          aria-label="Direccion"
+          value={editForm.direction}
+          onChange={(event) => setEditForm((prev) => ({ ...prev, direction: event.target.value as MarketEntryDirection | '' }))}
+          disabled={isNoEntryOnEdit}
+          required={!isNoEntryOnEdit || canCorrectNoEntry}
+        >
+          <option value="">Selecciona direccion</option>
+          <option value="buy">BUY</option>
+          <option value="sell">SELL</option>
+        </select>
+      </label>
 
       <label>
         <EntryFieldLabel text="Estado" help="Fase operativa actual de la entrada para control del ciclo." />
-        <select aria-label="Estado" value={editForm.status} onChange={(event) => setEditForm((prev) => ({ ...prev, status: event.target.value as MarketEntryStatus }))}>
+        <select
+          aria-label="Estado"
+          value={editForm.status}
+          onChange={(event) => {
+            const nextStatus = event.target.value as MarketEntryStatus;
+            setEditForm((prev) => ({
+              ...prev,
+              status: nextStatus,
+              contextSource: nextStatus === 'no_entry' ? 'news' : 'free_text',
+              newsArticleId: nextStatus === 'no_entry' ? prev.newsArticleId : '',
+              newsImpact: nextStatus === 'no_entry' ? prev.newsImpact : '',
+              marketContext: nextStatus === 'no_entry' ? prev.marketContext : '',
+            }));
+          }}
+        >
           <option value="closed">Completada</option>
           <option value="no_entry">Sin entrada</option>
         </select>
       </label>
 
       <label>
-        <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora de ejecucion usadas por el dashboard y reportes temporales." />
+        <EntryFieldLabel text="Setup/Estrategia" help="Selección de estrategia registrada para esta entrada." />
+        <input value={editingEntry?.setup ?? ''} disabled />
+      </label>
+
+      <label>
+        <EntryFieldLabel text="Sesion" help="Bloque horario de mercado registrado para esta operación." />
+        <input value={editingEntry?.session ?? ''} disabled />
+      </label>
+
+      <label>
+        <EntryFieldLabel text="Protocolo vela envolvente" help="Clasificación técnica registrada como OB, FVG o NO." />
+        <input value={candleProtocolLabel(editingEntry?.candleProtocol ?? null)} disabled />
+      </label>
+
+      <AccordionSection open={isNoEntryOnEdit} className="entries-form-span-2">
+        <div className="entries-context-editor">
+          <div className="entries-context-panel entries-accordion-surface">
+            <label>
+              <EntryFieldLabel text="Noticia" help="Selecciona una noticia existente para enlazarla con esta entrada sin operar." />
+              <select
+                value={editForm.newsArticleId}
+                onChange={(event) => {
+                  const selectedId = event.target.value;
+                  const selectedNews = filteredNewsArticles.find((item) => item.id === selectedId);
+                  setEditForm((prev) => ({
+                    ...prev,
+                    contextSource: 'news',
+                    newsArticleId: selectedId,
+                    marketContext: selectedNews?.title ?? prev.marketContext,
+                  }));
+                }}
+                required={isNoEntryOnEdit}
+              >
+                <option value="">Selecciona noticia</option>
+                {filteredNewsArticles.map((article) => (
+                  <option key={article.id} value={article.id}>{article.title}</option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              <EntryFieldLabel text="Impacto" help="Clasifica la noticia según su impacto esperado en la operación: alto, medio o bajo." />
+              <select
+                value={editForm.newsImpact}
+                onChange={(event) => setEditForm((prev) => ({ ...prev, contextSource: 'news', newsImpact: event.target.value as MarketNewsImpact }))}
+                required={isNoEntryOnEdit}
+              >
+                <option value="">Selecciona impacto</option>
+                <option value="high">Alto</option>
+                <option value="medium">Medio</option>
+                <option value="low">Bajo</option>
+              </select>
+            </label>
+          </div>
+        </div>
+      </AccordionSection>
+
+      <div className="entries-dates-row entries-form-span-2">
+        <label className="entries-dates-field">
+          <EntryFieldLabel text="Fecha de ejecucion" help="Fecha y hora de ejecucion usadas por el dashboard y reportes temporales." />
+          <input
+            type="datetime-local"
+            value={editForm.plannedAt}
+            onChange={(event) => setEditForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+            inputMode="none"
+            onFocus={openDatePicker}
+            onClick={openDatePicker}
+            onKeyDown={preventManualDateTyping}
+            onPaste={preventManualDatePasteOrDrop}
+            onDrop={preventManualDatePasteOrDrop}
+            required
+          />
+        </label>
+
+        <AccordionSection open={isCompletedOnEdit}>
+          <label className="entries-dates-field">
+            <EntryFieldLabel text="Fecha de cierre" help="Usa la misma fecha/hora de ejecucion para registrar el cierre en estado completada." />
+            <input
+              type="datetime-local"
+              value={editForm.plannedAt}
+              inputMode="none"
+              onFocus={openDatePicker}
+              onClick={openDatePicker}
+              onKeyDown={preventManualDateTyping}
+              onPaste={preventManualDatePasteOrDrop}
+              onDrop={preventManualDatePasteOrDrop}
+              readOnly
+              aria-readonly="true"
+            />
+          </label>
+        </AccordionSection>
+      </div>
+
+      <label>
+        <EntryFieldLabel text="Riesgo por cuenta (USD)" help="Monto en USD base para calcular el resultado monetario de la operación." />
         <input
-          type="datetime-local"
-          value={editForm.plannedAt}
-          onChange={(event) => setEditForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
-          inputMode="none"
-          onFocus={openDatePicker}
-          onClick={openDatePicker}
-          onKeyDown={preventManualDateTyping}
-          onPaste={preventManualDatePasteOrDrop}
-          onDrop={preventManualDatePasteOrDrop}
+          type="text"
+          inputMode="decimal"
+          value={editForm.riskAmount}
+          onFocus={(event) => setEditForm((prev) => ({ ...prev, riskAmount: toEditableCurrencyAmount(event.target.value) }))}
+          onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: sanitizeCurrencyAmountDraft(event.target.value) }))}
+          onBlur={(event) => setEditForm((prev) => ({ ...prev, riskAmount: formatCurrencyAmountInput(event.target.value) }))}
+          placeholder="$0.00"
           required
         />
       </label>
 
-      {editForm.status === 'no_entry' && (
-        <label className="entries-form-span-2">
-          <EntryFieldLabel text="Contexto/Noticia" help="Usa este mismo campo como motivo de la entrada sin ejecución." />
-          <input
-            value={editForm.marketContext}
-            onChange={(event) => setEditForm((prev) => ({ ...prev, marketContext: event.target.value }))}
-            placeholder="CPI, FOMC, PRE market..."
-            required
-          />
+      <AccordionSection open={isCompletedOnEdit}>
+        <label>
+          <EntryFieldLabel text="Resultado R" help="Usa hasta dos decimales. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
+          <input type="text" inputMode="decimal" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required={isCompletedOnEdit} />
         </label>
-      )}
-
-      <label>
-        <EntryFieldLabel text="Riesgo por cuenta (USD)" help="Monto en USD base para calcular el resultado monetario de la operación." />
-        <input type="number" step="0.01" min="0" value={editForm.riskAmount} onChange={(event) => setEditForm((prev) => ({ ...prev, riskAmount: event.target.value }))} required />
-      </label>
-
-      {editForm.status === 'closed' && (
-        <>
-          <label>
-            <EntryFieldLabel text="Resultado R" help="Usa un unico decimal. Resultado tecnico: -R SL, 0 sin avance, 1 break tecnico 1:1, >1 TP extendido. Resultado financiero: >0 ganancia, 0 breakeven, <0 perdida." />
-            <input type="number" step="0.1" value={editForm.resultR} onChange={(event) => setEditForm((prev) => ({ ...prev, resultR: event.target.value }))} required />
-          </label>
-
-          <label>
-            <EntryFieldLabel text="Resultado cuenta calculado" help="Resultado monetario por cuenta, calculado como Riesgo de cuenta x Resultado R." />
-            <input value={calculatedEditAccountResult === null ? 'No calculable' : `$${calculatedEditAccountResult.toFixed(2)}`} disabled />
-          </label>
-        </>
-      )}
+      </AccordionSection>
 
       <label className="entries-form-span-2">
         <EntryFieldLabel text="Link de la operación" help="Enlace operativo o evidencia visual relacionada con este registro." />
@@ -1077,8 +1214,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
-  const [mostUsedContexts, setMostUsedContexts] = useState<string[]>([]);
-  const [newsQuery, setNewsQuery] = useState('');
 
   const [modalMode, setModalMode] = useState<ModalMode | null>(null);
   const [editingEntry, setEditingEntry] = useState<MarketEntry | null>(null);
@@ -1096,8 +1231,12 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
   const isCompletedOnCreate = commonForm.status === 'closed';
   const isNoEntryOnCreate = commonForm.status === 'no_entry';
-  const isNewsContextMode = commonForm.contextSource === 'news';
   const pendingEditStorageKey = 'inversiones_pending_entry_edit_id';
+
+  function notifyEntriesChanged(action: 'create' | 'update' | 'delete') {
+    if (typeof window === 'undefined') return;
+    window.dispatchEvent(new CustomEvent('inversiones:entries-changed', { detail: { action } }));
+  }
 
   function openPendingEntryById(entryId: string): boolean {
     const pendingEntry = entries.find((entry) => entry.id === entryId);
@@ -1113,17 +1252,15 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
   async function loadData() {
     try {
-      const [loadedAccounts, loadedEntries, loadedNews, usedContexts] = await Promise.all([
+      const [loadedAccounts, loadedEntries, loadedNews] = await Promise.all([
         listTradingAccounts(),
         listMarketEntriesByUser(userEmail),
         listUserNews(userEmail),
-        listMostUsedMarketContexts(userEmail),
       ]);
 
       setAccounts(loadedAccounts);
       setEntries(loadedEntries);
       setNewsArticles(loadedNews);
-      setMostUsedContexts(usedContexts);
 
       if (perAccountRows.length === 1 && !perAccountRows[0].accountId) {
         setPerAccountRows(buildDefaultAccountRows(loadedAccounts));
@@ -1139,16 +1276,38 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     void loadData();
   }, [userEmail]);
 
-  const filteredNewsArticles = useMemo(() => {
-    const term = newsQuery.trim().toLowerCase();
-    if (!term) return newsArticles;
+  useEffect(() => {
+    let active = true;
 
-    return newsArticles.filter((article) =>
-      article.title.toLowerCase().includes(term) ||
-      article.summary.toLowerCase().includes(term) ||
-      article.category.toLowerCase().includes(term)
-    );
-  }, [newsArticles, newsQuery]);
+    async function reloadAccountsForEntries() {
+      try {
+        const loadedAccounts = await listTradingAccounts();
+        if (!active) return;
+        setAccounts(loadedAccounts);
+        setPerAccountRows((prev) => {
+          if (prev.length === 1 && !prev[0].accountId) {
+            return buildDefaultAccountRows(loadedAccounts);
+          }
+          return prev;
+        });
+      } catch {
+        // ignore account refresh errors triggered by cross-module events
+      }
+    }
+
+    function handleAccountsChanged() {
+      void reloadAccountsForEntries();
+    }
+
+    window.addEventListener('inversiones:accounts-changed', handleAccountsChanged as EventListener);
+
+    return () => {
+      active = false;
+      window.removeEventListener('inversiones:accounts-changed', handleAccountsChanged as EventListener);
+    };
+  }, []);
+
+  const filteredNewsArticles = useMemo(() => newsArticles, [newsArticles]);
 
   const filteredEntries = useMemo(() => {
     const terms = query
@@ -1252,7 +1411,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setPerAccountRows(buildDefaultAccountRows(accounts));
     setEditForm(defaultEditForm);
     setApplyCommonToGroup(false);
-    setNewsQuery('');
     setError('');
     setSuccess('');
   }
@@ -1263,12 +1421,15 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setEditForm({
       status: normalizeEditableEntryStatus(entry.status),
       marketContext: entry.marketContext,
+      contextSource: entry.contextSource,
+      newsArticleId: entry.newsArticleId ?? '',
+      newsImpact: entry.newsImpact ?? '',
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
       accountId: entry.accountId,
       accountName: entry.accountName,
       direction: entry.direction ?? '',
-      riskAmount: String(entry.riskAmount),
-      resultR: entry.resultR === null ? '0.0' : Number(entry.resultR).toFixed(1),
+      riskAmount: formatCurrencyAmountInput(String(entry.riskAmount)),
+      resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
       noEntryReason: entry.noEntryReason ?? '',
       note: entry.note,
@@ -1375,7 +1536,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   }, [modalMode]);
 
   function addAccountRow() {
-    setPerAccountRows((prev) => [...prev, createAccountRow()]);
+    setPerAccountRows((prev) => [...prev, createAccountRow('', isNoEntryOnCreate ? '$0.00' : '')]);
   }
 
   function removeAccountRow(index: number) {
@@ -1388,6 +1549,14 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   function updateAccountRow(index: number, patch: Partial<AccountRowForm>) {
     setPerAccountRows((prev) => prev.map((row, rowIndex) => (rowIndex === index ? { ...row, ...patch } : row)));
   }
+
+  useEffect(() => {
+    if (!isNoEntryOnCreate) {
+      return;
+    }
+
+    setPerAccountRows((prev) => prev.map((row) => ({ ...row, riskAmount: '$0.00' })));
+  }, [isNoEntryOnCreate]);
 
   async function handleCreateSubmit(event: FormEvent) {
     event.preventDefault();
@@ -1403,8 +1572,8 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       const created = await createMarketEntriesForAccounts(userEmail, createInput);
 
       setEntries(await listMarketEntriesByUser(userEmail));
-      setMostUsedContexts(await listMostUsedMarketContexts(userEmail));
       setSuccess(`Entrada creada en ${created.length} cuenta(s).`);
+      notifyEntriesChanged('create');
 
       void logAuditActivity('market_entries.create_batch', {
         module: 'market_entries',
@@ -1455,11 +1624,14 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         marketContext: editForm.marketContext,
+        contextSource: editForm.status === 'no_entry' ? 'news' : 'free_text',
+        newsArticleId: editForm.status === 'no_entry' ? editForm.newsArticleId : null,
+        newsImpact: editForm.status === 'no_entry' ? (editForm.newsImpact || null) : null,
         plannedAt: editForm.plannedAt,
         accountId: editForm.accountId || editingEntry.accountId,
         accountName: editForm.accountName || editingEntry.accountName,
         direction: editForm.status === 'no_entry' ? undefined : (editForm.direction || undefined),
-        riskAmount: toNumber(editForm.riskAmount),
+        riskAmount: parseCurrencyAmount(editForm.riskAmount),
         investmentPercent: 1,
         resultR: editForm.status === 'closed' ? calculatedResultR : toNumberOrNull(editForm.resultR),
         operationLink: editForm.operationLink,
@@ -1475,6 +1647,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
           ? `Cambios comunes aplicados a ${result.affectedEntries} registro(s) del grupo. Riesgo y % quedaron por cuenta.`
           : `Entrada actualizada para ${result.updatedEntry.accountName}.`
       );
+      notifyEntriesChanged('update');
 
       void logAuditActivity('market_entries.update', {
         module: 'market_entries',
@@ -1507,6 +1680,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       await deleteMarketEntryById(userEmail, entry.id);
       setEntries(await listMarketEntriesByUser(userEmail));
       setSuccess('Entrada eliminada.');
+      notifyEntriesChanged('delete');
 
       void logAuditActivity('market_entries.delete', {
         module: 'market_entries',
@@ -1549,11 +1723,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 setCommonForm={setCommonForm}
                 isNoEntryOnCreate={isNoEntryOnCreate}
                 isCompletedOnCreate={isCompletedOnCreate}
-                isNewsContextMode={isNewsContextMode}
-                newsQuery={newsQuery}
-                setNewsQuery={setNewsQuery}
                 filteredNewsArticles={filteredNewsArticles}
-                mostUsedContexts={mostUsedContexts}
                 perAccountRows={perAccountRows}
                 updateAccountRow={updateAccountRow}
                 accounts={accounts}
@@ -1568,6 +1738,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
             ) : (
               <MarketEntriesEditForm
                 accounts={accounts}
+                filteredNewsArticles={filteredNewsArticles}
                 editingEntry={editingEntry}
                 editForm={editForm}
                 setEditForm={setEditForm}

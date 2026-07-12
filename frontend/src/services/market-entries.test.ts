@@ -265,11 +265,13 @@ describe('market-entries service', () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
+          symbol: 'EURUSD',
           marketContext: ' ',
           contextSource: 'free_text',
           note: '',
           plannedAt: '2026-06-29T10:00',
-          status: 'planned',
+          status: 'no_entry',
+          noEntryReason: 'Sin setup',
         },
         perAccount: [],
       } as never)
@@ -280,15 +282,36 @@ describe('market-entries service', () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
+          symbol: 'EURUSD',
           marketContext: 'CPI',
           contextSource: 'news',
           note: '',
           plannedAt: '2026-06-29T10:00',
-          status: 'planned',
+          status: 'no_entry',
+          noEntryReason: 'Sin setup',
         },
         perAccount: [],
       } as never)
     ).rejects.toThrow('Debes seleccionar una noticia registrada.');
+  });
+
+  it('valida create no_entry: simbolo obligatorio', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: '',
+          marketContext: 'CPI',
+          contextSource: 'news',
+          newsArticleId: 'news-1',
+          newsImpact: 'high',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'no_entry',
+          noEntryReason: 'Sin setup',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 0, investmentPercent: 1 }],
+      } as never)
+    ).rejects.toThrow('Debes seleccionar un símbolo.');
   });
 
   it('create no_entry inserta una fila por cuenta asociada', async () => {
@@ -300,7 +323,7 @@ describe('market-entries service', () => {
           group_id: 'group-1',
           account_id: 'acc-1',
           account_name: 'Cuenta 1',
-          symbol: '',
+          symbol: 'EURUSD',
           market_context: 'CPI',
           context_source: 'free_text',
           news_article_id: null,
@@ -328,7 +351,7 @@ describe('market-entries service', () => {
 
     const created = await createMarketEntriesForAccounts('user@example.com', {
       common: {
-        symbol: '',
+        symbol: 'EURUSD',
         marketContext: 'CPI',
         contextSource: 'free_text',
         setup: '',
@@ -360,7 +383,7 @@ describe('market-entries service', () => {
           group_id: 'group-1',
           account_id: 'acc-1',
           account_name: 'Cuenta 1',
-          symbol: '',
+          symbol: 'EURUSD',
           market_context: 'CPI',
           context_source: 'free_text',
           news_article_id: null,
@@ -389,7 +412,7 @@ describe('market-entries service', () => {
 
     await createMarketEntriesForAccounts('user@example.com', {
       common: {
-        symbol: undefined,
+        symbol: 'EURUSD',
         marketContext: 'CPI',
         contextSource: 'free_text',
         setup: undefined,
@@ -407,7 +430,7 @@ describe('market-entries service', () => {
     } as never);
 
     const payload = mockInsert.mock.calls[0][0] as Array<Record<string, unknown>>;
-    expect(payload[0].symbol).toBe('');
+    expect(payload[0].symbol).toBe('EURUSD');
     expect(payload[0].setup).toBe('');
     expect(payload[0].session).toBe('');
     expect(payload[0].account_id).toBe('acc-1');
@@ -964,7 +987,7 @@ describe('market-entries service', () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
-          symbol: '',
+          symbol: 'EURUSD',
           marketContext: 'CPI',
           contextSource: 'free_text',
           note: '',
@@ -981,7 +1004,7 @@ describe('market-entries service', () => {
     await expect(
       createMarketEntriesForAccounts('user@example.com', {
         common: {
-          symbol: '',
+          symbol: 'EURUSD',
           marketContext: 'CPI',
           contextSource: 'free_text',
           note: '',
@@ -1113,7 +1136,7 @@ describe('market-entries service', () => {
     expect(result.updatedEntry.noEntryReason).toBeNull();
   });
 
-  it('update no_entry a closed conserva riesgo y resultado R', async () => {
+  it('update no_entry a closed conserva riesgo y resultado R con dos decimales', async () => {
     supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
 
     const mockSingle = vi.fn().mockResolvedValueOnce({
@@ -1133,7 +1156,7 @@ describe('market-entries service', () => {
         id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
         symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
         setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: null, stop_loss: null, take_profit: null,
-        risk_amount: 100, investment_percent: 1, result_r: 1.2, no_entry_reason: null, note: 'ok',
+        risk_amount: 100, investment_percent: 1, result_r: 2.55, no_entry_reason: null, note: 'ok',
         status: 'closed', planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T11:00:00.000Z',
       }],
       error: null,
@@ -1153,12 +1176,12 @@ describe('market-entries service', () => {
       direction: 'buy',
       riskAmount: 100,
       investmentPercent: 1,
-      resultR: 1.2,
+      resultR: 2.55,
       note: 'ok',
     });
 
     expect(result.updatedEntry.status).toBe('closed');
-    expect(result.updatedEntry.resultR).toBe(1.2);
+    expect(result.updatedEntry.resultR).toBe(2.55);
   });
 
   it('update con applyCommonToGroup lanza si falla update grupal', async () => {

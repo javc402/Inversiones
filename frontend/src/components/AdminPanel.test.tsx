@@ -307,6 +307,34 @@ describe('AdminPanel Component', () => {
     });
   });
 
+  it('should allow removing admin role from self user', async () => {
+    vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce([
+      {
+        id: '1',
+        user_id: 'self-id',
+        role_id: 'role-1',
+        status: 'active',
+        email: 'self@example.com',
+        created_at: '2026-06-23',
+        updated_at: '2026-06-23',
+        roles: { name: 'admin' as const },
+      },
+    ] as any);
+    vi.mocked(rolesService.removeAdminRole).mockResolvedValueOnce(undefined);
+
+    render(<AdminPanel />);
+
+    expect(await screen.findByRole('heading', { name: 'self@example.com' })).toBeInTheDocument();
+    const removeButton = screen.getByRole('button', { name: 'Quitar admin' });
+    expect(removeButton).toBeEnabled();
+
+    fireEvent.click(removeButton);
+
+    await waitFor(() => {
+      expect(rolesService.removeAdminRole).toHaveBeenCalledWith('self-id');
+    });
+  });
+
   it('should show fallback error when assign admin fails', async () => {
     const mockUsers = [
       {

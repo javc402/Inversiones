@@ -1,7 +1,8 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import AccountsModule from '@components/AccountsModule';
 import * as accountsService from '@services/accounts';
+import * as marketEntriesService from '@services/market-entries';
 
 const accountServiceMocks = vi.hoisted(() => ({
   listTradingAccounts: vi.fn(),
@@ -9,6 +10,10 @@ const accountServiceMocks = vi.hoisted(() => ({
   updateTradingAccount: vi.fn(),
   toggleTradingAccountStatus: vi.fn(),
   toggleTradingAccountFavorite: vi.fn(),
+}));
+
+const marketEntriesServiceMocks = vi.hoisted(() => ({
+  listMarketEntriesByUser: vi.fn(),
 }));
 
 vi.mock('@services/accounts', () => ({
@@ -19,9 +24,14 @@ vi.mock('@services/accounts', () => ({
   toggleTradingAccountFavorite: accountServiceMocks.toggleTradingAccountFavorite,
 }));
 
+vi.mock('@services/market-entries', () => ({
+  listMarketEntriesByUser: marketEntriesServiceMocks.listMarketEntriesByUser,
+}));
+
 describe('AccountsModule', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([]);
   });
 
   it('renderiza estado vacio cuando no hay cuentas', async () => {
@@ -70,6 +80,139 @@ describe('AccountsModule', () => {
     expect(screen.getByText('IC Markets')).toBeInTheDocument();
   });
 
+  it('llena resumen operativo con entradas cerradas por cuenta', async () => {
+    const nowIso = new Date().toISOString();
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        user_id: 'user-1',
+        name: 'Cuenta Principal',
+        alias: 'CP',
+        broker_name: 'IC Markets',
+        account_type: 'real',
+        platform: 'mt5',
+        base_currency: 'USD',
+        leverage: '1:100',
+        initial_balance: 10000,
+        initial_equity: 10000,
+        opened_at: '2026-06-23',
+        status: 'active',
+        risk_per_trade_pct: 1,
+        max_daily_risk_pct: 3,
+        max_drawdown_pct: 8,
+        funding_firm: null,
+        challenge_phase: null,
+        profit_target_pct: null,
+        daily_loss_limit_pct: null,
+        max_loss_limit_pct: null,
+        payout_cycle: null,
+        notes: null,
+        is_favorite: false,
+        created_at: nowIso,
+        updated_at: nowIso,
+      },
+    ]);
+
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'g-1',
+        userEmail: 'user@test.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Principal',
+        symbol: 'EURUSD',
+        symbolDetail: null,
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        newsImpact: null,
+        setup: 'M1',
+        session: 'NEW YORK',
+        candleProtocol: 'ob',
+        direction: 'buy',
+        operationLink: null,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: -1,
+        noEntryReason: null,
+        note: '',
+        status: 'closed',
+        plannedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      {
+        id: 'entry-2',
+        groupId: 'g-1',
+        userEmail: 'user@test.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Principal',
+        symbol: 'EURUSD',
+        symbolDetail: null,
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        newsImpact: null,
+        setup: 'M3',
+        session: 'NEW YORK',
+        candleProtocol: 'ob',
+        direction: 'buy',
+        operationLink: null,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 2,
+        noEntryReason: null,
+        note: '',
+        status: 'closed',
+        plannedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+      {
+        id: 'entry-3',
+        groupId: 'g-1',
+        userEmail: 'user@test.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Principal',
+        symbol: 'EURUSD',
+        symbolDetail: null,
+        marketContext: 'Sin setup',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        newsImpact: null,
+        setup: 'M1',
+        session: 'NEW YORK',
+        candleProtocol: 'ob',
+        direction: 'buy',
+        operationLink: null,
+        riskAmount: 0,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: 'Sin operar',
+        note: '',
+        status: 'no_entry',
+        plannedAt: nowIso,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      },
+    ] as never);
+
+    render(<AccountsModule />);
+
+    const table = await screen.findByRole('table', { name: 'Resumen de operaciones por periodo' });
+    const headers = within(table).getAllByRole('columnheader');
+    expect(headers.map((header) => header.textContent?.trim())).toEqual(['Tiempo', 'Ops', 'TP (+)', 'SL', 'Bk', 'SO']);
+
+    const totalRow = within(table).getByRole('row', { name: /Total/i });
+    const cells = within(totalRow).getAllByRole('cell');
+
+    expect(cells[0]).toHaveTextContent('3');
+    expect(cells[1]).toHaveTextContent('1');
+    expect(cells[2]).toHaveTextContent('1');
+    expect(cells[3]).toHaveTextContent('0');
+    expect(cells[4]).toHaveTextContent('1');
+  });
+
   it('abre popup de crear cuenta', async () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([]);
 
@@ -90,16 +233,14 @@ describe('AccountsModule', () => {
     render(<AccountsModule />);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
 
-    const textboxes = screen.getAllByRole('textbox');
-    const nameInput = textboxes[0];
-    const aliasInput = textboxes[1];
-    const brokerInput = textboxes[2];
-    const numericInputs = screen.getAllByRole('spinbutton') as HTMLInputElement[];
-    const balanceInput = numericInputs[0];
+    const textInputs = within(dialog).getAllByRole('textbox');
+    const nameInput = textInputs[0];
+    const brokerInput = textInputs[1];
+    const balanceInput = within(dialog).getAllByRole('spinbutton')[0];
 
     fireEvent.change(nameInput, { target: { value: 'Cuenta Nueva' } });
-    fireEvent.change(aliasInput, { target: { value: 'CN' } });
     fireEvent.change(brokerInput, { target: { value: 'Broker X' } });
     fireEvent.change(balanceInput, { target: { value: '1200' } });
 
@@ -126,11 +267,12 @@ describe('AccountsModule', () => {
     render(<AccountsModule />);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
 
-    const textboxes = screen.getAllByRole('textbox');
-    fireEvent.change(textboxes[0], { target: { value: 'Cuenta Nueva' } });
-    fireEvent.change(textboxes[2], { target: { value: 'Broker X' } });
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '1200' } });
+    const textInputs = within(dialog).getAllByRole('textbox');
+    fireEvent.change(textInputs[0], { target: { value: 'Cuenta Nueva' } });
+    fireEvent.change(textInputs[1], { target: { value: 'Broker X' } });
+    fireEvent.change(within(dialog).getAllByRole('spinbutton')[0], { target: { value: '1200' } });
 
     const saveButton = screen.getByRole('button', { name: 'Guardar cuenta' });
     fireEvent.click(saveButton);
@@ -475,15 +617,18 @@ describe('AccountsModule', () => {
     render(<AccountsModule />);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
 
-    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Cuenta Fondeada' } });
-    fireEvent.change(screen.getAllByRole('textbox')[2], { target: { value: 'Firma X' } });
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '5000' } });
+    const textInputs = within(dialog).getAllByRole('textbox');
+    fireEvent.change(textInputs[0], { target: { value: 'Cuenta Fondeada' } });
+    fireEvent.change(textInputs[1], { target: { value: 'Firma X' } });
+    fireEvent.change(within(dialog).getAllByRole('spinbutton')[0], { target: { value: '5000' } });
 
-    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'funded' } });
+    fireEvent.change(within(dialog).getByDisplayValue('Real'), { target: { value: 'funded' } });
 
     expect(await screen.findByText('Reglas de fondeo')).toBeInTheDocument();
-    fireEvent.change(screen.getAllByRole('spinbutton')[4], { target: { value: '10' } });
+    const fundedSpinButtons = within(dialog).getAllByRole('spinbutton');
+    fireEvent.change(fundedSpinButtons[fundedSpinButtons.length - 1], { target: { value: '10' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cuenta' }));
 
@@ -499,9 +644,11 @@ describe('AccountsModule', () => {
     render(<AccountsModule />);
 
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
-    fireEvent.change(screen.getAllByRole('textbox')[0], { target: { value: 'Cuenta Error' } });
-    fireEvent.change(screen.getAllByRole('textbox')[2], { target: { value: 'Broker Error' } });
-    fireEvent.change(screen.getAllByRole('spinbutton')[0], { target: { value: '1000' } });
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
+    const textInputs = within(dialog).getAllByRole('textbox');
+    fireEvent.change(textInputs[0], { target: { value: 'Cuenta Error' } });
+    fireEvent.change(textInputs[1], { target: { value: 'Broker Error' } });
+    fireEvent.change(within(dialog).getAllByRole('spinbutton')[0], { target: { value: '1000' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cuenta' }));
 
@@ -512,7 +659,7 @@ describe('AccountsModule', () => {
   });
 
   it('muestra error cuando falla actualizar estado', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       {
         id: 'acc-1',
         user_id: 'user-1',
@@ -551,7 +698,7 @@ describe('AccountsModule', () => {
   });
 
   it('muestra error cuando falla actualizar favorito', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       {
         id: 'acc-1',
         user_id: 'user-1',
@@ -592,7 +739,7 @@ describe('AccountsModule', () => {
   });
 
   it('muestra y oculta popovers de ayuda', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       {
         id: 'acc-1',
         user_id: 'user-1',
@@ -646,7 +793,7 @@ describe('AccountsModule', () => {
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
 
     const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
-    const typeSelect = dialog.querySelector('select') as HTMLSelectElement;
+    const typeSelect = within(dialog).getByDisplayValue('Real') as HTMLSelectElement;
     fireEvent.change(typeSelect, { target: { value: 'funded' } });
 
     const fields = dialog.querySelectorAll('input, select, textarea');
@@ -671,7 +818,7 @@ describe('AccountsModule', () => {
   });
 
   it('cierra popovers por click fuera y responde a resize/scroll', async () => {
-    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
       {
         id: 'acc-1',
         user_id: 'user-1',
@@ -732,17 +879,23 @@ describe('AccountsModule', () => {
 
     render(<AccountsModule />);
     fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
 
-    fireEvent.change(screen.getAllByRole('combobox')[2], { target: { value: 'funded' } });
+    fireEvent.change(within(dialog).getByDisplayValue('Real'), { target: { value: 'funded' } });
     expect(await screen.findByText('Reglas de fondeo')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('Fase desafío'), { target: { value: 'funded' } });
-    fireEvent.change(screen.getByLabelText('Límite pérdida diaria %'), { target: { value: '4.5' } });
-    fireEvent.change(screen.getByLabelText('Límite pérdida total %'), { target: { value: '9.5' } });
-    fireEvent.change(screen.getByLabelText('Ciclo de pago'), { target: { value: 'custom' } });
-    fireEvent.change(screen.getByLabelText('Observaciones'), { target: { value: 'nota funded' } });
+    const phaseSelect = Array.from(dialog.querySelectorAll('select')).find(
+      (item) => (item as HTMLSelectElement).value === 'phase_1'
+    ) as HTMLSelectElement;
+    fireEvent.change(phaseSelect, { target: { value: 'funded' } });
+    const spinButtons = within(dialog).getAllByRole('spinbutton');
+    fireEvent.change(spinButtons[spinButtons.length - 2], { target: { value: '4.5' } });
+    fireEvent.change(spinButtons[spinButtons.length - 1], { target: { value: '9.5' } });
+    fireEvent.change(within(dialog).getByDisplayValue('Mensual'), { target: { value: 'custom' } });
+    const notesInput = dialog.querySelector('textarea') as HTMLTextAreaElement;
+    fireEvent.change(notesInput, { target: { value: 'nota funded' } });
 
-    expect((screen.getByLabelText('Ciclo de pago') as HTMLSelectElement).value).toBe('custom');
-    expect((screen.getByLabelText('Observaciones') as HTMLTextAreaElement).value).toBe('nota funded');
+    expect((within(dialog).getByDisplayValue('Personalizado') as HTMLSelectElement).value).toBe('custom');
+    expect(notesInput.value).toBe('nota funded');
   });
 });

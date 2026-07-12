@@ -1038,6 +1038,20 @@ th {
   border: 1px solid #d8e3f2;
   box-shadow: 0 28px 64px rgba(5, 22, 44, 0.32);
   padding: 20px;
+  will-change: height, transform, opacity;
+  transform-origin: top center;
+  animation: dashboard-modal-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+@keyframes dashboard-modal-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 .dashboard-edit-header {
@@ -1099,6 +1113,54 @@ th {
   grid-column: 1 / -1;
 }
 
+.dashboard-edit-dates-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-edit-dates-field {
+  min-width: 0;
+}
+
+.dashboard-accordion {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  transform: translateY(-8px) scale(0.985);
+  transition:
+    grid-template-rows 320ms cubic-bezier(0.2, 0.7, 0.2, 1),
+    opacity 220ms ease,
+    transform 320ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  pointer-events: none;
+}
+
+.dashboard-accordion.is-open {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.dashboard-accordion-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.dashboard-edit-accordion-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.dashboard-edit-surface {
+  border: 1px solid #dbe7f6;
+  border-radius: 14px;
+  padding: 10px;
+  background: linear-gradient(180deg, #fdfefe 0%, #f6f9ff 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
 .dashboard-edit-error {
   color: #b91c1c;
   font-size: 13px;
@@ -1138,6 +1200,11 @@ th {
     width: 100%;
     max-width: 100%;
     box-sizing: border-box;
+  }
+
+  .dashboard-edit-dates-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
   }
 
   .dashboard-layout {

@@ -20,6 +20,7 @@ const getCurrentUserRoleMock = vi.hoisted(() => vi.fn())
 const listTradingAccountsMock = vi.hoisted(() => vi.fn())
 const listMarketEntriesByUserMock = vi.hoisted(() => vi.fn())
 const updateMarketEntryByIdMock = vi.hoisted(() => vi.fn())
+const listUserNewsMock = vi.hoisted(() => vi.fn())
 
 vi.mock('@components/AdminPanel', () => ({
   default: () => React.createElement('div', null, 'Panel de Administración'),
@@ -56,6 +57,10 @@ vi.mock('@services/accounts', () => ({
 vi.mock('@services/market-entries', () => ({
   listMarketEntriesByUser: listMarketEntriesByUserMock,
   updateMarketEntryById: updateMarketEntryByIdMock,
+}))
+
+vi.mock('@services/news', () => ({
+  listUserNews: listUserNewsMock,
 }))
 
 vi.mock('recharts', () => {
@@ -100,6 +105,7 @@ describe('DashboardPage', () => {
     listTradingAccountsMock.mockResolvedValue([])
     listMarketEntriesByUserMock.mockResolvedValue([])
     updateMarketEntryByIdMock.mockResolvedValue(undefined)
+    listUserNewsMock.mockResolvedValue([])
   })
 
   it('muestra menu de gestionar usuarios solo para admin', async () => {
@@ -1135,6 +1141,13 @@ describe('DashboardPage', () => {
   })
 
   it('permite editar entrada desde modal, cancelar y guardar cambios', async () => {
+        listUserNewsMock.mockResolvedValueOnce([
+          {
+            id: 'news-1',
+            title: 'CPI relevante',
+          },
+        ])
+
     const baseEntry = {
       id: 'entry-edit-1',
       groupId: 'group-edit-1',
@@ -1197,10 +1210,11 @@ describe('DashboardPage', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
 
     fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
-    fireEvent.change(screen.getByLabelText('Contexto/Noticia'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } })
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } })
     fireEvent.change(screen.getByDisplayValue('Sin entrada'), { target: { value: 'closed' } })
     fireEvent.change(screen.getByLabelText('Fecha de ejecución'), { target: { value: '2026-06-21T12:30' } })
-    fireEvent.change(screen.getByLabelText('Riesgo por cuenta (USD)'), { target: { value: '125' } })
+    fireEvent.change(screen.getByLabelText('Riesgo por cuenta (USD)'), { target: { value: '$125.00' } })
     fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '2.0' } })
     fireEvent.change(screen.getByLabelText('Link de operación'), { target: { value: 'https://example.com/new' } })
     fireEvent.change(screen.getByLabelText('Notas'), { target: { value: 'nota actualizada' } })
@@ -1224,6 +1238,13 @@ describe('DashboardPage', () => {
   })
 
   it('mantiene la cuenta asociada al cambiar a sin entrada desde el dashboard', async () => {
+        listUserNewsMock.mockResolvedValueOnce([
+          {
+            id: 'news-1',
+            title: 'CPI relevante',
+          },
+        ])
+
     const baseEntry = {
       id: 'entry-no-entry-1',
       groupId: 'group-no-entry-1',
@@ -1269,7 +1290,8 @@ describe('DashboardPage', () => {
 
     fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
     fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } })
-    fireEvent.change(screen.getByLabelText('Contexto/Noticia'), { target: { value: 'No vi confirmacion' } })
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } })
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } })
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
 
     await waitFor(() => {
@@ -1278,8 +1300,11 @@ describe('DashboardPage', () => {
         accountId: 'acc-1',
         accountName: 'Real',
         investmentPercent: 1,
-        marketContext: 'No vi confirmacion',
-        noEntryReason: 'No vi confirmacion',
+        contextSource: 'news',
+        newsArticleId: 'news-1',
+        newsImpact: 'high',
+        marketContext: 'CPI relevante',
+        noEntryReason: 'CPI relevante',
       }))
     })
   })
@@ -1328,6 +1353,60 @@ describe('DashboardPage', () => {
 
     expect(await screen.findByText('El Resultado R debe ser valido para estado Completada.')).toBeInTheDocument()
     expect(updateMarketEntryByIdMock).not.toHaveBeenCalled()
+  })
+
+  it('guarda edición con Resultado R usando coma decimal', async () => {
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([
+      {
+        id: 'entry-edit-comma',
+        groupId: 'group-edit-comma',
+        userEmail: 'usuario@demo.com',
+        accountId: 'acc-1',
+        accountName: 'Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1,
+        takeProfit: 1.2,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1,
+        note: '',
+        status: 'closed',
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+      },
+    ])
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({
+      id: 'role-user',
+      name: 'user',
+      description: 'Usuario',
+    })
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    expect(await screen.findByText('Operaciones recientes')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Editar entrada EURUSD' }))
+
+    fireEvent.change(screen.getByLabelText('Resultado R'), { target: { value: '2,55' } })
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }))
+
+    await waitFor(() => {
+      expect(updateMarketEntryByIdMock).toHaveBeenCalledWith(
+        'usuario@demo.com',
+        'entry-edit-comma',
+        expect.objectContaining({
+          status: 'closed',
+          resultR: 2.55,
+        }),
+      )
+    })
   })
 
   it('abre modal de edición en dashboard desde el botón de ojo sin redirección', async () => {

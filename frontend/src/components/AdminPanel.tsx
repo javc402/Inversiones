@@ -172,7 +172,7 @@ export default function AdminPanel() {
           const isSelf = user.user_id === currentUserId || (!!normalizedEmail && normalizedEmail === currentUserEmail);
           const canActivate = !isSelf && user.status !== 'active';
           const canMakeAdmin = !isSelf && roleName !== 'admin';
-          const canRemoveAdmin = !isSelf && roleName === 'admin';
+          const canRemoveAdmin = roleName === 'admin';
           const statusChipLabel = user.status === 'active' ? 'ACTIVO' : user.status === 'inactive' ? 'INACTIVO' : 'PENDIENTE';
 
           return (

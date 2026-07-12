@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import MarketEntriesModule from './MarketEntriesModule';
 import * as marketEntriesService from '@services/market-entries';
@@ -731,7 +731,22 @@ describe('MarketEntriesModule', () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
-    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'CPI',
+        source: 'Reuters',
+        published_at: '2026-06-29T10:00:00.000Z',
+        impact: 'high',
+        summary: 'summary',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-06-29T10:00:00.000Z',
+        updated_at: '2026-06-29T10:00:00.000Z',
+      } as never,
+    ]);
     vi.mocked(marketEntriesService.createMarketEntriesForAccounts).mockResolvedValueOnce([] as never);
     vi.mocked(marketEntriesService.listMarketEntriesByUser)
       .mockResolvedValueOnce([])
@@ -740,12 +755,10 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-
-    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
-
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona símbolo'), { target: { value: 'EURUSD' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
 
@@ -758,7 +771,22 @@ describe('MarketEntriesModule', () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
-    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'CPI',
+        source: 'Reuters',
+        published_at: '2026-06-29T10:00:00.000Z',
+        impact: 'high',
+        summary: 'summary',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-06-29T10:00:00.000Z',
+        updated_at: '2026-06-29T10:00:00.000Z',
+      } as never,
+    ]);
     vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
 
     let resolveCreate: (() => void) | undefined;
@@ -772,10 +800,10 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
-
+    fireEvent.change(screen.getByDisplayValue('Selecciona símbolo'), { target: { value: 'EURUSD' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } });
     const saveButton = screen.getByRole('button', { name: 'Guardar entradas' });
     fireEvent.click(saveButton);
     fireEvent.click(saveButton);
@@ -789,17 +817,32 @@ describe('MarketEntriesModule', () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
-    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'CPI',
+        source: 'Reuters',
+        published_at: '2026-06-29T10:00:00.000Z',
+        impact: 'high',
+        summary: 'summary',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-06-29T10:00:00.000Z',
+        updated_at: '2026-06-29T10:00:00.000Z',
+      } as never,
+    ]);
     vi.mocked(marketEntriesService.createMarketEntriesForAccounts).mockRejectedValueOnce(new Error('No se pudo guardar'));
     vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([]);
 
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-    fireEvent.change(screen.getByPlaceholderText('CPI, FOMC, PRE market...'), { target: { value: 'CPI' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('combobox')[3], { target: { value: 'no_entry' } });
-    fireEvent.change(within(screen.getByRole('dialog')).getAllByRole('spinbutton')[0], { target: { value: '100' } });
-
+    fireEvent.change(screen.getByDisplayValue('Selecciona símbolo'), { target: { value: 'EURUSD' } });
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar entradas' }));
 
     const errors = await screen.findAllByText('No se pudo guardar');
@@ -863,7 +906,8 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Contexto/Noticia' }));
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Noticia' }));
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
 
     fireEvent.keyDown(document, { key: 'Escape' });
@@ -897,8 +941,6 @@ describe('MarketEntriesModule', () => {
 
     render(<MarketEntriesModule userEmail="test@example.com" />);
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Noticias registradas' }));
 
     const fields = document.querySelectorAll('dialog input, dialog select, dialog textarea');
     fields.forEach((field) => {
@@ -1052,9 +1094,10 @@ describe('MarketEntriesModule', () => {
     fireEvent.change(screen.getByRole('combobox', { name: 'Cuenta' }), { target: { value: 'acc-1' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Direccion' }), { target: { value: 'buy' } });
     fireEvent.change(screen.getByRole('combobox', { name: 'Estado' }), { target: { value: 'closed' } });
-    const spinbuttons = within(dialog).getAllByRole('spinbutton');
-    fireEvent.change(spinbuttons[0], { target: { value: '100' } });
-    fireEvent.change(spinbuttons[1], { target: { value: '1.2' } });
+    const decimalInputs = dialog.querySelectorAll('input[inputmode="decimal"]');
+    expect(decimalInputs.length).toBeGreaterThanOrEqual(2);
+    fireEvent.change(decimalInputs[0] as HTMLInputElement, { target: { value: '$100.00' } });
+    fireEvent.change(decimalInputs[1] as HTMLInputElement, { target: { value: '1.2' } });
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cambios' }));
 
     await waitFor(() => {
@@ -1088,7 +1131,8 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
-    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Contexto/Noticia' }));
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Ayuda: Noticia' }));
     expect(screen.getByRole('tooltip')).toBeInTheDocument();
 
     window.dispatchEvent(new Event('resize'));
@@ -1100,7 +1144,7 @@ describe('MarketEntriesModule', () => {
     });
   });
 
-  it('should toggle context tabs and select a news article in create modal', async () => {
+  it('should show news module only when status is no_entry', async () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
       { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
     ]);
@@ -1125,15 +1169,14 @@ describe('MarketEntriesModule', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
 
     fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    expect(screen.queryByDisplayValue('Selecciona noticia')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('tab', { name: 'Noticias registradas' }));
-    expect(screen.getByPlaceholderText('Buscar por titulo o categoria')).toBeInTheDocument();
-
-    fireEvent.change(screen.getByPlaceholderText('Buscar por titulo o categoria'), { target: { value: 'IPC' } });
-    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
-
-    fireEvent.click(screen.getByRole('tab', { name: 'Texto libre' }));
+    fireEvent.change(screen.getByDisplayValue('Completada'), { target: { value: 'no_entry' } });
+    expect(screen.getByDisplayValue('Selecciona noticia')).toBeInTheDocument();
     expect(screen.queryByPlaceholderText('Buscar por titulo o categoria')).not.toBeInTheDocument();
+
+    fireEvent.change(screen.getByDisplayValue('Selecciona noticia'), { target: { value: 'news-1' } });
+    fireEvent.change(screen.getByDisplayValue('Selecciona impacto'), { target: { value: 'high' } });
   });
 
   it('should add and remove account rows in create modal', async () => {
