@@ -148,8 +148,10 @@ describe('coverage helpers', () => {
     expect(directionLabel('buy')).toBe('BUY');
     expect(directionLabel('sell')).toBe('SELL');
     expect(toNumber(' 1.25 ')).toBe(1.25);
+    expect(toNumber(' 2,55 ')).toBe(2.55);
     expect(toNumberOrNull('')).toBeNull();
     expect(toNumberOrNull(' 2.5 ')).toBe(2.5);
+    expect(toNumberOrNull(' 3,75 ')).toBe(3.75);
     expect(resolveEntryOutcome({ status: 'closed', resultR: 1 } as never)).toBe('tp_1_1');
     expect(resolveEntryOutcome({ status: 'closed', resultR: 1.1 } as never)).toBe('tp_extended');
     expect(resolveEntryOutcome({ status: 'closed', resultR: -1 } as never)).toBe('sl');

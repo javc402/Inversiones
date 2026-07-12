@@ -76,6 +76,9 @@ export interface CreateMarketEntriesInput {
 interface UpdateMarketEntryInput {
   status: MarketEntryStatus;
   marketContext?: string;
+  contextSource?: MarketContextSource;
+  newsArticleId?: string | null;
+  newsImpact?: MarketNewsImpact | null;
   accountId?: string;
   accountName?: string;
   direction?: MarketEntryDirection;
@@ -211,7 +214,9 @@ function validateOptionalUrl(value: string | undefined): string {
 }
 
 function hasUpToTwoDecimalPrecision(value: number): boolean {
-  return Number.isInteger(value * 100);
+  // Evita falsos negativos por precision de coma flotante (ej: 2.55 * 100).
+  const roundedToTwo = Math.round(value * 100) / 100;
+  return Math.abs(value - roundedToTwo) < 1e-9;
 }
 
 function validateResultR(value: number | null | undefined): void {
@@ -225,15 +230,17 @@ function validateResultR(value: number | null | undefined): void {
 }
 
 function validateCommonInput(common: MarketEntryCommonInput): void {
-  if (!common.marketContext.trim()) throw new Error('El contexto/noticia es obligatorio.');
-  if (common.contextSource === 'news' && !common.newsArticleId) {
-    throw new Error('Debes seleccionar una noticia registrada.');
-  }
-  if (common.contextSource === 'news' && !common.newsImpact) {
-    throw new Error('Debes indicar el impacto de la noticia.');
-  }
-
   if (common.status === 'no_entry') {
+    if (!common.symbol?.trim()) {
+      throw new Error('Debes seleccionar un símbolo.');
+    }
+    if (!common.marketContext.trim()) throw new Error('El contexto/noticia es obligatorio.');
+    if (common.contextSource === 'news' && !common.newsArticleId) {
+      throw new Error('Debes seleccionar una noticia registrada.');
+    }
+    if (common.contextSource === 'news' && !common.newsImpact) {
+      throw new Error('Debes indicar el impacto de la noticia.');
+    }
     if (!common.noEntryReason?.trim()) {
       throw new Error('Debes indicar el motivo sin entrada.');
     }
@@ -253,7 +260,7 @@ function validateCommonInput(common: MarketEntryCommonInput): void {
   }
 }
 
-function validatePerAccount(perAccount: MarketEntryAccountInput[], _status: MarketEntryStatus): void {
+function validatePerAccount(perAccount: MarketEntryAccountInput[], status: MarketEntryStatus): void {
   if (perAccount.length === 0) {
     throw new Error('Debes asociar al menos una cuenta.');
   }
@@ -269,7 +276,15 @@ function validatePerAccount(perAccount: MarketEntryAccountInput[], _status: Mark
     }
     accountIds.add(item.accountId);
 
-    if (!Number.isFinite(item.riskAmount) || item.riskAmount <= 0) {
+    if (!Number.isFinite(item.riskAmount)) {
+      throw new Error('El riesgo por cuenta debe ser un número válido.');
+    }
+
+    if (status === 'no_entry') {
+      if (item.riskAmount < 0) {
+        throw new Error('El riesgo por cuenta no puede ser menor que 0 para registros sin entrada.');
+      }
+    } else if (item.riskAmount <= 0) {
       throw new Error('El riesgo por cuenta debe ser mayor que 0.');
     }
 
@@ -292,6 +307,18 @@ function validateUpdateMarketEntryInput(next: UpdateMarketEntryInput): void {
   }
 
   validateOptionalUrl(next.operationLink);
+
+  if (next.status === 'no_entry') {
+    if (next.contextSource === 'news') {
+      if (!next.newsArticleId) {
+        throw new Error('Debes seleccionar una noticia registrada.');
+      }
+
+      if (!next.newsImpact) {
+        throw new Error('Debes indicar el impacto de la noticia.');
+      }
+    }
+  }
 }
 
 function buildMarketEntryUpdatePayload(
@@ -309,6 +336,13 @@ function buildMarketEntryUpdatePayload(
     return {
       status: next.status,
       market_context: next.marketContext?.trim() || previous.market_context,
+      context_source: next.contextSource ?? previous.context_source,
+      news_article_id: (next.contextSource ?? previous.context_source) === 'news'
+        ? (next.newsArticleId ?? previous.news_article_id)
+        : null,
+      news_impact: (next.contextSource ?? previous.context_source) === 'news'
+        ? (next.newsImpact ?? previous.news_impact ?? null)
+        : null,
       planned_at: next.plannedAt ?? previous.planned_at,
       account_id: accountId,
       account_name: accountName,
@@ -326,6 +360,13 @@ function buildMarketEntryUpdatePayload(
   return {
     status: next.status,
     market_context: next.marketContext?.trim() || previous.market_context,
+    context_source: next.contextSource ?? previous.context_source,
+    news_article_id: (next.contextSource ?? previous.context_source) === 'news'
+      ? (next.newsArticleId ?? previous.news_article_id)
+      : null,
+    news_impact: (next.contextSource ?? previous.context_source) === 'news'
+      ? (next.newsImpact ?? previous.news_impact ?? null)
+      : null,
     planned_at: next.plannedAt ?? previous.planned_at,
     account_id: next.accountId ?? previous.account_id,
     account_name: next.accountName?.trim() || previous.account_name,

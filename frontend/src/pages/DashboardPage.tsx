@@ -1,8 +1,9 @@
-import { Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from '@components/AppIcon';
 import DashboardSummaryLayout from '@components/DashboardSummaryLayout';
 import { listTradingAccounts, TradingAccount } from '@services/accounts';
-import { listMarketEntriesByUser, MarketEntry, MarketEntryStatus, updateMarketEntryById } from '@services/market-entries';
+import { listMarketEntriesByUser, MarketContextSource, MarketEntry, MarketEntryStatus, MarketNewsImpact, updateMarketEntryById } from '@services/market-entries';
+import { listUserNews, NewsArticle } from '@services/news';
 import { getCurrentUserRole, Role } from '@services/roles';
 import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 
@@ -472,6 +473,9 @@ export function tradeResultClass(result: string, isTechnicalBreak = false): 'neg
 type DashboardEditForm = {
   status: MarketEntryStatus;
   marketContext: string;
+  contextSource: MarketContextSource;
+  newsArticleId: string;
+  newsImpact: MarketNewsImpact | '';
   plannedAt: string;
   riskAmount: string;
   resultR: string;
@@ -487,6 +491,97 @@ function toDateTimeLocalValue(value: string): string {
   }
 
   return parsed.toISOString().slice(0, 16);
+}
+
+function formatUsdInput(value: string): string {
+  const normalized = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return '';
+  }
+
+  return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function sanitizeUsdDraft(value: string): string {
+  const cleaned = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '.')
+    .replace(/[^\d.]/g, '');
+
+  if (!cleaned) {
+    return '';
+  }
+
+  const hasDecimal = cleaned.includes('.');
+  const [rawIntegerPart, ...decimalParts] = cleaned.split('.');
+  const integerPart = rawIntegerPart.replace(/^0+(?=\d)/, '') || '0';
+  const decimalPart = decimalParts.join('').slice(0, 2);
+
+  if (hasDecimal && decimalPart.length === 0) {
+    return `${integerPart}.`;
+  }
+
+  return decimalPart.length > 0 ? `${integerPart}.${decimalPart}` : integerPart;
+}
+
+function toEditableUsdInput(value: string): string {
+  const normalized = value
+    .replace(/\$/g, '')
+    .replace(/,/g, '')
+    .trim();
+
+  if (!normalized) {
+    return '';
+  }
+
+  const parsed = Number(normalized);
+  if (!Number.isFinite(parsed)) {
+    return sanitizeUsdDraft(value);
+  }
+
+  return parsed.toString();
+}
+
+type AccordionSectionProps = {
+  open: boolean;
+  children: ReactNode;
+  className?: string;
+};
+
+function AccordionSection({ open, children, className }: Readonly<AccordionSectionProps>) {
+  const [shouldRender, setShouldRender] = useState(open);
+
+  useEffect(() => {
+    if (open) {
+      setShouldRender(true);
+    }
+  }, [open]);
+
+  if (!shouldRender) {
+    return null;
+  }
+
+  return (
+    <div
+      className={`dashboard-accordion ${open ? 'is-open' : 'is-closed'}${className ? ` ${className}` : ''}`}
+      onTransitionEnd={() => {
+        if (!open) {
+          setShouldRender(false);
+        }
+      }}
+    >
+      <div className="dashboard-accordion-inner">{children}</div>
+    </div>
+  );
 }
 
 function openOperationLink(operationLink: string | null) {
@@ -529,15 +624,35 @@ function parseDashboardEditValues(form: DashboardEditForm): {
   resultRValue: number | null;
   riskAmount: number;
 } {
-  const resultRValue = form.status === 'closed' ? Number.parseFloat(form.resultR) : null;
+  const parseUsdInput = (value: string): number => {
+    const normalized = value
+      .replace(/\$/g, '')
+      .replace(/,/g, '')
+      .trim();
+
+    if (!normalized) {
+      return Number.NaN;
+    }
+
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) ? parsed : Number.NaN;
+  };
+
+  const normalizedResultR = form.resultR.trim().replace(',', '.');
+  const resultRValue = form.status === 'closed' ? Number.parseFloat(normalizedResultR) : null;
+  const riskAmountValue = form.status === 'no_entry' ? 0 : parseUsdInput(form.riskAmount);
 
   if (form.status === 'closed' && !Number.isFinite(resultRValue ?? Number.NaN)) {
     throw new Error('El Resultado R debe ser valido para estado Completada.');
   }
 
+  if (!Number.isFinite(riskAmountValue)) {
+    throw new Error('El Riesgo por cuenta (USD) debe ser válido.');
+  }
+
   return {
     resultRValue,
-    riskAmount: Number.parseFloat(form.riskAmount),
+    riskAmount: riskAmountValue,
   };
 }
 
@@ -1316,6 +1431,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   });
   const [summaryAccounts, setSummaryAccounts] = useState<TradingAccount[]>([]);
   const [summaryEntries, setSummaryEntries] = useState<MarketEntry[]>([]);
+  const [newsArticles, setNewsArticles] = useState<NewsArticle[]>([]);
   const [editingEntry, setEditingEntry] = useState<MarketEntry | null>(null);
   const [dashboardEditForm, setDashboardEditForm] = useState<DashboardEditForm | null>(null);
   const [isSavingEdit, setIsSavingEdit] = useState(false);
@@ -1369,6 +1485,27 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   useSummaryData(activeTab, userEmail, setSummaryAccounts, setSummaryEntries);
   useEnsureAdminTabAccess(activeTab, isAdmin, setActiveTab);
   usePersistDashboardTab(activeTab);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadNewsForDashboardEdit() {
+      try {
+        const loadedNews = await listUserNews(userEmail);
+        if (!isMounted) return;
+        setNewsArticles(loadedNews);
+      } catch {
+        if (!isMounted) return;
+        setNewsArticles([]);
+      }
+    }
+
+    void loadNewsForDashboardEdit();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [userEmail]);
 
   function toggleSidebarSection(section: 'principal' | 'gestion' | 'cuenta') {
     setCollapsedSections((prev) => ({
@@ -1557,8 +1694,11 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     setDashboardEditForm({
       status: normalizeDashboardEntryStatus(entry.status),
       marketContext: entry.marketContext,
+      contextSource: entry.contextSource,
+      newsArticleId: entry.newsArticleId ?? '',
+      newsImpact: entry.newsImpact ?? '',
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
-      riskAmount: String(entry.riskAmount),
+      riskAmount: entry.status === 'no_entry' ? '$0.00' : formatUsdInput(String(entry.riskAmount)),
       resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
       note: entry.note,
@@ -1596,6 +1736,9 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       await updateMarketEntryById(userEmail, editingEntry.id, {
         status: dashboardEditForm.status,
         marketContext: dashboardEditForm.marketContext,
+        contextSource: dashboardEditForm.status === 'no_entry' ? 'news' : 'free_text',
+        newsArticleId: dashboardEditForm.status === 'no_entry' ? dashboardEditForm.newsArticleId : null,
+        newsImpact: dashboardEditForm.status === 'no_entry' ? (dashboardEditForm.newsImpact || null) : null,
         plannedAt: dashboardEditForm.plannedAt,
         accountId: editingEntry.accountId,
         accountName: editingEntry.accountName,
@@ -1827,60 +1970,127 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                 <span>Estado</span>
                 <select
                   value={dashboardEditForm.status}
-                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, status: event.target.value as MarketEntryStatus } : prev)}
+                  onChange={(event) => {
+                    const nextStatus = event.target.value as MarketEntryStatus;
+                    setDashboardEditForm((prev) => prev
+                      ? {
+                          ...prev,
+                          status: nextStatus,
+                          contextSource: nextStatus === 'no_entry' ? 'news' : 'free_text',
+                          newsArticleId: nextStatus === 'no_entry' ? prev.newsArticleId : '',
+                          newsImpact: nextStatus === 'no_entry' ? prev.newsImpact : '',
+                          marketContext: nextStatus === 'no_entry' ? prev.marketContext : '',
+                          riskAmount: nextStatus === 'no_entry' ? '$0.00' : prev.riskAmount,
+                        }
+                      : prev);
+                  }}
                 >
                   <option value="closed">Completada</option>
                   <option value="no_entry">Sin entrada</option>
                 </select>
               </label>
 
-              <label>
-                <span>Fecha de ejecución</span>
-                <input
-                  type="datetime-local"
-                  value={dashboardEditForm.plannedAt}
-                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
-                  inputMode="none"
-                  onFocus={openDatePicker}
-                  onClick={openDatePicker}
-                  onKeyDown={preventManualDateTyping}
-                  onPaste={preventManualDatePasteOrDrop}
-                  onDrop={preventManualDatePasteOrDrop}
-                />
-              </label>
-
-              {dashboardEditForm.status === 'no_entry' && (
-                <label className="dashboard-edit-span-2">
-                  <span>Contexto/Noticia</span>
+              <div className="dashboard-edit-dates-row dashboard-edit-span-2">
+                <label className="dashboard-edit-dates-field">
+                  <span>Fecha de ejecución</span>
                   <input
-                    value={dashboardEditForm.marketContext}
-                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, marketContext: event.target.value } : prev)}
-                    placeholder="CPI, FOMC, PRE market..."
+                    type="datetime-local"
+                    value={dashboardEditForm.plannedAt}
+                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                    inputMode="none"
+                    onFocus={openDatePicker}
+                    onClick={openDatePicker}
+                    onKeyDown={preventManualDateTyping}
+                    onPaste={preventManualDatePasteOrDrop}
+                    onDrop={preventManualDatePasteOrDrop}
                   />
                 </label>
-              )}
+
+                <AccordionSection open={dashboardEditForm.status === 'closed'}>
+                  <label className="dashboard-edit-dates-field">
+                    <span>Fecha de cierre</span>
+                    <input
+                      type="datetime-local"
+                      value={dashboardEditForm.plannedAt}
+                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                      inputMode="none"
+                      onFocus={openDatePicker}
+                      onClick={openDatePicker}
+                      onKeyDown={preventManualDateTyping}
+                      onPaste={preventManualDatePasteOrDrop}
+                      onDrop={preventManualDatePasteOrDrop}
+                    />
+                  </label>
+                </AccordionSection>
+              </div>
+
+              <AccordionSection open={dashboardEditForm.status === 'no_entry'} className="dashboard-edit-span-2">
+                <div className="dashboard-edit-accordion-grid dashboard-edit-surface">
+                  <label>
+                    <span>Noticia</span>
+                    <select
+                      value={dashboardEditForm.newsArticleId}
+                      onChange={(event) => {
+                        const selectedId = event.target.value;
+                        const selectedNews = newsArticles.find((item) => item.id === selectedId);
+                        setDashboardEditForm((prev) => prev
+                          ? {
+                              ...prev,
+                              contextSource: 'news',
+                              newsArticleId: selectedId,
+                              marketContext: selectedNews?.title ?? prev.marketContext,
+                            }
+                          : prev);
+                      }}
+                    >
+                      <option value="">Selecciona noticia</option>
+                      {newsArticles.map((article) => (
+                        <option key={article.id} value={article.id}>{article.title}</option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Impacto</span>
+                    <select
+                      value={dashboardEditForm.newsImpact}
+                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, contextSource: 'news', newsImpact: event.target.value as MarketNewsImpact } : prev)}
+                    >
+                      <option value="">Selecciona impacto</option>
+                      <option value="high">Alto</option>
+                      <option value="medium">Medio</option>
+                      <option value="low">Bajo</option>
+                    </select>
+                  </label>
+                </div>
+              </AccordionSection>
 
               <label>
                 <span>Riesgo por cuenta (USD)</span>
                 <input
-                  type="number"
-                  step="0.01"
-                  min="0"
+                  type="text"
+                  inputMode="decimal"
                   value={dashboardEditForm.riskAmount}
-                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: event.target.value } : prev)}
+                  onFocus={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: toEditableUsdInput(event.target.value) } : prev)}
+                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: sanitizeUsdDraft(event.target.value) } : prev)}
+                  onBlur={(event) => setDashboardEditForm((prev) => prev ? { ...prev, riskAmount: formatUsdInput(event.target.value) } : prev)}
+                  placeholder="$0.00"
+                  disabled={dashboardEditForm.status === 'no_entry'}
                 />
               </label>
 
-              <label>
-                <span>Resultado R</span>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={dashboardEditForm.resultR}
-                  onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, resultR: event.target.value } : prev)}
-                  disabled={dashboardEditForm.status !== 'closed'}
-                />
-              </label>
+              <AccordionSection open={dashboardEditForm.status === 'closed'}>
+                <label>
+                  <span>Resultado R</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={dashboardEditForm.resultR}
+                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, resultR: event.target.value } : prev)}
+                    disabled={dashboardEditForm.status !== 'closed'}
+                  />
+                </label>
+              </AccordionSection>
 
               <label>
                 <span>Link de operación</span>

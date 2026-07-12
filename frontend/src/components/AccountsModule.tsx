@@ -18,6 +18,7 @@ import { useSystemConfig } from '@hooks/useSystemConfig';
 import '../styles/accounts-module.css';
 
 type ModalMode = 'create' | 'edit';
+const DEFAULT_LEVERAGE = '1:100';
 
 function useDismissiblePopover(
   open: boolean,
@@ -137,14 +138,14 @@ function TableHeaderWithPopover({ children, description }: Readonly<{ children: 
     if (!trigger) return;
 
     const rect = trigger.getBoundingClientRect();
-    const popoverWidth = 220;
+    const popoverWidth = 260;
     const viewportPadding = 12;
 
     let left = rect.left + rect.width / 2 - popoverWidth / 2;
     left = Math.max(viewportPadding, Math.min(left, window.innerWidth - popoverWidth - viewportPadding));
 
     setPopoverPos({
-      top: rect.top - 50,
+      top: rect.bottom + 10,
       left,
     });
   }
@@ -181,7 +182,7 @@ function TableHeaderWithPopover({ children, description }: Readonly<{ children: 
       {open &&
         createPortal(
           <div
-            className="account-summary-popover is-open"
+            className="accounts-help-popover is-open"
             role="tooltip"
             style={{ top: `${popoverPos.top}px`, left: `${popoverPos.left}px` }}
             ref={popoverRef}
@@ -225,7 +226,7 @@ const DEFAULT_FORM: AccountFormState = {
   account_type: 'real',
   platform: 'mt5',
   base_currency: 'USD',
-  leverage: '1:100',
+  leverage: DEFAULT_LEVERAGE,
   initial_balance: '',
   initial_equity: '',
   opened_at: new Date().toISOString().slice(0, 10),
@@ -262,7 +263,7 @@ export function mapAccountToForm(account: TradingAccount): AccountFormState {
     account_type: account.account_type,
     platform: account.platform,
     base_currency: account.base_currency,
-    leverage: account.leverage ?? '',
+    leverage: account.leverage ?? DEFAULT_LEVERAGE,
     initial_balance: String(account.initial_balance),
     initial_equity: toStringOrEmpty(account.initial_equity),
     opened_at: account.opened_at.slice(0, 10),
@@ -281,16 +282,19 @@ export function mapAccountToForm(account: TradingAccount): AccountFormState {
 }
 
 export function mapFormToPayload(form: AccountFormState): UpsertTradingAccountInput {
+  const normalizedName = form.name.trim();
+  const normalizedInitialBalance = Number(form.initial_balance);
+
   return {
-    name: form.name.trim(),
-    alias: form.alias.trim() || undefined,
+    name: normalizedName,
+    alias: normalizedName || undefined,
     broker_name: form.broker_name.trim(),
     account_type: form.account_type,
     platform: form.platform,
     base_currency: form.base_currency.trim().toUpperCase(),
-    leverage: form.leverage.trim() || undefined,
-    initial_balance: Number(form.initial_balance),
-    initial_equity: toNumberOrUndefined(form.initial_equity),
+    leverage: DEFAULT_LEVERAGE,
+    initial_balance: normalizedInitialBalance,
+    initial_equity: Number.isFinite(normalizedInitialBalance) ? normalizedInitialBalance : undefined,
     opened_at: form.opened_at,
     status: form.status,
     risk_per_trade_pct: toNumberOrUndefined(form.risk_per_trade_pct),
@@ -312,10 +316,10 @@ interface AccountSummaryRow {
   key: 'total' | 'year' | 'month' | 'week';
   label: string;
   operations: number;
+  tpProfit: number;
   sl: number;
   breakeven: number;
-  tpNoProfit: number;
-  tpProfit: number;
+  so: number;
 }
 
 function getIsoWeekInfo(date: Date): { year: number; week: number } {
@@ -343,37 +347,37 @@ export function getSummaryRows(referenceDate: Date = new Date()): AccountSummary
       key: 'total',
       label: 'Total',
       operations: 0,
+      tpProfit: 0,
       sl: 0,
       breakeven: 0,
-      tpNoProfit: 0,
-      tpProfit: 0,
+      so: 0,
     },
     {
       key: 'year',
       label: `Año ${referenceDate.getFullYear()}`,
       operations: 0,
+      tpProfit: 0,
       sl: 0,
       breakeven: 0,
-      tpNoProfit: 0,
-      tpProfit: 0,
+      so: 0,
     },
     {
       key: 'month',
       label: `Mes ${getCurrentMonthLabel(referenceDate)}`,
       operations: 0,
+      tpProfit: 0,
       sl: 0,
       breakeven: 0,
-      tpNoProfit: 0,
-      tpProfit: 0,
+      so: 0,
     },
     {
       key: 'week',
       label: `Semana ${isoWeek.week}`,
       operations: 0,
+      tpProfit: 0,
       sl: 0,
       breakeven: 0,
-      tpNoProfit: 0,
-      tpProfit: 0,
+      so: 0,
     },
   ];
 }
@@ -401,15 +405,17 @@ function isInSameWeek(reference: Date, now: Date): boolean {
 function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountSummaryRow[] {
   const baseRows = getSummaryRows();
 
-  const closedEntries = entries.filter((entry) => entry.status === 'closed' && entry.resultR !== null);
+  const operationEntries = entries.filter((entry) =>
+    (entry.status === 'closed' && entry.resultR !== null) || entry.status === 'no_entry'
+  );
 
   const segmented = {
-    total: closedEntries,
-    year: closedEntries.filter((entry) => {
+    total: operationEntries,
+    year: operationEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(date && date.getFullYear() === now.getFullYear());
     }),
-    month: closedEntries.filter((entry) => {
+    month: operationEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(
         date &&
@@ -417,7 +423,7 @@ function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountS
         date.getMonth() === now.getMonth()
       );
     }),
-    week: closedEntries.filter((entry) => {
+    week: operationEntries.filter((entry) => {
       const date = parseEntryReferenceDate(entry);
       return Boolean(date && isInSameWeek(date, now));
     }),
@@ -429,13 +435,10 @@ function buildSummaryRowsForAccount(entries: MarketEntry[], now: Date): AccountS
     return {
       ...row,
       operations: periodEntries.length,
+      tpProfit: periodEntries.filter((entry) => entry.status === 'closed' && (entry.resultR ?? 0) > 1).length,
       sl: periodEntries.filter((entry) => (entry.resultR ?? 0) < 0).length,
       breakeven: periodEntries.filter((entry) => (entry.resultR ?? 0) === 1).length,
-      tpNoProfit: periodEntries.filter((entry) => {
-        const result = entry.resultR ?? 0;
-        return result >= 0 && result < 1;
-      }).length,
-      tpProfit: periodEntries.filter((entry) => (entry.resultR ?? 0) > 1).length,
+      so: periodEntries.filter((entry) => entry.status === 'no_entry').length,
     };
   });
 }
@@ -637,10 +640,10 @@ export default function AccountsModule() {
                     <tr>
                       <th scope="col" className="account-summary-header">Tiempo</th>
                       <TableHeaderWithPopover description="Número total de operaciones">Ops</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones cerradas en Take Profit con ganancia">TP (+)</TableHeaderWithPopover>
                       <TableHeaderWithPopover description="Operaciones cerradas con Stop Loss">SL</TableHeaderWithPopover>
-                      <TableHeaderWithPopover description="Operaciones en punto de equilibrio técnico (R = 1)">Breakeven</TableHeaderWithPopover>
-                      <TableHeaderWithPopover description="Operaciones en Take Profit sin ganancia">TP (-)</TableHeaderWithPopover>
-                      <TableHeaderWithPopover description="Operaciones en Take Profit con ganancia">TP (+)</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Operaciones en punto de equilibrio técnico (R = 1)">Bk</TableHeaderWithPopover>
+                      <TableHeaderWithPopover description="Registros sin operar (estado Sin entrada)">SO</TableHeaderWithPopover>
                     </tr>
                   </thead>
                   <tbody>
@@ -648,10 +651,10 @@ export default function AccountsModule() {
                       <tr key={row.label}>
                         <th scope="row">{row.label}</th>
                         <td>{row.operations}</td>
+                        <td>{row.tpProfit}</td>
                         <td>{row.sl}</td>
                         <td>{row.breakeven}</td>
-                        <td>{row.tpNoProfit}</td>
-                        <td>{row.tpProfit}</td>
+                        <td>{row.so}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -855,11 +858,14 @@ export default function AccountsModule() {
               </label>
 
               <label>
-                <FieldLabel text="Alias" help="Nombre corto opcional para mostrar la cuenta en tarjetas o listados compactos." />
-                <input
-                  value={form.alias}
-                  onChange={(event) => handleFormChange('alias', event.target.value)}
-                />
+                <FieldLabel text="Estado *" help="Define si la cuenta está activa para seguimiento o inactiva temporalmente." />
+                <select
+                  value={form.status}
+                  onChange={(event) => handleFormChange('status', event.target.value as TradingAccountStatus)}
+                >
+                  <option value="active">Activa</option>
+                  <option value="inactive">Inactiva</option>
+                </select>
               </label>
 
               <label>
@@ -913,16 +919,6 @@ export default function AccountsModule() {
 
               <div className="accounts-section-title">Capital inicial y operativa</div>
 
-              {modalMode === 'edit' && (
-                <label>
-                  <FieldLabel text="Apalancamiento" help="Relación de apalancamiento asignada por el broker o firma para esta cuenta." />
-                  <input
-                    value={form.leverage}
-                    onChange={(event) => handleFormChange('leverage', event.target.value)}
-                  />
-                </label>
-              )}
-
               <label>
                 <FieldLabel text="Balance inicial *" help="Capital con el que inicia la cuenta al momento del registro." />
                 <input
@@ -934,19 +930,6 @@ export default function AccountsModule() {
                   required
                 />
               </label>
-
-              {modalMode === 'edit' && (
-                <label>
-                  <FieldLabel text="Equity inicial" help="Equity de referencia al inicio, útil para comparar desempeño y variación." />
-                  <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={form.initial_equity}
-                    onChange={(event) => handleFormChange('initial_equity', event.target.value)}
-                  />
-                </label>
-              )}
 
               <label>
                 <FieldLabel text="Fecha apertura *" help="Fecha en la que la cuenta comenzó a operar o fue habilitada." />
@@ -962,17 +945,6 @@ export default function AccountsModule() {
                   onDrop={preventManualDatePasteOrDrop}
                   required
                 />
-              </label>
-
-              <label>
-                <FieldLabel text="Estado *" help="Define si la cuenta está activa para seguimiento o inactiva temporalmente." />
-                <select
-                  value={form.status}
-                  onChange={(event) => handleFormChange('status', event.target.value as TradingAccountStatus)}
-                >
-                  <option value="active">Activa</option>
-                  <option value="inactive">Inactiva</option>
-                </select>
               </label>
 
               <div className="accounts-section-title">Gestion de riesgo</div>
