@@ -15,9 +15,7 @@ const capturedPieTooltipProps: Array<Record<string, unknown>> = [];
 const capturedLegendProps: Array<Record<string, unknown>> = [];
 
 vi.mock('recharts', () => {
-  const React = require('react');
-
-  const passthrough = ({ children }: { children?: React.ReactNode }) => <div>{children}</div>;
+  const passthrough = ({ children }: { children?: unknown }) => <div>{children}</div>;
 
   return {
     ResponsiveContainer: passthrough,
