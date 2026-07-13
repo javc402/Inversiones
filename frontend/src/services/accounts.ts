@@ -1,5 +1,5 @@
 import { supabase } from '@lib/supabase';
-import { detectChanges, logAuditActivity, logChangesWithStandardFormat } from './audit';
+import { detectChanges, logAuditActivity, logAuditError, logChangesWithStandardFormat } from './audit';
 
 export type TradingAccountType = 'real' | 'demo' | 'funded';
 export type TradingAccountStatus = 'active' | 'inactive';
@@ -126,59 +126,67 @@ export async function createTradingAccount(input: UpsertTradingAccountInput): Pr
 }
 
 export async function updateTradingAccount(accountId: string, input: UpsertTradingAccountInput): Promise<void> {
-  // Cargar valores anteriores para auditoría before/after - TODOS los campos
-  const { data: beforeData } = await supabase
-    .from('trading_accounts')
-    .select('*')
-    .eq('id', accountId)
-    .single();
+  try {
+    // Cargar valores anteriores para auditoría before/after - TODOS los campos
+    const { data: beforeData } = await supabase
+      .from('trading_accounts')
+      .select('*')
+      .eq('id', accountId)
+      .single();
 
-  if (!beforeData) throw new Error('Account not found');
+    if (!beforeData) throw new Error('Account not found');
 
-  const payload = {
-    ...input,
-    alias: input.alias ?? null,
-    leverage: input.leverage ?? null,
-    initial_equity: input.initial_equity ?? null,
-    risk_per_trade_pct: input.risk_per_trade_pct ?? null,
-    max_daily_risk_pct: input.max_daily_risk_pct ?? null,
-    max_drawdown_pct: input.max_drawdown_pct ?? null,
-    funding_firm: input.funding_firm ?? null,
-    challenge_phase: input.challenge_phase ?? null,
-    profit_target_pct: input.profit_target_pct ?? null,
-    daily_loss_limit_pct: input.daily_loss_limit_pct ?? null,
-    max_loss_limit_pct: input.max_loss_limit_pct ?? null,
-    payout_cycle: input.payout_cycle ?? null,
-    notes: input.notes ?? null,
-    updated_at: new Date().toISOString(),
-  };
+    const payload = {
+      ...input,
+      alias: input.alias ?? null,
+      leverage: input.leverage ?? null,
+      initial_equity: input.initial_equity ?? null,
+      risk_per_trade_pct: input.risk_per_trade_pct ?? null,
+      max_daily_risk_pct: input.max_daily_risk_pct ?? null,
+      max_drawdown_pct: input.max_drawdown_pct ?? null,
+      funding_firm: input.funding_firm ?? null,
+      challenge_phase: input.challenge_phase ?? null,
+      profit_target_pct: input.profit_target_pct ?? null,
+      daily_loss_limit_pct: input.daily_loss_limit_pct ?? null,
+      max_loss_limit_pct: input.max_loss_limit_pct ?? null,
+      payout_cycle: input.payout_cycle ?? null,
+      notes: input.notes ?? null,
+      updated_at: new Date().toISOString(),
+    };
 
-  const { error } = await supabase
-    .from('trading_accounts')
-    .update(payload)
-    .eq('id', accountId);
+    const { error } = await supabase
+      .from('trading_accounts')
+      .update(payload)
+      .eq('id', accountId);
 
-  if (error) throw error;
+    if (error) throw error;
 
-  // Detectar todos los cambios realizados
-  const fieldsToCheck = [
-    'name', 'alias', 'broker_name', 'account_type', 'platform', 'base_currency',
-    'leverage', 'initial_balance', 'initial_equity', 'opened_at', 'status',
-    'risk_per_trade_pct', 'max_daily_risk_pct', 'max_drawdown_pct', 'funding_firm',
-    'challenge_phase', 'profit_target_pct', 'daily_loss_limit_pct', 'max_loss_limit_pct',
-    'payout_cycle', 'notes'
-  ];
+    // Detectar todos los cambios realizados comparando contra el payload final persistido
+    const fieldsToCheck = [
+      'name', 'alias', 'broker_name', 'account_type', 'platform', 'base_currency',
+      'leverage', 'initial_balance', 'initial_equity', 'opened_at', 'status',
+      'risk_per_trade_pct', 'max_daily_risk_pct', 'max_drawdown_pct', 'funding_firm',
+      'challenge_phase', 'profit_target_pct', 'daily_loss_limit_pct', 'max_loss_limit_pct',
+      'payout_cycle', 'notes'
+    ];
 
-  const changes = detectChanges(beforeData, input as unknown as Record<string, unknown>, fieldsToCheck);
+    const changes = detectChanges(beforeData, payload as unknown as Record<string, unknown>, fieldsToCheck);
 
-  // Log con todos los cambios capturados
-  void logChangesWithStandardFormat(
-    'accounts.update',
-    'accounts',
-    'account',
-    accountId,
-    changes
-  );
+    // Garantizar registro de update aunque no haya cambios efectivos.
+    await logAuditActivity('accounts.update', {
+      module: 'accounts',
+      targetType: 'account',
+      targetId: accountId,
+      fieldsChanged: changes.map((change) => change.field),
+      changeDetails: changes.length > 0 ? changes : undefined,
+      accountNameBefore: (beforeData as { name?: string }).name ?? null,
+      accountNameAfter: payload.name ?? null,
+    });
+
+  } catch (error) {
+    logAuditError('accounts.update', 'accounts', 'account', error, { accountId });
+    throw error;
+  }
 }
 
 export async function toggleTradingAccountStatus(

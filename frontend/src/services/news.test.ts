@@ -110,6 +110,12 @@ describe('news service', () => {
     await expect(createNewsArticle('user@example.com', buildInput({ summary: ' ' }) as never)).rejects.toThrow('El resumen es obligatorio.');
     await expect(createNewsArticle('user@example.com', buildInput({ content: ' ' }) as never)).rejects.toThrow('El contenido es obligatorio.');
     await expect(createNewsArticle('user@example.com', buildInput({ category: ' ' }) as never)).rejects.toThrow('La categoría es obligatoria.');
+    await expect(createNewsArticle('user@example.com', buildInput({ status: '' }) as never)).rejects.toThrow('El estado es obligatorio.');
+  });
+
+  it('createNewsArticle rechaza slug vacío tras normalización', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    await expect(createNewsArticle('user@example.com', buildInput({ slug: ' !!! ' }) as never)).rejects.toThrow('El slug es obligatorio.');
   });
 
   it('createNewsArticle valida URL de fuente', async () => {
@@ -328,6 +334,38 @@ describe('news service', () => {
 
     const updated = await updateNewsArticle('user@example.com', 'news-1', buildInput({ status: 'published' }) as never);
     expect(updated.status).toBe('published');
+  });
+
+  it('updateNewsArticle conserva publishedAt previo al mantener status published', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previouslyPublished = '2026-06-29T11:00:00.000Z';
+    const mockSingleCurrent = vi.fn().mockResolvedValueOnce({ data: buildRow({ id: 'news-1', status: 'published', published_at: previouslyPublished }), error: null });
+    const mockEqUserFirst = vi.fn().mockReturnValue({ single: mockSingleCurrent });
+    const mockEqIdFirst = vi.fn().mockReturnValue({ eq: mockEqUserFirst });
+    const mockSelectCurrent = vi.fn().mockReturnValue({ eq: mockEqIdFirst });
+
+    const mockLimit = vi.fn().mockResolvedValueOnce({ data: [], error: null });
+    const mockNeq = vi.fn().mockReturnValue({ limit: mockLimit });
+    const mockEqSlug = vi.fn().mockReturnValue({ neq: mockNeq });
+    const mockEqUserSecond = vi.fn().mockReturnValue({ eq: mockEqSlug });
+    const mockSelectDuplicate = vi.fn().mockReturnValue({ eq: mockEqUserSecond });
+
+    const mockSingleUpdated = vi.fn().mockResolvedValueOnce({
+      data: buildRow({ id: 'news-1', status: 'published', published_at: previouslyPublished }),
+      error: null,
+    });
+    const mockEqUserUpdate = vi.fn().mockReturnValue({ select: vi.fn().mockReturnValue({ single: mockSingleUpdated }) });
+    const mockEqIdUpdate = vi.fn().mockReturnValue({ eq: mockEqUserUpdate });
+    const mockUpdate = vi.fn().mockReturnValue({ eq: mockEqIdUpdate });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectCurrent })
+      .mockReturnValueOnce({ select: mockSelectDuplicate })
+      .mockReturnValueOnce({ update: mockUpdate });
+
+    const updated = await updateNewsArticle('user@example.com', 'news-1', buildInput({ status: 'published' }) as never);
+    expect(updated.publishedAt).toBe(previouslyPublished);
   });
 
   it('deleteNewsArticle falla sin usuario', async () => {

@@ -1,6 +1,31 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import MarketEntriesModule from './MarketEntriesModule';
+import MarketEntriesModule, {
+  buildCreateMarketEntryRequest,
+  buildCreatePerAccountSelection,
+  buildDefaultAccountRows,
+  calculateAccountResultAmount,
+  candleProtocolLabel,
+  directionLabel,
+  entryDeletionLabel,
+  formatCurrencyAmountInput,
+  financialOutcomeLabel,
+  newsImpactLabel,
+  normalizeEditableEntryStatus,
+  normalizeResultR,
+  parseCurrencyAmount,
+  resolveEntrySymbol,
+  resolveFinancialOutcome,
+  resolveTechnicalOutcome,
+  sanitizeCurrencyAmountDraft,
+  statusLabel,
+  technicalOutcomeLabel,
+  toDateTimeLocalValue,
+  toEditableCurrencyAmount,
+  toErrorMessage,
+  toNumber,
+  toNumberOrNull,
+} from './MarketEntriesModule';
 import * as marketEntriesService from '@services/market-entries';
 import * as accountsService from '@services/accounts';
 import * as newsService from '@services/news';
@@ -1266,4 +1291,439 @@ describe('MarketEntriesModule', () => {
     fireEvent.change(editDatetime, { target: { value: '2026-07-11T10:00' } });
   });
 
+  it('should render operation link and custom symbol field in create flow', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        operationLink: 'https://example.com/op',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    const link = await screen.findByRole('link', { name: 'Abrir enlace' });
+    expect(link).toHaveAttribute('href', 'https://example.com/op');
+
+    fireEvent.click(screen.getByRole('button', { name: /Nueva entrada/i }));
+    fireEvent.change(screen.getByDisplayValue('Selecciona símbolo'), { target: { value: 'OTRO' } });
+    const customSymbolInput = screen.getByPlaceholderText('Ej: DE40');
+    fireEvent.change(customSymbolInput, { target: { value: 'nas100' } });
+    expect((customSymbolInput as HTMLInputElement).value).toBe('NAS100');
+  });
+
+  it('should execute focus/blur format handlers in create and edit risk inputs', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValue([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValue([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva entrada/i }));
+    const createRisk = screen.getByPlaceholderText('$0.00');
+    fireEvent.focus(createRisk);
+    fireEvent.change(createRisk, { target: { value: '120.5' } });
+    fireEvent.blur(createRisk);
+    expect((createRisk as HTMLInputElement).value).toBe('$120.50');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    const editRisk = screen.getByLabelText('Riesgo por cuenta (USD)');
+    fireEvent.focus(editRisk);
+    fireEvent.change(editRisk, { target: { value: '99.4' } });
+    fireEvent.blur(editRisk);
+    await waitFor(() => {
+      expect((editRisk as HTMLInputElement).value).toMatch(/99\.4|\$99\.40/);
+    });
+  });
+
+  it('should handle pending edit id not found and refresh accounts by event', async () => {
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockReturnValue('missing-entry-id');
+    const removeItemSpy = vi.spyOn(Storage.prototype, 'removeItem').mockImplementation(() => undefined);
+
+    vi.mocked(accountsService.listTradingAccounts)
+      .mockResolvedValueOnce([{ id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never])
+      .mockResolvedValueOnce([{ id: 'acc-2', name: 'Cuenta Demo', alias: 'Demo' } as never]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: 'acc-1',
+        accountName: 'Cuenta Real',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'free_text',
+        newsArticleId: null,
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.05,
+        takeProfit: 1.15,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        noEntryReason: null,
+        note: '',
+        status: 'open',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    await screen.findByText('Entradas al mercado');
+    await waitFor(() => {
+      expect(removeItemSpy).toHaveBeenCalled();
+    });
+
+    window.dispatchEvent(new CustomEvent('inversiones:accounts-changed'));
+    await waitFor(() => {
+      expect(vi.mocked(accountsService.listTradingAccounts).mock.calls.length).toBeGreaterThanOrEqual(2);
+    });
+
+    getItemSpy.mockRestore();
+    removeItemSpy.mockRestore();
+  });
+
+  it('should close accordion section on transition end after status change', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      { id: 'acc-1', name: 'Cuenta Real', alias: 'Real' } as never,
+    ]);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'news-1',
+        user_email: 'test@example.com',
+        title: 'IPC de EE.UU',
+        source: 'Bloomberg',
+        published_at: '2026-07-01T10:00:00.000Z',
+        impact: 'high',
+        summary: 'Resumen',
+        category: 'macro',
+        tags: ['usd'],
+        is_published: true,
+        created_at: '2026-07-01T10:00:00.000Z',
+        updated_at: '2026-07-01T10:00:00.000Z',
+      } as never,
+    ]);
+    vi.mocked(marketEntriesService.listMarketEntriesByUser).mockResolvedValueOnce([
+      {
+        id: 'entry-1',
+        groupId: 'group-1',
+        userEmail: 'test@example.com',
+        accountId: '',
+        accountName: '',
+        symbol: 'EURUSD',
+        marketContext: 'CPI',
+        contextSource: 'news',
+        newsArticleId: 'news-1',
+        newsImpact: 'high',
+        setup: 'Breakout',
+        session: 'NEW YORK',
+        direction: 'buy',
+        entryPrice: 1.1,
+        stopLoss: 1.09,
+        takeProfit: 1.12,
+        riskAmount: 0,
+        investmentPercent: 0,
+        resultR: null,
+        noEntryReason: 'sin entrada',
+        note: '',
+        status: 'no_entry',
+        plannedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada' }));
+    fireEvent.change(screen.getByRole('combobox', { name: 'Estado' }), { target: { value: 'closed' } });
+
+    const accordion = document.querySelector('.entries-accordion.is-closed') as HTMLDivElement;
+    expect(accordion).toBeInTheDocument();
+    fireEvent.transitionEnd(accordion);
+  });
+
+});
+
+describe('MarketEntriesModule helpers', () => {
+  it('resuelve etiquetas de estado, dirección y protocolos', () => {
+    expect(statusLabel('planned')).toBe('Planificada');
+    expect(statusLabel('open')).toBe('Abierta');
+    expect(statusLabel('closed')).toBe('Completada');
+    expect(statusLabel('no_entry')).toBe('Sin entrada');
+    expect(statusLabel('cancelled')).toBe('Cancelada');
+
+    expect(directionLabel('buy')).toBe('BUY');
+    expect(directionLabel('sell')).toBe('SELL');
+
+    expect(candleProtocolLabel('ob')).toBe('OB');
+    expect(candleProtocolLabel('fvg')).toBe('FVG');
+    expect(candleProtocolLabel(null)).toBe('NO');
+
+    expect(newsImpactLabel('high')).toBe('Alto');
+    expect(newsImpactLabel('medium')).toBe('Medio');
+    expect(newsImpactLabel('low')).toBe('Bajo');
+    expect(newsImpactLabel(null)).toBe('Sin impacto');
+  });
+
+  it('resuelve outcomes técnicos y financieros con todas las ramas', () => {
+    const base = {
+      id: 'e',
+      groupId: 'g',
+      userEmail: 'u',
+      accountId: 'a',
+      accountName: 'Cuenta',
+      symbol: 'EURUSD',
+      marketContext: 'ctx',
+      contextSource: 'free_text',
+      newsArticleId: null,
+      newsImpact: null,
+      setup: 's',
+      session: 'NEW YORK',
+      candleProtocol: 'no',
+      direction: 'buy',
+      entryPrice: 1,
+      stopLoss: 1,
+      takeProfit: 1,
+      closePrice: null,
+      operationLink: null,
+      riskAmount: 100,
+      investmentPercent: 1,
+      noEntryReason: null,
+      note: '',
+      plannedAt: '2026-06-20T10:00:00.000Z',
+      createdAt: '2026-06-20T10:00:00.000Z',
+      updatedAt: '2026-06-20T10:00:00.000Z',
+    };
+
+    expect(resolveTechnicalOutcome({ ...base, status: 'open', resultR: 1 } as never)).toBeNull();
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: null } as never)).toBeNull();
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: -1 } as never)).toBe('sl');
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: 0 } as never)).toBe('flat');
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: 1 } as never)).toBe('tp_1_1');
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: 2 } as never)).toBe('tp_extended');
+    expect(resolveTechnicalOutcome({ ...base, status: 'closed', resultR: 0.5 } as never)).toBe('tp_partial');
+
+    expect(technicalOutcomeLabel('sl')).toBe('SL');
+    expect(technicalOutcomeLabel('flat')).toBe('Sin avance');
+    expect(technicalOutcomeLabel('tp_1_1')).toBe('Break tecnico 1:1');
+    expect(technicalOutcomeLabel('tp_extended')).toBe('TP extendido');
+    expect(technicalOutcomeLabel('tp_partial')).toBe('TP parcial');
+
+    expect(resolveFinancialOutcome({ ...base, status: 'open', resultR: 1 } as never)).toBeNull();
+    expect(resolveFinancialOutcome({ ...base, status: 'closed', resultR: null } as never)).toBeNull();
+    expect(resolveFinancialOutcome({ ...base, status: 'closed', resultR: -1 } as never)).toBe('loss');
+    expect(resolveFinancialOutcome({ ...base, status: 'closed', resultR: 1 } as never)).toBe('profit');
+    expect(resolveFinancialOutcome({ ...base, status: 'closed', resultR: 0 } as never)).toBe('breakeven');
+
+    expect(financialOutcomeLabel('profit')).toBe('Ganancia');
+    expect(financialOutcomeLabel('loss')).toBe('Perdida');
+    expect(financialOutcomeLabel('breakeven')).toBe('Breakeven');
+  });
+
+  it('normaliza números y cálculo de resultado por cuenta', () => {
+    expect(toNumber(' 1,25 ')).toBe(1.25);
+    expect(toNumberOrNull('   ')).toBeNull();
+    expect(toNumberOrNull(' 2,5 ')).toBe(2.5);
+
+    expect(normalizeResultR(Number.NaN)).toBeNull();
+    expect(normalizeResultR(1.236)).toBe(1.24);
+
+    expect(calculateAccountResultAmount(Number.NaN, 1)).toBeNull();
+    expect(calculateAccountResultAmount(0, 1)).toBeNull();
+    expect(calculateAccountResultAmount(100, null)).toBeNull();
+    expect(calculateAccountResultAmount(100, Number.NaN)).toBeNull();
+    expect(calculateAccountResultAmount(100, 1.5)).toBe(150);
+  });
+
+  it('normaliza entradas monetarias y mensajes de error', () => {
+    expect(parseCurrencyAmount('')).toBeNaN();
+    expect(parseCurrencyAmount('$1,250.50')).toBe(1250.5);
+    expect(parseCurrencyAmount('abc')).toBeNaN();
+
+    expect(formatCurrencyAmountInput('')).toBe('');
+    expect(formatCurrencyAmountInput('abc')).toBe('');
+    expect(formatCurrencyAmountInput('1000')).toBe('$1,000.00');
+
+    expect(sanitizeCurrencyAmountDraft('')).toBe('');
+    expect(sanitizeCurrencyAmountDraft('$0012,345x')).toBe('12.34');
+    expect(sanitizeCurrencyAmountDraft('10.')).toBe('10.');
+
+    expect(toEditableCurrencyAmount('')).toBe('');
+    expect(toEditableCurrencyAmount('$1,250.00')).toBe('1250');
+    expect(toEditableCurrencyAmount('xx')).toBe('');
+
+    expect(normalizeEditableEntryStatus('no_entry')).toBe('no_entry');
+    expect(normalizeEditableEntryStatus('open')).toBe('closed');
+
+    expect(toDateTimeLocalValue('invalid')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
+    expect(toDateTimeLocalValue('2026-06-20T10:00:00.000Z')).toContain('2026-06-20T10:00');
+
+    expect(toErrorMessage(new Error('boom'), 'fallback')).toBe('boom');
+    expect(toErrorMessage({ message: 'error', details: 'detalle', hint: 'hint' }, 'fallback')).toBe('error Detalle: detalle Sugerencia: hint');
+    expect(toErrorMessage({ message: '   ' }, 'fallback')).toBe('fallback');
+    expect(toErrorMessage('x', 'fallback')).toBe('fallback');
+  });
+
+  it('resuelve símbolo y etiqueta de borrado', () => {
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: ' NAS100 ' } as never)).toBe('NAS100');
+    expect(resolveEntrySymbol({ symbol: 'OTRO', symbolDetail: '   ' } as never)).toBe('OTRO');
+    expect(resolveEntrySymbol({ symbol: 'EURUSD', symbolDetail: null } as never)).toBe('EURUSD');
+
+    expect(entryDeletionLabel({ status: 'open', accountName: 'Real', symbol: 'EURUSD' } as never)).toBe('entrada de Real para EURUSD');
+    expect(entryDeletionLabel({ status: 'no_entry', accountName: '', symbol: '' } as never)).toBe('registro sin entrada');
+    expect(entryDeletionLabel({ status: 'no_entry', accountName: '', symbol: 'EURUSD' } as never)).toBe('registro sin entrada de EURUSD');
+  });
+
+  it('construye selección por cuenta y valida duplicados/cuentas inválidas', () => {
+    const accounts = [
+      { id: 'acc-1', name: 'Cuenta Uno', alias: 'Uno' },
+      { id: 'acc-2', name: 'Cuenta Dos', alias: '' },
+    ] as never;
+
+    const perAccount = buildCreatePerAccountSelection(
+      accounts,
+      [
+        { id: 'r1', accountId: 'acc-1', riskAmount: '$100.00' },
+        { id: 'r2', accountId: 'acc-2', riskAmount: '$50.00' },
+      ],
+      false,
+    );
+    expect(perAccount).toEqual([
+      { accountId: 'acc-1', accountName: 'Uno', riskAmount: 100, investmentPercent: 1 },
+      { accountId: 'acc-2', accountName: 'Cuenta Dos', riskAmount: 50, investmentPercent: 1 },
+    ]);
+
+    const noEntry = buildCreatePerAccountSelection(accounts, [{ id: 'r1', accountId: 'acc-1', riskAmount: '$999.00' }], true);
+    expect(noEntry[0]?.riskAmount).toBe(0);
+
+    expect(() => buildCreatePerAccountSelection(accounts, [{ id: 'r1', accountId: 'unknown', riskAmount: '$10.00' }], false))
+      .toThrow('Selecciona una cuenta valida en la fila 1.');
+
+    expect(() => buildCreatePerAccountSelection(accounts, [
+      { id: 'r1', accountId: 'acc-1', riskAmount: '$10.00' },
+      { id: 'r2', accountId: 'acc-1', riskAmount: '$20.00' },
+    ], false)).toThrow('La cuenta Uno esta repetida.');
+  });
+
+  it('construye request create y valida Resultado R cuando aplica', () => {
+    const commonForm = {
+      symbol: 'nas100',
+      symbolDetail: 'Indice',
+      marketContext: 'NFP',
+      contextSource: 'news',
+      newsArticleId: 'news-1',
+      newsImpact: 'high',
+      setup: 'M3',
+      session: 'NEW YORK',
+      candleProtocol: 'ob',
+      direction: 'buy',
+      resultR: '1,5',
+      operationLink: 'https://example.com',
+      noEntryReason: '',
+      note: 'nota',
+      plannedAt: '2026-06-29T10:00',
+      status: 'closed',
+    };
+
+    const { createInput, resultRValue } = buildCreateMarketEntryRequest(
+      commonForm as never,
+      [{ accountId: 'acc-1', accountName: 'Real', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      true,
+    );
+
+    expect(resultRValue).toBe(1.5);
+    expect(createInput.common.symbol).toBe('OTRO');
+    expect(createInput.common.symbolDetail).toBe('NAS100');
+    expect(createInput.common.contextSource).toBe('free_text');
+    expect(createInput.common.newsArticleId).toBeNull();
+    expect(createInput.common.newsImpact).toBeNull();
+
+    const normal = buildCreateMarketEntryRequest(
+      { ...commonForm, symbol: 'EURUSD', resultR: '3', status: 'open' } as never,
+      [{ accountId: 'acc-1', accountName: 'Real', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      false,
+    );
+    expect(normal.createInput.common.contextSource).toBe('free_text');
+    expect(normal.createInput.common.newsArticleId).toBeNull();
+    expect(normal.createInput.common.resultR).toBeNull();
+
+    expect(() => buildCreateMarketEntryRequest(
+      { ...commonForm, resultR: 'x' } as never,
+      [{ accountId: 'acc-1', accountName: 'Real', riskAmount: 100, investmentPercent: 1 }],
+      false,
+      true,
+    )).toThrow('No se pudo interpretar el Resultado R ingresado.');
+  });
+
+  it('construye filas por defecto según disponibilidad de cuentas', () => {
+    const emptyRows = buildDefaultAccountRows([] as never);
+    expect(emptyRows).toHaveLength(1);
+    expect(emptyRows[0]?.accountId).toBe('');
+
+    const accountRows = buildDefaultAccountRows([{ id: 'acc-1' }] as never);
+    expect(accountRows).toHaveLength(1);
+    expect(accountRows[0]?.accountId).toBe('acc-1');
+  });
 });

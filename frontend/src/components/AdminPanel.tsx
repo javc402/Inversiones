@@ -172,7 +172,9 @@ export default function AdminPanel() {
           const isSelf = user.user_id === currentUserId || (!!normalizedEmail && normalizedEmail === currentUserEmail);
           const canActivate = !isSelf && user.status !== 'active';
           const canMakeAdmin = !isSelf && roleName !== 'admin';
-          const canRemoveAdmin = roleName === 'admin';
+          const canRemoveAdmin = !isSelf && roleName === 'admin';
+          const canToggleAdminRole = canMakeAdmin || canRemoveAdmin;
+          const adminActionLabel = roleName === 'admin' ? 'Quitar admin' : 'Hacer admin';
           const statusChipLabel = user.status === 'active' ? 'ACTIVO' : user.status === 'inactive' ? 'INACTIVO' : 'PENDIENTE';
 
           return (
@@ -237,23 +239,20 @@ export default function AdminPanel() {
                   </button>
                   <button
                     type="button"
-                    className="admin-icon-btn admin"
-                    title="Hacer admin"
-                    aria-label="Hacer admin"
-                    disabled={!canMakeAdmin}
-                    onClick={() => void handleAssignAdmin(user.user_id)}
+                    className={`admin-icon-btn ${roleName === 'admin' ? 'remove' : 'admin'}`}
+                    title={adminActionLabel}
+                    aria-label={adminActionLabel}
+                    disabled={!canToggleAdminRole}
+                    onClick={() => {
+                      if (roleName === 'admin') {
+                        void handleRemoveAdmin(user.user_id);
+                        return;
+                      }
+
+                      void handleAssignAdmin(user.user_id);
+                    }}
                   >
                       <AppIcon name="shield" />
-                  </button>
-                  <button
-                    type="button"
-                    className="admin-icon-btn remove"
-                    title="Quitar admin"
-                    aria-label="Quitar admin"
-                    disabled={!canRemoveAdmin}
-                    onClick={() => void handleRemoveAdmin(user.user_id)}
-                  >
-                      <AppIcon name="delete" />
                   </button>
                 </div>
 

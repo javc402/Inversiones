@@ -2,17 +2,31 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage, {
+  calculateTradingInsights,
   calculateDailyProfitData,
   calculateMonthlyProfitData,
   calculateProfitFactor,
   distributionAmountLabel,
   financialOutcomeLabel,
+  financialResultAmount,
+  fullMonthLabelFromShort,
   formatCurrency,
   formatDate,
+  formatUsdInput,
   getEntryExecutionDate,
+  isDashboardTab,
+  isTechnicalBreakEven,
+  loadStoredDashboardTab,
+  openOperationLink,
+  parseDashboardEditValues,
+  prefetchDashboardTab,
   roleNameLabel,
+  resolveMonthlyReferenceDate,
+  sanitizeUsdDraft,
   statusLabel,
   technicalOutcomeLabel,
+  toDateTimeLocalValue,
+  toEditableUsdInput,
   tradeResultClass,
 } from './DashboardPage'
 
@@ -1488,7 +1502,8 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    fireEvent.click(await screen.findByRole('button', { name: 'Editar entrada EURUSD' }))
+    const editButtons = await screen.findAllByRole('button', { name: /Editar entrada/ })
+    fireEvent.click(editButtons[0])
     const dateInput = screen.getByLabelText('Fecha de ejecución') as HTMLInputElement
     fireEvent.focus(dateInput)
     fireEvent.click(dateInput)
@@ -2155,6 +2170,291 @@ describe('DashboardPage', () => {
     const yearFilter = await screen.findByLabelText('Filtrar por año')
     expect(yearFilter).toBeInTheDocument()
     expect((yearFilter as HTMLSelectElement).value).toBe('all')
+  })
+
+  it('cubre validadores y storage helpers del dashboard', () => {
+    expect(isDashboardTab('resumen')).toBe(true)
+    expect(isDashboardTab('usuarios')).toBe(true)
+    expect(isDashboardTab('invalido')).toBe(false)
+    expect(isDashboardTab(null)).toBe(false)
+
+    localStorage.setItem('inversiones_dashboard_active_tab', 'noticias')
+    expect(loadStoredDashboardTab()).toBe('noticias')
+
+    const getItemSpy = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new Error('storage blocked')
+    })
+    expect(loadStoredDashboardTab()).toBe('resumen')
+    getItemSpy.mockRestore()
+  })
+
+  it('cubre helpers de resultado técnico/financiero y fecha de ejecución', () => {
+    expect(isTechnicalBreakEven({ status: 'closed', resultR: 1 } as never)).toBe(true)
+    expect(isTechnicalBreakEven({ status: 'open', resultR: 1 } as never)).toBe(false)
+
+    expect(financialResultAmount({ status: 'open', resultR: 1, riskAmount: 100 } as never)).toBeNull()
+    expect(financialResultAmount({ status: 'closed', resultR: null, riskAmount: 100 } as never)).toBeNull()
+    expect(financialResultAmount({ status: 'closed', resultR: 1, riskAmount: 100 } as never)).toBe(0)
+    expect(financialResultAmount({ status: 'closed', resultR: 2, riskAmount: 100 } as never)).toBe(200)
+
+    expect(getEntryExecutionDate({
+      status: 'closed',
+      plannedAt: 'invalid',
+      updatedAt: '2026-06-20T10:00:00.000Z',
+      createdAt: '2026-06-10T10:00:00.000Z',
+    } as never)).toBe('2026-06-20T10:00:00.000Z')
+
+    expect(getEntryExecutionDate({
+      status: 'closed',
+      plannedAt: 'invalid',
+      updatedAt: 'invalid',
+      createdAt: '2026-06-10T10:00:00.000Z',
+    } as never)).toBe('2026-06-10T10:00:00.000Z')
+  })
+
+  it('prefetch de tabs no lanza errores en todas las rutas', () => {
+    expect(() => prefetchDashboardTab('simulacion', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('noticias', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('cuentas', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('entradas', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('configuracion', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('usuarios', false)).not.toThrow()
+    expect(() => prefetchDashboardTab('usuarios', true)).not.toThrow()
+    expect(() => prefetchDashboardTab('resumen', false)).not.toThrow()
+  })
+
+  it('cubre helpers internos de edición y formato USD', () => {
+    expect(toDateTimeLocalValue('invalid')).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/)
+    expect(toDateTimeLocalValue('2026-06-20T10:00:00.000Z')).toContain('2026-06-20T10:00')
+
+    expect(formatUsdInput('')).toBe('')
+    expect(formatUsdInput('abc')).toBe('')
+    expect(formatUsdInput('1250')).toBe('$1,250.00')
+
+    expect(sanitizeUsdDraft('')).toBe('')
+    expect(sanitizeUsdDraft('$0012,345x')).toBe('12.34')
+    expect(sanitizeUsdDraft('10.')).toBe('10.')
+    expect(toEditableUsdInput('')).toBe('')
+    expect(toEditableUsdInput('$1,250.00')).toBe('1250')
+    expect(toEditableUsdInput('xx')).toBe('')
+
+    expect(parseDashboardEditValues({
+      status: 'open',
+      marketContext: '',
+      contextSource: 'free_text',
+      newsArticleId: '',
+      newsImpact: '',
+      plannedAt: '2026-06-20T10:00',
+      riskAmount: '$100.00',
+      resultR: '',
+      operationLink: '',
+      note: '',
+      noEntryReason: '',
+    }).riskAmount).toBe(100)
+
+    expect(() => parseDashboardEditValues({
+      status: 'closed',
+      marketContext: '',
+      contextSource: 'free_text',
+      newsArticleId: '',
+      newsImpact: '',
+      plannedAt: '2026-06-20T10:00',
+      riskAmount: '$100.00',
+      resultR: '',
+      operationLink: '',
+      note: '',
+      noEntryReason: '',
+    })).toThrow('El Resultado R debe ser valido para estado Completada.')
+
+    expect(() => parseDashboardEditValues({
+      status: 'open',
+      marketContext: '',
+      contextSource: 'free_text',
+      newsArticleId: '',
+      newsImpact: '',
+      plannedAt: '2026-06-20T10:00',
+      riskAmount: '',
+      resultR: '',
+      operationLink: '',
+      note: '',
+      noEntryReason: '',
+    })).toThrow('El Riesgo por cuenta (USD) debe ser válido.')
+  })
+
+  it('cubre helpers de insights, referencia mensual y navegación de links', () => {
+    expect(fullMonthLabelFromShort('Ene')).toBe('Enero')
+    expect(fullMonthLabelFromShort('Invalid')).toBe('Invalid')
+
+    const entries = [
+      {
+        status: 'closed',
+        resultR: 2,
+        riskAmount: 100,
+        plannedAt: 'invalid',
+        updatedAt: 'invalid',
+        createdAt: 'invalid',
+      },
+      {
+        status: 'closed',
+        resultR: 1,
+        riskAmount: 50,
+        plannedAt: '2026-06-20T10:00:00.000Z',
+        updatedAt: '2026-06-20T10:00:00.000Z',
+        createdAt: '2026-06-20T10:00:00.000Z',
+      },
+    ]
+
+    const emptyInsights = calculateTradingInsights([], 'month')
+    expect(emptyInsights.bestWeekLabel).toBe('Sin datos')
+
+    const insights = calculateTradingInsights(entries as never, 'year')
+    expect(insights.bestWeekLabel).toContain('Semana')
+    expect(insights.bestWeekdayTrades).toBeGreaterThan(0)
+
+    const monthRef = resolveMonthlyReferenceDate([], 'not-a-year')
+    expect(monthRef).toBeInstanceOf(Date)
+
+    const selectedYearDate = resolveMonthlyReferenceDate([], '2024')
+    expect(selectedYearDate.getFullYear()).toBe(2024)
+
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null)
+    openOperationLink(null)
+    expect(openSpy).not.toHaveBeenCalled()
+    openOperationLink('https://example.com')
+    expect(openSpy).toHaveBeenCalledWith('https://example.com', '_blank', 'noopener,noreferrer')
+    openSpy.mockRestore()
+  })
+
+  it('cubre ramas de fechas inválidas y fuera de rango en series', () => {
+    const fixedNow = new Date('2026-06-15T00:00:00.000Z')
+
+    const monthly = calculateMonthlyProfitData([
+      {
+        status: 'closed',
+        resultR: 1,
+        riskAmount: 100,
+        plannedAt: 'invalid',
+        updatedAt: 'invalid',
+        createdAt: 'invalid',
+      },
+      {
+        status: 'closed',
+        resultR: 1,
+        riskAmount: 100,
+        plannedAt: '2024-01-10T10:00:00.000Z',
+        updatedAt: '2024-01-10T10:00:00.000Z',
+        createdAt: '2024-01-10T10:00:00.000Z',
+      },
+    ] as never, fixedNow)
+
+    expect(monthly).toHaveLength(6)
+    expect(monthly.every((point) => Number.isFinite(point.amount))).toBe(true)
+
+    const daily = calculateDailyProfitData([
+      {
+        status: 'closed',
+        resultR: 1,
+        riskAmount: 100,
+        plannedAt: 'invalid',
+        updatedAt: 'invalid',
+        createdAt: 'invalid',
+      },
+      {
+        status: 'closed',
+        resultR: -1,
+        riskAmount: 100,
+        plannedAt: '2026-07-01T10:00:00.000Z',
+        updatedAt: '2026-07-01T10:00:00.000Z',
+        createdAt: '2026-07-01T10:00:00.000Z',
+      },
+    ] as never, new Date('2026-06-15T00:00:00.000Z'))
+
+    expect(daily).toHaveLength(30)
+    expect(daily.every((point) => Number.isFinite(point.amount))).toBe(true)
+  })
+
+  it('cubre prefetch con requestIdleCallback y cleanup con cancelIdleCallback', async () => {
+    const requestIdleCallbackSpy = vi.fn((callback: IdleRequestCallback) => {
+      callback({ didTimeout: false, timeRemaining: () => 50 } as IdleDeadline)
+      return 11 as never
+    })
+    const cancelIdleCallbackSpy = vi.fn()
+
+    Object.defineProperty(globalThis, 'requestIdleCallback', {
+      value: requestIdleCallbackSpy,
+      configurable: true,
+      writable: true,
+    })
+    Object.defineProperty(globalThis, 'cancelIdleCallback', {
+      value: cancelIdleCallbackSpy,
+      configurable: true,
+      writable: true,
+    })
+
+    getCurrentUserRoleMock.mockResolvedValueOnce({ id: 'role-admin', name: 'admin', description: 'Administrador' })
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    const { unmount } = render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+    await screen.findByText('Ganancias del año')
+
+    expect(requestIdleCallbackSpy).toHaveBeenCalled()
+    unmount()
+    expect(cancelIdleCallbackSpy).toHaveBeenCalledWith(11)
+  })
+
+  it('resetea cuenta y mes cuando filtros quedan fuera de disponibilidad', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({ id: 'role-user', name: 'user', description: 'Usuario' })
+    listTradingAccountsMock
+      .mockResolvedValueOnce([{ id: 'acc-1', name: 'Cuenta Real', alias: 'Real' }])
+      .mockResolvedValueOnce([])
+    listMarketEntriesByUserMock
+      .mockResolvedValueOnce([
+        {
+          id: 'entry-1', groupId: 'g1', userEmail: 'usuario@demo.com', accountId: 'acc-1', accountName: 'Real',
+          symbol: 'EURUSD', marketContext: 'CPI', setup: 'Breakout', session: 'NY', direction: 'buy',
+          entryPrice: 1.1, stopLoss: 1, takeProfit: 1.2, riskAmount: 100, investmentPercent: 1, resultR: 1,
+          status: 'closed', note: '', plannedAt: '2026-06-10T10:00:00.000Z', createdAt: '2026-06-10T10:00:00.000Z', updatedAt: '2026-06-10T10:00:00.000Z',
+          contextSource: null, newsArticleId: null, noEntryReason: null,
+        },
+      ])
+      .mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+
+    const accountFilter = await screen.findByLabelText('Filtrar por cuenta')
+    const yearFilter = screen.getByLabelText('Filtrar por año')
+    const monthFilter = screen.getByLabelText('Filtrar por mes')
+
+    fireEvent.change(accountFilter, { target: { value: 'acc-1' } })
+    fireEvent.change(yearFilter, { target: { value: '2026' } })
+    fireEvent.change(monthFilter, { target: { value: '5' } })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Entradas mercado' }))
+    await screen.findByText('Modulo de Entradas')
+    fireEvent.click(screen.getByRole('button', { name: 'Resumen' }))
+    await screen.findByText('Ganancias del año')
+
+    expect(screen.getByLabelText('Filtrar por cuenta')).toHaveValue('all')
+    expect(screen.getByLabelText('Filtrar por mes')).toHaveValue('all')
+  })
+
+  it('ejecuta onFocus de botones de sidebar para todas las pestañas', async () => {
+    getCurrentUserRoleMock.mockResolvedValueOnce({ id: 'role-admin', name: 'admin', description: 'Administrador' })
+    listTradingAccountsMock.mockResolvedValueOnce([])
+    listMarketEntriesByUserMock.mockResolvedValueOnce([])
+
+    render(<DashboardPage userEmail="admin@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
+    await screen.findByText('Ganancias del año')
+
+    fireEvent.focus(screen.getByRole('button', { name: 'Simulación' }))
+    fireEvent.focus(screen.getByRole('button', { name: 'Mis noticias' }))
+    fireEvent.focus(screen.getByRole('button', { name: 'Entradas mercado' }))
+    fireEvent.focus(screen.getByRole('button', { name: 'Gestionar cuentas' }))
+    fireEvent.focus(screen.getByRole('button', { name: 'Gestionar usuarios' }))
+    fireEvent.focus(screen.getByRole('button', { name: 'Configuración' }))
+
+    expect(screen.getByText('Dashboard de Inversiones')).toBeInTheDocument()
   })
 
 })

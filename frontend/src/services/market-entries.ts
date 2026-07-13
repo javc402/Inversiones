@@ -1,4 +1,5 @@
 import { supabase } from '@lib/supabase';
+import { logAuditActivity, logAuditError } from './audit';
 
 export type MarketEntryDirection = 'buy' | 'sell';
 export type MarketEntryStatus = 'planned' | 'open' | 'closed' | 'cancelled' | 'no_entry';
@@ -100,6 +101,21 @@ interface UpdateMarketEntryResult {
   updatedEntry: MarketEntry;
   affectedEntries: number;
   groupApplied: boolean;
+}
+
+type MarketEntriesErrorAction = 'list' | 'list_contexts' | 'create_batch' | 'update' | 'delete';
+
+interface MarketEntriesErrorMetadata extends Record<string, unknown> {
+  errorSource: 'frontend_service';
+  errorModule: 'market_entries';
+  errorAction: MarketEntriesErrorAction;
+  errorContext: {
+    targetId: string | null;
+    status: MarketEntryStatus | null;
+    symbol: string | null;
+    limit: number | null;
+    applyCommonToGroup: boolean | null;
+  };
 }
 
 interface MarketEntryRow {
@@ -219,6 +235,24 @@ function hasUpToTwoDecimalPrecision(value: number): boolean {
   return Math.abs(value - roundedToTwo) < 1e-9;
 }
 
+export function buildMarketEntriesErrorMetadata(
+  errorAction: MarketEntriesErrorAction,
+  context?: Partial<MarketEntriesErrorMetadata['errorContext']>
+): MarketEntriesErrorMetadata {
+  return {
+    errorSource: 'frontend_service',
+    errorModule: 'market_entries',
+    errorAction,
+    errorContext: {
+      targetId: context?.targetId ?? null,
+      status: context?.status ?? null,
+      symbol: context?.symbol ?? null,
+      limit: context?.limit ?? null,
+      applyCommonToGroup: context?.applyCommonToGroup ?? null,
+    },
+  };
+}
+
 function validateResultR(value: number | null | undefined): void {
   if (value === null || value === undefined || !Number.isFinite(value)) {
     throw new Error('El Resultado R es obligatorio para entradas completadas.');
@@ -277,7 +311,7 @@ function validatePerAccount(perAccount: MarketEntryAccountInput[], status: Marke
     accountIds.add(item.accountId);
 
     if (!Number.isFinite(item.riskAmount)) {
-      throw new Error('El riesgo por cuenta debe ser un número válido.');
+      throw new TypeError('El riesgo por cuenta debe ser un número válido.');
     }
 
     if (status === 'no_entry') {
@@ -433,31 +467,49 @@ function validateFinalUpdatePayload(
 }
 
 export async function listMarketEntriesByUser(_userEmail: string): Promise<MarketEntry[]> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return [];
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return [];
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('market_entries')
     .select('*')
     .eq('user_id', userId)
     .order('updated_at', { ascending: false });
 
-  if (error) throw new Error(error.message ?? 'No se pudieron listar las entradas.');
+    if (error) throw new Error(error.message ?? 'No se pudieron listar las entradas.');
 
-  return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
+    void logAuditActivity('market_entries.list', {
+    module: 'market_entries',
+    targetType: 'market_entry',
+    resultCount: data?.length ?? 0,
+  });
+
+    return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
+  } catch (error) {
+    logAuditError(
+      'market_entries.list',
+      'market_entries',
+      'market_entry',
+      error,
+      buildMarketEntriesErrorMetadata('list')
+    );
+    throw error;
+  }
 }
 
 export async function listMostUsedMarketContexts(_userEmail: string, limit = 8): Promise<string[]> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return [];
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return [];
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('market_entries')
     .select('market_context, context_source')
     .eq('user_id', userId)
     .eq('context_source', 'free_text');
 
-  if (error) throw new Error(error.message ?? 'No se pudieron listar los contextos.');
+    if (error) throw new Error(error.message ?? 'No se pudieron listar los contextos.');
 
   const counts = new Map<string, number>();
   for (const row of data ?? []) {
@@ -466,27 +518,47 @@ export async function listMostUsedMarketContexts(_userEmail: string, limit = 8):
     counts.set(context, (counts.get(context) ?? 0) + 1);
   }
 
-  return [...counts.entries()]
+  const contexts = [...counts.entries()]
     .sort((a, b) => b[1] - a[1])
     .slice(0, Math.max(1, limit))
     .map(([context]) => context);
+
+    void logAuditActivity('market_entries.list_contexts', {
+    module: 'market_entries',
+    targetType: 'market_entry',
+    resultCount: contexts.length,
+    limit,
+  });
+
+    return contexts;
+  } catch (error) {
+    logAuditError(
+      'market_entries.list_contexts',
+      'market_entries',
+      'market_entry',
+      error,
+      buildMarketEntriesErrorMetadata('list_contexts', { limit })
+    );
+    throw error;
+  }
 }
 
 export async function createMarketEntriesForAccounts(_userEmail: string, input: CreateMarketEntriesInput): Promise<MarketEntry[]> {
-  validateCommonInput(input.common);
+  try {
+    validateCommonInput(input.common);
 
-  const normalizedPerAccount = normalizePerAccount(input.perAccount);
-  validatePerAccount(normalizedPerAccount, input.common.status);
+    const normalizedPerAccount = normalizePerAccount(input.perAccount);
+    validatePerAccount(normalizedPerAccount, input.common.status);
 
-  const userId = await getAuthenticatedUserId();
-  if (!userId) {
-    throw new Error('No hay un usuario autenticado para crear entradas.');
-  }
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
+      throw new Error('No hay un usuario autenticado para crear entradas.');
+    }
 
-  const timestamp = nowIso();
-  const groupId = createGroupId();
+    const timestamp = nowIso();
+    const groupId = createGroupId();
 
-  const payload = normalizedPerAccount.map((item) => ({
+    const payload = normalizedPerAccount.map((item) => ({
         user_id: userId,
         group_id: groupId,
         account_id: item.accountId,
@@ -513,11 +585,41 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         updated_at: timestamp,
       }));
 
-  const { data, error } = await supabase.from('market_entries').insert(payload as never).select('*');
+    const { data, error } = await supabase.from('market_entries').insert(payload as never).select('*');
 
-  if (error) throw new Error(error.message ?? 'No se pudo crear la entrada en la base de datos.');
+    if (error) throw new Error(error.message ?? 'No se pudo crear la entrada en la base de datos.');
 
-  return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
+    void logAuditActivity('market_entries.create_batch', {
+    module: 'market_entries',
+    targetType: 'market_entry',
+    symbol: input.common.symbol,
+    symbolDetail: input.common.symbol === 'OTRO' ? input.common.symbolDetail : null,
+    contextSource: input.common.contextSource,
+    newsArticleId: input.common.contextSource === 'news' ? input.common.newsArticleId : null,
+    newsImpact: input.common.contextSource === 'news' ? input.common.newsImpact : null,
+    candleProtocol: input.common.candleProtocol,
+    operationLink: input.common.operationLink || null,
+    status: input.common.status,
+    accountsCount: normalizedPerAccount.length,
+    accountIds: normalizedPerAccount.map((item) => item.accountId),
+    riskByAccount: normalizedPerAccount.map((item) => ({ accountId: item.accountId, riskAmount: item.riskAmount, investmentPercent: item.investmentPercent })),
+    noEntryReason: input.common.status === 'no_entry' ? input.common.noEntryReason : null,
+  });
+
+    return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
+  } catch (error) {
+    logAuditError(
+      'market_entries.create_batch',
+      'market_entries',
+      'market_entry',
+      error,
+      buildMarketEntriesErrorMetadata('create_batch', {
+        symbol: input.common.symbol ?? null,
+        status: input.common.status,
+      })
+    );
+    throw error;
+  }
 }
 
 export async function updateMarketEntryById(
@@ -526,49 +628,50 @@ export async function updateMarketEntryById(
   next: UpdateMarketEntryInput,
   options?: UpdateMarketEntryOptions
 ): Promise<UpdateMarketEntryResult> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) {
-    throw new Error('No hay un usuario autenticado para actualizar entradas.');
-  }
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
+      throw new Error('No hay un usuario autenticado para actualizar entradas.');
+    }
 
-  const { data: previousRow, error: previousError } = await supabase
+    const { data: previousRow, error: previousError } = await supabase
     .from('market_entries')
     .select('*')
     .eq('id', entryId)
     .eq('user_id', userId)
     .single();
 
-  if (previousError || !previousRow) {
-    throw new Error(previousError?.message ?? 'No se encontró la entrada solicitada.');
-  }
+    if (previousError || !previousRow) {
+      throw new Error(previousError?.message ?? 'No se encontró la entrada solicitada.');
+    }
 
-  const previous = previousRow as MarketEntryRow;
-  const isNoEntryFlow = next.status === 'no_entry';
-  validateUpdateMarketEntryInput(next);
+    const previous = previousRow as MarketEntryRow;
+    const isNoEntryFlow = next.status === 'no_entry';
+    validateUpdateMarketEntryInput(next);
 
-  const timestamp = nowIso();
-  const trimmedNote = next.note.trim();
-  const baseUpdate = buildMarketEntryUpdatePayload(previous, next, timestamp, trimmedNote, isNoEntryFlow);
-  validateFinalUpdatePayload(baseUpdate, next.status);
+    const timestamp = nowIso();
+    const trimmedNote = next.note.trim();
+    const baseUpdate = buildMarketEntryUpdatePayload(previous, next, timestamp, trimmedNote, isNoEntryFlow);
+    validateFinalUpdatePayload(baseUpdate, next.status);
 
-  const { data: updatedRows, error: updateError } = await supabase
+    const { data: updatedRows, error: updateError } = await supabase
     .from('market_entries')
     .update(baseUpdate)
     .eq('id', entryId)
     .eq('user_id', userId)
     .select('*');
 
-  if (updateError || !updatedRows || updatedRows.length === 0) {
-    throw new Error(updateError?.message ?? 'No se pudo actualizar la entrada solicitada.');
-  }
+    if (updateError || !updatedRows || updatedRows.length === 0) {
+      throw new Error(updateError?.message ?? 'No se pudo actualizar la entrada solicitada.');
+    }
 
-  const updated = mapRowToEntry(updatedRows[0] as MarketEntryRow);
-  const shouldApplyCommonToGroup = Boolean(options?.applyCommonToGroup);
+    const updated = mapRowToEntry(updatedRows[0] as MarketEntryRow);
+    const shouldApplyCommonToGroup = Boolean(options?.applyCommonToGroup);
 
-  let affectedEntries = 1;
+    let affectedEntries = 1;
 
-  if (shouldApplyCommonToGroup) {
-    const { data: groupRows, error: groupError } = await supabase
+    if (shouldApplyCommonToGroup) {
+      const { data: groupRows, error: groupError } = await supabase
       .from('market_entries')
       .update({
         status: next.status,
@@ -579,46 +682,89 @@ export async function updateMarketEntryById(
       .eq('user_id', userId)
       .select('id');
 
-    if (groupError) {
-      throw new Error(groupError.message ?? 'No se pudieron aplicar cambios al grupo.');
+      if (groupError) {
+        throw new Error(groupError.message ?? 'No se pudieron aplicar cambios al grupo.');
+      }
+
+      affectedEntries = groupRows?.length ?? 0;
     }
 
-    affectedEntries = groupRows?.length ?? 0;
-  }
-
-  return {
-    updatedEntry: {
-      ...updated,
-      status: next.status,
-      plannedAt: next.plannedAt ?? updated.plannedAt,
-      riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
-      investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
-      resultR: isNoEntryFlow ? updated.resultR : next.resultR,
-        operationLink: next.operationLink?.trim() || null,
-      note: trimmedNote,
-      noEntryReason: next.status === 'no_entry' ? (next.noEntryReason as string).trim() : null,
-    },
-    affectedEntries,
+    void logAuditActivity('market_entries.update', {
+    module: 'market_entries',
+    targetType: 'market_entry',
+    targetId: updated.id,
+    accountId: updated.accountId,
     groupApplied: shouldApplyCommonToGroup,
-  };
+    affectedEntries,
+    fieldsChanged: shouldApplyCommonToGroup
+      ? ['status', 'note', 'riskAmount', 'resultR', 'operationLink']
+      : ['status', 'riskAmount', 'resultR', 'operationLink', 'note'],
+  });
+
+    return {
+      updatedEntry: {
+        ...updated,
+        status: next.status,
+        plannedAt: next.plannedAt ?? updated.plannedAt,
+        riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
+        investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
+        resultR: isNoEntryFlow ? updated.resultR : next.resultR,
+          operationLink: next.operationLink?.trim() || null,
+        note: trimmedNote,
+        noEntryReason: next.status === 'no_entry' ? (next.noEntryReason as string).trim() : null,
+      },
+      affectedEntries,
+      groupApplied: shouldApplyCommonToGroup,
+    };
+  } catch (error) {
+    logAuditError(
+      'market_entries.update',
+      'market_entries',
+      'market_entry',
+      error,
+      buildMarketEntriesErrorMetadata('update', {
+        targetId: entryId,
+        status: next.status,
+        applyCommonToGroup: Boolean(options?.applyCommonToGroup),
+      })
+    );
+    throw error;
+  }
 }
 
 export async function deleteMarketEntryById(_userEmail: string, entryId: string): Promise<void> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) {
-    throw new Error('No hay un usuario autenticado para eliminar entradas.');
-  }
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) {
+      throw new Error('No hay un usuario autenticado para eliminar entradas.');
+    }
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('market_entries')
     .delete()
     .eq('id', entryId)
     .eq('user_id', userId)
     .select('id');
 
-  if (error) throw new Error(error.message ?? 'No se pudo eliminar la entrada.');
+    if (error) throw new Error(error.message ?? 'No se pudo eliminar la entrada.');
 
-  if (!data || data.length === 0) {
-    throw new Error('No se encontró la entrada solicitada.');
+    if (!data || data.length === 0) {
+      throw new Error('No se encontró la entrada solicitada.');
+    }
+
+    void logAuditActivity('market_entries.delete', {
+      module: 'market_entries',
+      targetType: 'market_entry',
+      targetId: entryId,
+    });
+  } catch (error) {
+    logAuditError(
+      'market_entries.delete',
+      'market_entries',
+      'market_entry',
+      error,
+      buildMarketEntriesErrorMetadata('delete', { targetId: entryId })
+    );
+    throw error;
   }
 }
