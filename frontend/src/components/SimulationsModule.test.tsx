@@ -63,20 +63,28 @@ vi.mock('recharts', () => {
 })
 
 import SimulationsModule, {
+  applyOperationDerivedValues,
   applySelectedAccountToForm,
   calculateOperationRiskSnapshots,
+  compareOperationsByDateTime,
   distributionAmountLabel,
   formatDateRange,
   formatPercentRange,
+  fullMonthLabel,
+  normalizeOperationTimeValue,
   resolveAccountDisplayName,
   resultTypeLabel,
   shouldAskDiscardConfirmation,
+  simulationResultClass,
+  simulationUsdClass,
+  sortAndReindexOperations,
   statusLabel,
   toggleWeekdaySelection,
   validateStep,
   validateStepOne,
   validateStepThree,
   validateStepTwo,
+  weekOfMonth,
 } from './SimulationsModule';
 
 describe('SimulationsModule', () => {
@@ -319,10 +327,9 @@ describe('SimulationsModule', () => {
 
     const submittedSimulation = createSimulationDraftMock.mock.calls[0][0];
     expect(await screen.findByText(`Simulación "Sim Demo NY" generada como borrador con ${submittedSimulation.totalOpportunities} oportunidades.`)).toBeInTheDocument();
-    expect(screen.getByText('Borrador')).toBeInTheDocument();
-    expect(screen.getByText(`Seed ${submittedSimulation.seed}`)).toBeInTheDocument();
+    expect(screen.getByText(/Borrador/)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Guardar simulación' })).toBeDisabled();
-    expect(screen.getByLabelText('Dashboard de simulación')).toBeInTheDocument();
+    expect(screen.queryByLabelText('Lista de simulaciones guardadas')).not.toBeInTheDocument();
   });
 
   it('revierte la cabecera si falla la persistencia de operaciones', async () => {
@@ -593,7 +600,14 @@ describe('SimulationsModule', () => {
     expect(workspace).toBeInTheDocument();
     expect(within(workspace).getByText('Q1 Backtest')).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('USD 2'), { target: { value: '-50' } });
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Enero/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Semana 1/i }));
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Editar invertido 1' });
+    fireEvent.click(editButtons[editButtons.length - 1]);
+    const investedInputs = screen.getAllByLabelText('Invertido 1');
+    fireEvent.change(investedInputs[investedInputs.length - 1], { target: { value: '50' } });
     expect(screen.getByRole('button', { name: 'Guardar simulación' })).toBeEnabled();
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar simulación' }));
@@ -696,16 +710,14 @@ describe('SimulationsModule', () => {
     fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
 
-    expect(within(workspace).getByText('Filtro activo:')).toBeInTheDocument();
-    expect(within(workspace).getByText('4 operaciones visibles')).toBeInTheDocument();
+    expect(within(workspace).getByText('4 operaciones')).toBeInTheDocument();
     expect(within(workspace).getByLabelText('Filtrar por mes')).toBeDisabled();
-    fireEvent.change(within(workspace).getByLabelText('Filtrar por cuenta'), { target: { value: 'Cuenta Demo' } });
 
     fireEvent.change(within(workspace).getByLabelText('Filtrar por año'), { target: { value: '2026' } });
-    expect(await within(workspace).findByText('3 operaciones visibles')).toBeInTheDocument();
+    expect(await within(workspace).findByText('3 operaciones')).toBeInTheDocument();
 
     fireEvent.change(within(workspace).getByLabelText('Filtrar por mes'), { target: { value: '0' } });
-    expect(await within(workspace).findByText('2 operaciones visibles')).toBeInTheDocument();
+    expect(await within(workspace).findByText('2 operaciones')).toBeInTheDocument();
   });
 
   it('muestra error si falla el guardado de la simulacion activa', async () => {
@@ -727,7 +739,15 @@ describe('SimulationsModule', () => {
 
     fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
-    fireEvent.change(within(workspace).getByLabelText('USD 2'), { target: { value: '-50' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Enero/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Semana 1/i }));
+
+    const editButtons = await screen.findAllByRole('button', { name: 'Editar invertido 1' });
+    fireEvent.click(editButtons[editButtons.length - 1]);
+    const investedInputs = screen.getAllByLabelText('Invertido 1');
+    fireEvent.change(investedInputs[investedInputs.length - 1], { target: { value: '50' } });
     fireEvent.click(within(workspace).getByRole('button', { name: 'Guardar simulación' }));
 
     expect(await screen.findByText('fallo guardado')).toBeInTheDocument();
@@ -791,11 +811,17 @@ describe('SimulationsModule', () => {
     const workspace = await screen.findByLabelText('Dashboard de simulación');
     expect(workspace).toBeInTheDocument();
 
-    fireEvent.change(screen.getByLabelText('USD 1'), { target: { value: '50' } });
-    fireEvent.click(within(workspace).getByRole('button', { name: 'Nueva simulación' }));
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enero/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Semana 1/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar invertido 1' }));
+    fireEvent.change(screen.getByLabelText('Invertido 1'), { target: { value: '50' } });
+    fireEvent.click(within(workspace).getByRole('button', { name: 'Volver' }));
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('Asistente de creación de simulación')).not.toBeInTheDocument();
+    expect(screen.getByLabelText('Dashboard de simulación')).toBeInTheDocument();
   });
 
   it('no muestra opción de guardado cuando no hay simulación activa', async () => {
@@ -808,7 +834,7 @@ describe('SimulationsModule', () => {
     expect(saveSimulationMock).not.toHaveBeenCalled();
   });
 
-  it('resetea mes al cambiar año a all y maneja confirmación negativa al abrir workspace', async () => {
+  it('resetea mes al cambiar año a all y maneja confirmación negativa al volver al listado', async () => {
     listSimulationsMock.mockResolvedValueOnce([
       {
         id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
@@ -836,9 +862,14 @@ describe('SimulationsModule', () => {
     fireEvent.change(within(workspace).getByLabelText('Filtrar por año'), { target: { value: 'all' } });
     expect(within(workspace).getByLabelText('Filtrar por mes')).toHaveValue('all');
 
-    fireEvent.change(screen.getByLabelText('USD 1'), { target: { value: '50' } });
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Enero/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Semana 1/i }));
+
+    fireEvent.click(screen.getByRole('button', { name: 'Editar invertido 1' }));
+    fireEvent.change(screen.getByLabelText('Invertido 1'), { target: { value: '50' } });
     const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(false);
-    fireEvent.click(screen.getAllByRole('button', { name: /Abrir/ })[1]);
+    fireEvent.click(within(workspace).getByRole('button', { name: 'Volver' }));
     expect(confirmMock).toHaveBeenCalled();
     expect(screen.getByLabelText('Dashboard de simulación')).toBeInTheDocument();
     confirmMock.mockRestore();
@@ -865,6 +896,129 @@ describe('SimulationsModule', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /Abrir/ })[0]);
     expect(await screen.findByText('No se pudieron cargar las operaciones de la simulación.')).toBeInTheDocument();
+  });
+
+  it('abre modal de nueva operación, detecta colisión y permite agregar una nueva fila', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+    listSimulationOperationsMock.mockResolvedValueOnce([
+      { id: 'op-1', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 100, technicalResultR: 2, monetaryResult: 200, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+      { id: 'op-2', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-02', operationTime: '09:30', operationIndex: 2, side: 'sell', resultType: 'sl', investedAmount: 100, technicalResultR: -1, monetaryResult: -100, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
+    const workspace = await screen.findByLabelText('Dashboard de simulación');
+
+    fireEvent.click(within(workspace).getByRole('button', { name: 'Agregar nueva operación' }));
+    expect(screen.getByRole('dialog', { name: 'Agregar operación' })).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Fecha'), { target: { value: '2026-01-01' } });
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '09:00' } });
+    expect(screen.getByText('Ya existe una operación en la misma fecha y hora.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar' })).toBeDisabled();
+
+    fireEvent.change(screen.getByLabelText('Hora'), { target: { value: '10:00' } });
+    fireEvent.change(screen.getByLabelText('Resultado'), { target: { value: 'no_trade' } });
+    expect(screen.getByText('Monto invertido (auto)')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Agregar' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: 'Agregar' }));
+
+    expect(screen.queryByRole('dialog', { name: 'Agregar operación' })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Enero/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Semana 1/i }));
+    expect(screen.getAllByText('No operar').length).toBeGreaterThan(0);
+    expect(screen.getByText('Hay cambios pendientes por guardar.')).toBeInTheDocument();
+  });
+
+  it('permite eliminar una fila de operación desde la tabla agrupada', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+    listSimulationOperationsMock.mockResolvedValueOnce([
+      { id: 'op-1', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 100, technicalResultR: 2, monetaryResult: 200, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+      { id: 'op-2', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-02', operationTime: '09:30', operationIndex: 1, side: 'sell', resultType: 'sl', investedAmount: 100, technicalResultR: -1, monetaryResult: -100, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+    ]);
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
+    const workspace = await screen.findByLabelText('Dashboard de simulación');
+    fireEvent.click(screen.getByRole('button', { name: /2026/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Enero/i }));
+    fireEvent.click(await screen.findByRole('button', { name: /Semana 1/i }));
+
+    const deleteButtons = within(workspace).getAllByRole('button', { name: /Eliminar operación/i });
+    fireEvent.click(deleteButtons[0]);
+
+    expect(confirmMock).toHaveBeenCalled();
+    expect(screen.getByText('Hay cambios pendientes por guardar.')).toBeInTheDocument();
+    confirmMock.mockRestore();
+  });
+
+  it('cubre toggles de agrupación, cancelación de borrado y edición de hora, tipo y técnico', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 3,
+        totalExecuted: 3, totalWin: 1, totalSl: 1, totalBreakeven: 1, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+    listSimulationOperationsMock.mockResolvedValueOnce([
+      { id: 'op-1', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 100, technicalResultR: 2, monetaryResult: 200, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+      { id: 'op-2', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-02', operationTime: '10:00', operationIndex: 1, side: 'sell', resultType: 'sl', investedAmount: 100, technicalResultR: -1, monetaryResult: -100, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+      { id: 'op-3', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-08', operationTime: '11:00', operationIndex: 1, side: 'buy', resultType: 'breakeven', investedAmount: 100, technicalResultR: 1, monetaryResult: 100, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+    ]);
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(false);
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
+    const workspace = await screen.findByLabelText('Dashboard de simulación');
+
+    const yearToggle = screen.getByRole('button', { name: /2026/i });
+    fireEvent.click(yearToggle);
+    fireEvent.click(await screen.findByRole('button', { name: /Enero/i }));
+    const week1Toggle = await screen.findByRole('button', { name: /Semana 1/i });
+    fireEvent.click(week1Toggle);
+    fireEvent.click(week1Toggle);
+    fireEvent.click(week1Toggle);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Editar hora 1' }))[0]);
+    fireEvent.change(screen.getAllByLabelText('Hora 1')[0], { target: { value: '09:15' } });
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Editar tipo 1' }))[0]);
+    fireEvent.change(screen.getAllByLabelText('Tipo 1')[0], { target: { value: 'sell' } });
+
+    fireEvent.click((await screen.findAllByRole('button', { name: 'Editar tecnico 1' }))[0]);
+    fireEvent.change(screen.getAllByLabelText('Tecnico 1')[0], { target: { value: '1' } });
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Eliminar operación 1/i }))[0]);
+    expect(confirmMock).toHaveBeenCalled();
+    confirmMock.mockRestore();
+
+    fireEvent.click(within(workspace).getByRole('button', { name: 'Agregar nueva operación' }));
+    fireEvent.change(screen.getByLabelText('Resultado'), { target: { value: 'sl' } });
+    fireEvent.change(screen.getByLabelText('Resultado'), { target: { value: 'breakeven' } });
+    fireEvent.change(screen.getByLabelText('Resultado'), { target: { value: 'win' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Cancelar' }));
+    expect(screen.queryByRole('dialog', { name: 'Agregar operación' })).not.toBeInTheDocument();
+    expect(screen.getByText('Hay cambios pendientes por guardar.')).toBeInTheDocument();
   });
 });
 
@@ -994,5 +1148,54 @@ describe('SimulationsModule helpers', () => {
     expect(shouldAskDiscardConfirmation(null, true)).toBe(false);
     expect(shouldAskDiscardConfirmation({ id: 'sim-1' } as never, false)).toBe(false);
     expect(shouldAskDiscardConfirmation({ id: 'sim-1' } as never, true)).toBe(true);
+  });
+
+  it('normaliza hora, mes, semana y reindexa operaciones ordenadas', () => {
+    expect(normalizeOperationTimeValue('7:1')).toBe('09:00');
+    expect(normalizeOperationTimeValue('25:00')).toBe('09:00');
+    expect(normalizeOperationTimeValue('08:05:00')).toBe('08:05');
+
+    expect(weekOfMonth(1)).toBe(1);
+    expect(weekOfMonth(8)).toBe(2);
+    expect(fullMonthLabel(0)).toBe('Enero');
+
+    const operations = sortAndReindexOperations([
+      { id: 'b', operationDate: '2026-01-02', operationTime: '09:30', operationIndex: 7, side: 'sell', resultType: 'sl', investedAmount: 50, technicalResultR: -1, monetaryResult: -50, note: '', isManualEdit: false },
+      { id: 'a', operationDate: '2026-01-02', operationTime: '08:00:00', operationIndex: 9, side: 'buy', resultType: 'win', investedAmount: 50, technicalResultR: 2, monetaryResult: 100, note: '', isManualEdit: false },
+    ] as never);
+
+    expect(compareOperationsByDateTime(operations[0], operations[1])).toBeLessThan(0);
+    expect(operations[0].operationIndex).toBe(1);
+    expect(operations[1].operationIndex).toBe(2);
+    expect(operations[0].operationTime).toBe('08:00');
+  });
+
+  it('aplica valores derivados y clases visuales para win, sl, breakeven y no_trade', () => {
+    const noTrade = applyOperationDerivedValues({
+      id: '1', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: null, resultType: 'win', investedAmount: 10, technicalResultR: null, monetaryResult: 10, note: '', isManualEdit: false,
+    } as never);
+    expect(noTrade.resultType).toBe('no_trade');
+    expect(noTrade.monetaryResult).toBe(0);
+
+    const breakEven = applyOperationDerivedValues({
+      id: '2', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 25, technicalResultR: 1, monetaryResult: 0, note: '', isManualEdit: false,
+    } as never);
+    expect(breakEven.resultType).toBe('breakeven');
+    expect(breakEven.monetaryResult).toBe(25);
+
+    const win = applyOperationDerivedValues({
+      id: '3', operationDate: '2026-01-01', operationTime: '09:00', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 25, technicalResultR: 2, monetaryResult: 0, note: '', isManualEdit: false,
+    } as never);
+    expect(win.resultType).toBe('win');
+    expect(win.monetaryResult).toBe(50);
+
+    expect(simulationResultClass('win')).toBe('positive');
+    expect(simulationResultClass('sl')).toBe('negative');
+    expect(simulationResultClass('breakeven')).toBe('breakeven');
+    expect(simulationResultClass('no_trade')).toBe('neutral');
+    expect(simulationUsdClass(win)).toBe('positive');
+    expect(simulationUsdClass({ ...win, monetaryResult: -1 })).toBe('negative');
+    expect(simulationUsdClass({ ...win, monetaryResult: 0, resultType: 'breakeven' })).toBe('breakeven');
+    expect(simulationUsdClass({ ...win, resultType: 'no_trade', side: null, monetaryResult: 0, investedAmount: 0, technicalResultR: null })).toBe('neutral');
   });
 });

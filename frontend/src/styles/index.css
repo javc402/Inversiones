@@ -636,6 +636,39 @@ body {
   font-size: 40px;
   font-weight: 700;
   color: #183a61;
+  line-height: 1.08;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.kpi-value--currency {
+  white-space: nowrap;
+  line-height: 1.08;
+}
+
+.kpi-value-currency {
+  display: inline;
+  font-size: 0.48em;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+  color: #365b81;
+  margin-right: 4px;
+}
+
+.kpi-value-amount {
+  display: inline;
+  white-space: nowrap;
+  overflow-wrap: normal;
+  word-break: keep-all;
+}
+
+.kpi-value--sm {
+  font-size: 34px;
+}
+
+.kpi-value--xs {
+  font-size: 29px;
 }
 
 .kpi-trend {
@@ -1452,7 +1485,52 @@ th {
   }
 
   .kpi-grid {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+  }
+
+  .kpi-card {
+    min-width: 0;
+    padding: 12px;
+    border-radius: 16px;
+    overflow: hidden;
+  }
+
+  .kpi-card h2 {
+    font-size: 11px;
+    letter-spacing: 0.06em;
+  }
+
+  .kpi-value {
+    margin: 6px 0;
+    font-size: clamp(24px, 6.4vw, 34px);
+    line-height: 1.08;
+    white-space: nowrap;
+    overflow: visible;
+    text-overflow: clip;
+    overflow-wrap: normal;
+    word-break: keep-all;
+  }
+
+  .kpi-value--sm {
+    font-size: clamp(16px, 5vw, 24px);
+  }
+
+  .kpi-value--xs {
+    font-size: clamp(14px, 4.4vw, 20px);
+  }
+
+  .kpi-value--currency {
+    white-space: nowrap;
+    line-height: 1.08;
+  }
+
+  .kpi-value-currency {
+    font-size: 0.52em;
+  }
+
+  .kpi-trend {
+    font-size: 12px;
   }
 
   .table-expand-col,

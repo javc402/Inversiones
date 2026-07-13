@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { AppIcon } from './AppIcon';
 import DashboardSummaryLayout from './DashboardSummaryLayout';
 import {
@@ -15,6 +15,7 @@ import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping }
 import { countSimulationOperableDays, generateSimulationArtifacts } from '@lib/simulationGenerator';
 import {
   calculateSimulationLossRate,
+  calculateSimulationMonetaryWeights,
   calculateSimulationLossTotal,
   calculateSimulationProfitFactor,
   calculateSimulationDistributionData,
@@ -31,7 +32,6 @@ import {
 import {
   createSimulationOperationDrafts,
   normalizeSimulationOperationDraft,
-  parseSimulationResultType,
   parseSimulationSide,
   type SimulationOperationDraft,
   summarizeSimulationOperations,
@@ -64,6 +64,35 @@ type SimulationDraftForm = {
   pctSl: string;
   pctBreakeven: string;
   pctNoTrade: string;
+};
+
+type EditableOperationField = 'operationDate' | 'operationTime' | 'side' | 'investedAmount' | 'technicalResultR';
+type EditingCell = { operationId: string; field: EditableOperationField } | null;
+
+type NewOperationForm = {
+  operationDate: string;
+  operationTime: string;
+  side: SimulationOperationDraft['side'];
+  resultType: SimulationOperationDraft['resultType'];
+  technicalResultR: string;
+};
+
+type SimulationGroupedWeek = {
+  key: string;
+  label: string;
+  operations: Array<{ operation: SimulationOperationDraft; index: number }>;
+};
+
+type SimulationGroupedMonth = {
+  key: string;
+  label: string;
+  weeks: SimulationGroupedWeek[];
+};
+
+type SimulationGroupedYear = {
+  key: string;
+  label: string;
+  months: SimulationGroupedMonth[];
 };
 
 const WEEKDAY_OPTIONS: Array<{ value: SimulationWeekday; label: string }> = [
@@ -117,8 +146,50 @@ export function resultTypeLabel(value: SimulationOperationDraft['resultType']): 
   return 'Breakeven';
 }
 
+export function simulationResultClass(resultType: SimulationOperationDraft['resultType']): 'positive' | 'negative' | 'breakeven' | 'neutral' {
+  if (resultType === 'win') return 'positive';
+  if (resultType === 'sl') return 'negative';
+  if (resultType === 'breakeven') return 'breakeven';
+  return 'neutral';
+}
+
+export function simulationUsdClass(operation: SimulationOperationDraft): 'positive' | 'negative' | 'breakeven' | 'neutral' {
+  if (operation.resultType === 'no_trade') return 'neutral';
+  if (operation.monetaryResult > 0) return 'positive';
+  if (operation.monetaryResult < 0) return 'negative';
+  return 'breakeven';
+}
+
+export function applyOperationDerivedValues(operation: SimulationOperationDraft): SimulationOperationDraft {
+  const technical = operation.technicalResultR;
+  const computedResultType: SimulationOperationDraft['resultType'] = operation.side === null
+    ? 'no_trade'
+    : (technical === null ? 'breakeven' : technical === 1 ? 'breakeven' : technical > 1 ? 'win' : technical < 0 ? 'sl' : 'breakeven');
+
+  const normalizedInvested = Number.isFinite(operation.investedAmount) ? Math.max(0, operation.investedAmount) : 0;
+
+  if (computedResultType === 'no_trade') {
+    return normalizeSimulationOperationDraft({
+      ...operation,
+      resultType: 'no_trade',
+      investedAmount: 0,
+      technicalResultR: null,
+      monetaryResult: 0,
+    });
+  }
+
+  const technicalValue = computedResultType === 'breakeven' ? 1 : (technical ?? 0);
+
+  return normalizeSimulationOperationDraft({
+    ...operation,
+    resultType: computedResultType,
+    investedAmount: normalizedInvested,
+    monetaryResult: round2(normalizedInvested * technicalValue),
+  });
+}
+
 function formatMoney(value: number, currency: string): string {
-  return new Intl.NumberFormat('es-ES', {
+  return new Intl.NumberFormat('es-MX', {
     style: 'currency',
     currency,
     maximumFractionDigits: 2,
@@ -154,6 +225,69 @@ export function toggleWeekdaySelection(weekdays: SimulationWeekday[], weekday: S
 
 function toNumber(value: string): number {
   return Number.parseFloat(value);
+}
+
+function round2(value: number): number {
+  return Number(value.toFixed(2));
+}
+
+export function normalizeOperationTimeValue(value: string): string {
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(\d{2}):(\d{2})/);
+  if (!match) return '09:00';
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return '09:00';
+  return `${match[1]}:${match[2]}`;
+}
+
+export function weekOfMonth(day: number): number {
+  return Math.floor((day - 1) / 7) + 1;
+}
+
+export function fullMonthLabel(month: number): string {
+  const date = new Date(2026, month, 1);
+  const monthName = new Intl.DateTimeFormat('es-MX', { month: 'long' }).format(date);
+  return monthName.charAt(0).toUpperCase() + monthName.slice(1);
+}
+
+export function compareOperationsByDateTime(left: SimulationOperationDraft, right: SimulationOperationDraft): number {
+  if (left.operationDate !== right.operationDate) {
+    return left.operationDate.localeCompare(right.operationDate);
+  }
+
+  const leftTime = normalizeOperationTimeValue(left.operationTime ?? '09:00');
+  const rightTime = normalizeOperationTimeValue(right.operationTime ?? '09:00');
+  if (leftTime !== rightTime) {
+    return leftTime.localeCompare(rightTime);
+  }
+
+  if (left.operationIndex !== right.operationIndex) {
+    return left.operationIndex - right.operationIndex;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+export function sortAndReindexOperations(operations: SimulationOperationDraft[]): SimulationOperationDraft[] {
+  const sorted = [...operations].sort(compareOperationsByDateTime);
+  const countersByDate = new Map<string, number>();
+
+  return sorted.map((operation) => {
+    const current = countersByDate.get(operation.operationDate) ?? 0;
+    const nextIndex = current + 1;
+    countersByDate.set(operation.operationDate, nextIndex);
+
+    if (operation.operationIndex === nextIndex && normalizeOperationTimeValue(operation.operationTime ?? '09:00') === operation.operationTime) {
+      return operation;
+    }
+
+    return {
+      ...operation,
+      operationIndex: nextIndex,
+      operationTime: normalizeOperationTimeValue(operation.operationTime ?? '09:00'),
+    };
+  });
 }
 
 export function formatPercentRange(min: string, max: string): string {
@@ -252,7 +386,63 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [selectedYear, setSelectedYear] = useState('all');
   const [selectedMonth, setSelectedMonth] = useState('all');
+  const [editingCell, setEditingCell] = useState<EditingCell>(null);
+  const [expandedYears, setExpandedYears] = useState<Record<string, boolean>>({});
+  const [expandedMonths, setExpandedMonths] = useState<Record<string, boolean>>({});
+  const [expandedWeeks, setExpandedWeeks] = useState<Record<string, boolean>>({});
+  const [isNewOperationModalOpen, setIsNewOperationModalOpen] = useState(false);
+  const [newOperationError, setNewOperationError] = useState('');
+  const [newOperationForm, setNewOperationForm] = useState<NewOperationForm>({
+    operationDate: '',
+    operationTime: '09:00',
+    side: 'buy',
+    resultType: 'win',
+    technicalResultR: '1.5',
+  });
   const wizardModalRef = useRef<HTMLDivElement | null>(null);
+  const newOperationModalRef = useRef<HTMLDivElement | null>(null);
+  const workspaceTopRef = useRef<HTMLElement | null>(null);
+  const [isWorkspaceTopCompact, setIsWorkspaceTopCompact] = useState(false);
+
+  useEffect(() => {
+    const workspaceVisible = Boolean(activeSimulation || isLoadingWorkspace || workspaceError);
+    if (!workspaceVisible) {
+      setIsWorkspaceTopCompact(false);
+      return;
+    }
+
+    const workspaceTopElement = workspaceTopRef.current;
+    if (!workspaceTopElement) return;
+
+    const readStickyTop = (): number => {
+      const stickyTopVar = getComputedStyle(workspaceTopElement).getPropertyValue('--simulation-sticky-top').trim();
+      const stickyTopValue = Number.parseFloat(stickyTopVar.replace('px', ''));
+      return Number.isFinite(stickyTopValue) ? stickyTopValue : 0;
+    };
+
+    const scrollRoot = workspaceTopElement.closest('.dashboard-layout');
+    const scrollingElement = scrollRoot instanceof HTMLElement ? scrollRoot : document.documentElement;
+    const rootRect = scrollRoot instanceof HTMLElement ? scrollRoot.getBoundingClientRect() : { top: 0 };
+
+    // Punto absoluto dentro del scroll container donde comienza la cabecera.
+    const initialTopInScroll = workspaceTopElement.getBoundingClientRect().top - rootRect.top + scrollingElement.scrollTop;
+
+    const updateCompactHeaderState = () => {
+      const stickyTop = readStickyTop();
+      const compactTrigger = Math.max(0, initialTopInScroll - stickyTop);
+      const isCompact = scrollingElement.scrollTop >= compactTrigger + 2;
+      setIsWorkspaceTopCompact((previousValue) => (previousValue === isCompact ? previousValue : isCompact));
+    };
+
+    updateCompactHeaderState();
+    scrollingElement.addEventListener('scroll', updateCompactHeaderState, { passive: true });
+    window.addEventListener('resize', updateCompactHeaderState);
+
+    return () => {
+      scrollingElement.removeEventListener('scroll', updateCompactHeaderState);
+      window.removeEventListener('resize', updateCompactHeaderState);
+    };
+  }, [activeSimulation, isLoadingWorkspace, workspaceError]);
 
   useEffect(() => {
     let cancelled = false;
@@ -309,6 +499,10 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
   const simulationLossRate = useMemo(() => calculateSimulationLossRate(filteredActiveOperations), [filteredActiveOperations]);
   const simulationWinTotal = useMemo(() => calculateSimulationWinTotal(filteredActiveOperations), [filteredActiveOperations]);
   const simulationLossTotal = useMemo(() => calculateSimulationLossTotal(filteredActiveOperations), [filteredActiveOperations]);
+  const simulationMonetaryWeights = useMemo(
+    () => calculateSimulationMonetaryWeights(simulationWinTotal, simulationLossTotal),
+    [simulationLossTotal, simulationWinTotal],
+  );
   const simulationProfitFactor = useMemo(() => calculateSimulationProfitFactor(simulationWinTotal, simulationLossTotal), [simulationLossTotal, simulationWinTotal]);
   const simulationWinLossRatio = useMemo(() => calculateSimulationWinLossRatio(filteredActiveOperations), [filteredActiveOperations]);
   const simulationInsights = useMemo(
@@ -322,6 +516,203 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
 
     return calculateOperationRiskSnapshots(activeSimulation.initialBalance, activeOperations);
   }, [activeOperations, activeSimulation]);
+
+  const simulationFinalBalance = useMemo(() => {
+    if (!activeSimulation) return 0;
+    const lastSnapshot = operationRiskSnapshots[operationRiskSnapshots.length - 1];
+    return lastSnapshot ? lastSnapshot.balanceAfter : activeSimulation.initialBalance;
+  }, [activeSimulation, operationRiskSnapshots]);
+
+  const newOperationPreview = useMemo(() => {
+    if (!activeSimulation) {
+      return null;
+    }
+
+    if (!newOperationForm.operationDate) {
+      return null;
+    }
+
+    const operationTime = normalizeOperationTimeValue(newOperationForm.operationTime || '09:00');
+    const resultType = newOperationForm.resultType;
+    const side = resultType === 'no_trade' ? null : newOperationForm.side;
+
+    if (resultType !== 'no_trade' && side === null) {
+      return null;
+    }
+
+    let technicalResultR: number | null = null;
+    if (resultType === 'sl') {
+      technicalResultR = -1;
+    } else if (resultType === 'breakeven') {
+      technicalResultR = 1;
+    } else if (resultType === 'win') {
+      const parsed = Number.parseFloat(newOperationForm.technicalResultR);
+      if (!Number.isFinite(parsed) || parsed <= 0) {
+        return null;
+      }
+      technicalResultR = parsed;
+    }
+
+    const baseOperation: SimulationOperationDraft = {
+      id: '__new_operation_preview__',
+      operationDate: newOperationForm.operationDate,
+      operationTime,
+      operationIndex: 1,
+      side,
+      resultType,
+      investedAmount: 0,
+      technicalResultR,
+      monetaryResult: 0,
+      note: '',
+      isManualEdit: true,
+    };
+
+    const withNewOperation = sortAndReindexOperations([...activeOperations, baseOperation]);
+    const insertIndex = withNewOperation.findIndex((operation) => operation.id === baseOperation.id);
+
+    let balanceBefore = activeSimulation.initialBalance;
+    for (let index = 0; index < insertIndex; index += 1) {
+      balanceBefore = Math.max(0, round2(balanceBefore + withNewOperation[index].monetaryResult));
+    }
+
+    const riskPct = Math.max(0, Math.min(1, ((activeSimulation.riskPctMin ?? 0.01) + (activeSimulation.riskPctMax ?? 0.01)) / 2));
+    const autoInvested = resultType === 'no_trade' ? 0 : round2(Math.min(balanceBefore, balanceBefore * riskPct));
+    const finalizedOperation = applyOperationDerivedValues({
+      ...withNewOperation[insertIndex],
+      investedAmount: autoInvested,
+      technicalResultR,
+      side,
+      resultType,
+      isManualEdit: true,
+    });
+
+    const orderedOperations = withNewOperation.map((operation, index) => (index === insertIndex ? finalizedOperation : operation));
+    const balanceAfter = Math.max(0, round2(balanceBefore + finalizedOperation.monetaryResult));
+
+    return {
+      operation: finalizedOperation,
+      orderedOperations,
+      balanceBefore,
+      balanceAfter,
+      autoInvested,
+      resultClass: simulationResultClass(finalizedOperation.resultType),
+      monetaryClass: simulationUsdClass(finalizedOperation),
+    };
+  }, [activeOperations, activeSimulation, newOperationForm]);
+
+  const hasNewOperationDateTimeCollision = useMemo(() => {
+    if (!newOperationForm.operationDate) {
+      return false;
+    }
+
+    const nextTime = normalizeOperationTimeValue(newOperationForm.operationTime || '09:00');
+    return activeOperations.some(
+      (operation) => operation.operationDate === newOperationForm.operationDate
+        && normalizeOperationTimeValue(operation.operationTime ?? '09:00') === nextTime
+    );
+  }, [activeOperations, newOperationForm.operationDate, newOperationForm.operationTime]);
+  const activeOperationIndexById = useMemo(() => {
+    const mapping = new Map<string, number>();
+    activeOperations.forEach((operation, index) => {
+      mapping.set(operation.id, index);
+    });
+    return mapping;
+  }, [activeOperations]);
+
+  const groupedOperations = useMemo<SimulationGroupedYear[]>(() => {
+    const yearsMap = new Map<number, Map<number, Map<number, Array<{ operation: SimulationOperationDraft; index: number }>>>>();
+
+    filteredActiveOperations.forEach((operation) => {
+      const index = activeOperationIndexById.get(operation.id);
+      if (index === undefined) {
+        return;
+      }
+
+      const parsed = new Date(`${operation.operationDate}T12:00:00`);
+      if (Number.isNaN(parsed.getTime())) {
+        return;
+      }
+
+      const year = parsed.getFullYear();
+      const month = parsed.getMonth();
+      const week = weekOfMonth(parsed.getDate());
+
+      let monthsMap = yearsMap.get(year);
+      if (!monthsMap) {
+        monthsMap = new Map();
+        yearsMap.set(year, monthsMap);
+      }
+
+      let weeksMap = monthsMap.get(month);
+      if (!weeksMap) {
+        weeksMap = new Map();
+        monthsMap.set(month, weeksMap);
+      }
+
+      const bucket = weeksMap.get(week) ?? [];
+      bucket.push({ operation, index });
+      weeksMap.set(week, bucket);
+    });
+
+    return Array.from(yearsMap.entries())
+      .sort((left, right) => left[0] - right[0])
+      .map(([year, monthsMap]) => ({
+        key: `year-${year}`,
+        label: String(year),
+        months: Array.from(monthsMap.entries())
+          .sort((left, right) => left[0] - right[0])
+          .map(([month, weeksMap]) => ({
+            key: `year-${year}-month-${month}`,
+            label: fullMonthLabel(month),
+            weeks: Array.from(weeksMap.entries())
+              .sort((left, right) => left[0] - right[0])
+              .map(([week, operations]) => ({
+                key: `year-${year}-month-${month}-week-${week}`,
+                label: `Semana ${week}`,
+                operations,
+              })),
+          })),
+      }));
+  }, [activeOperationIndexById, filteredActiveOperations]);
+  const isWorkspaceVisible = Boolean(activeSimulation || isLoadingWorkspace || workspaceError);
+
+  useEffect(() => {
+    setExpandedYears((prev) => {
+      const next = { ...prev };
+      groupedOperations.forEach((year) => {
+        if (next[year.key] === undefined) {
+          next[year.key] = false;
+        }
+      });
+      return next;
+    });
+
+    setExpandedMonths((prev) => {
+      const next = { ...prev };
+      groupedOperations.forEach((year) => {
+        year.months.forEach((month) => {
+          if (next[month.key] === undefined) {
+            next[month.key] = false;
+          }
+        });
+      });
+      return next;
+    });
+
+    setExpandedWeeks((prev) => {
+      const next = { ...prev };
+      groupedOperations.forEach((year) => {
+        year.months.forEach((month) => {
+          month.weeks.forEach((week) => {
+            if (next[week.key] === undefined) {
+              next[week.key] = false;
+            }
+          });
+        });
+      });
+      return next;
+    });
+  }, [groupedOperations]);
 
   useEffect(() => {
     if (selectedMonth === 'all') {
@@ -377,6 +768,39 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
       document.removeEventListener('mousedown', handleOutsideClick);
     };
   }, [isWizardOpen]);
+
+  useEffect(() => {
+    if (!isNewOperationModalOpen) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    function handleEscape(event: KeyboardEvent) {
+      if (event.key === 'Escape') {
+        closeNewOperationModal();
+      }
+    }
+
+    function handleOutsideClick(event: MouseEvent) {
+      const target = event.target as Node;
+      if (newOperationModalRef.current?.contains(target)) {
+        return;
+      }
+
+      closeNewOperationModal();
+    }
+
+    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('mousedown', handleOutsideClick);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('mousedown', handleOutsideClick);
+    };
+  }, [isNewOperationModalOpen]);
 
   function confirmDiscardCurrentWorkspace(): boolean {
     return !shouldAskDiscardConfirmation(activeSimulation, hasUnsavedChanges)
@@ -468,19 +892,367 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
     }
   }
 
-  function handleOperationChange(operationId: string, patch: Partial<SimulationOperationDraft>) {
-    setActiveOperations((prev) => prev.map((operation) => {
-      if (operation.id !== operationId) {
-        return operation;
+  function closeSimulationWorkspace() {
+    setActiveSimulation(null);
+    setActiveOperations([]);
+    setWorkspaceError('');
+    setHasUnsavedChanges(false);
+    setIsNewOperationModalOpen(false);
+    setNewOperationError('');
+    setSelectedYear('all');
+    setSelectedMonth('all');
+  }
+
+  function handleBackToSimulationsList() {
+    if (!confirmDiscardCurrentWorkspace()) {
+      return;
+    }
+
+    closeSimulationWorkspace();
+  }
+
+  function handleOperationChange(operationId: string, patch: Partial<SimulationOperationDraft>, maxInvested?: number) {
+    setActiveOperations((prev) => {
+      const nextOperations = prev.map((operation) => {
+        if (operation.id !== operationId) {
+          return operation;
+        }
+
+        const nextInvestedRaw = patch.investedAmount ?? operation.investedAmount;
+        const nextInvested = Number.isFinite(nextInvestedRaw)
+          ? Math.max(0, maxInvested === undefined ? nextInvestedRaw : Math.min(nextInvestedRaw, maxInvested))
+          : 0;
+
+        return applyOperationDerivedValues({
+          ...operation,
+          ...patch,
+          operationTime: patch.operationTime ? normalizeOperationTimeValue(patch.operationTime) : operation.operationTime,
+          investedAmount: nextInvested,
+          isManualEdit: true,
+        });
+      });
+
+      if (patch.operationDate !== undefined || patch.operationTime !== undefined) {
+        return sortAndReindexOperations(nextOperations);
       }
 
-      return normalizeSimulationOperationDraft({
-        ...operation,
-        ...patch,
-        isManualEdit: true,
-      });
-    }));
+      return nextOperations;
+    });
     setHasUnsavedChanges(true);
+  }
+
+  function openNewOperationModal() {
+    if (!activeSimulation) {
+      return;
+    }
+
+    const today = activeOperations[activeOperations.length - 1]?.operationDate ?? activeSimulation.startDate;
+    const nowTime = activeOperations[activeOperations.length - 1]?.operationTime ?? '09:00';
+
+    setNewOperationForm({
+      operationDate: today,
+      operationTime: normalizeOperationTimeValue(nowTime),
+      side: 'buy',
+      resultType: 'win',
+      technicalResultR: '1.5',
+    });
+    setNewOperationError('');
+    setIsNewOperationModalOpen(true);
+  }
+
+  function closeNewOperationModal() {
+    setIsNewOperationModalOpen(false);
+    setNewOperationError('');
+  }
+
+  function handleCreateNewOperation() {
+    if (hasNewOperationDateTimeCollision) {
+      setNewOperationError('Ya existe una operación en la misma fecha y hora. Elige otra hora.');
+      return;
+    }
+
+    if (!newOperationPreview) {
+      setNewOperationError('Completa los datos requeridos para calcular la operación.');
+      return;
+    }
+
+    setActiveOperations(newOperationPreview.orderedOperations);
+    setHasUnsavedChanges(true);
+    setNewOperationError('');
+    setIsNewOperationModalOpen(false);
+  }
+
+  function handleDeleteOperation(operationId: string): void {
+    const confirmed = globalThis.window?.confirm('¿Eliminar esta operación?') ?? false;
+    if (!confirmed) {
+      return;
+    }
+
+    setActiveOperations((prev) => {
+      const remaining = prev.filter((operation) => operation.id !== operationId);
+      return sortAndReindexOperations(remaining);
+    });
+
+    setEditingCell((prev) => (prev?.operationId === operationId ? null : prev));
+    setHasUnsavedChanges(true);
+  }
+
+  function toggleYear(key: string): void {
+    setExpandedYears((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+  }
+
+  function toggleMonth(key: string): void {
+    setExpandedMonths((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+  }
+
+  function toggleWeek(key: string): void {
+    setExpandedWeeks((prev) => ({ ...prev, [key]: !(prev[key] ?? true) }));
+  }
+
+  function renderOperationRow(operation: SimulationOperationDraft, index: number) {
+    const snapshot = operationRiskSnapshots[index];
+    const resultClass = simulationResultClass(operation.resultType);
+    const usdClass = simulationUsdClass(operation);
+    const maxInvestedForRow = snapshot?.balanceBefore ?? activeSimulation?.initialBalance ?? 0;
+
+    return (
+      <tr key={operation.id}>
+        <td>
+          {isEditingCell(operation.id, 'operationDate') ? (
+            <input
+              className="simulation-inline-editor"
+              type="date"
+              aria-label={`Fecha ${operation.operationIndex}`}
+              value={operation.operationDate}
+              inputMode="none"
+              autoFocus
+              onFocus={openDatePicker}
+              onClick={openDatePicker}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                  endCellEdit();
+                  return;
+                }
+                preventManualDateTyping(event);
+              }}
+              onBlur={endCellEdit}
+              onPaste={preventManualDatePasteOrDrop}
+              onDrop={preventManualDatePasteOrDrop}
+              onChange={(event) => handleOperationChange(operation.id, { operationDate: event.target.value })}
+            />
+          ) : (
+            <button
+              type="button"
+              className="simulation-inline-display"
+              aria-label={`Editar fecha ${operation.operationIndex}`}
+              onClick={() => beginCellEdit(operation.id, 'operationDate')}
+            >
+              {formatOperationDateForDisplay(operation.operationDate)}
+            </button>
+          )}
+        </td>
+        <td>
+          {isEditingCell(operation.id, 'operationTime') ? (
+            <input
+              className="simulation-inline-editor"
+              type="time"
+              aria-label={`Hora ${operation.operationIndex}`}
+              value={operation.operationTime ?? '09:00'}
+              step={300}
+              autoFocus
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                  endCellEdit();
+                }
+              }}
+              onBlur={endCellEdit}
+              onChange={(event) => handleOperationChange(operation.id, { operationTime: event.target.value })}
+            />
+          ) : (
+            <button
+              type="button"
+              className="simulation-inline-display"
+              aria-label={`Editar hora ${operation.operationIndex}`}
+              onClick={() => beginCellEdit(operation.id, 'operationTime')}
+            >
+              {formatOperationTimeForDisplay(operation.operationTime ?? '09:00')}
+            </button>
+          )}
+        </td>
+        <td>
+          {operation.resultType === 'no_trade' ? (
+            <span className="simulation-inline-static muted">N/A</span>
+          ) : isEditingCell(operation.id, 'side') ? (
+            <select
+              className="simulation-inline-editor"
+              aria-label={`Tipo ${operation.operationIndex}`}
+              value={operation.side ?? ''}
+              autoFocus
+              onBlur={endCellEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                  endCellEdit();
+                }
+              }}
+              onChange={(event) => {
+                handleOperationChange(operation.id, { side: parseSimulationSide(event.target.value) });
+                endCellEdit();
+              }}
+            >
+              <option value="">N/A</option>
+              <option value="buy">Buy</option>
+              <option value="sell">Sell</option>
+            </select>
+          ) : (
+            <button
+              type="button"
+              className="simulation-inline-display"
+              aria-label={`Editar tipo ${operation.operationIndex}`}
+              onClick={() => beginCellEdit(operation.id, 'side')}
+            >
+              {operationSideLabel(operation.side)}
+            </button>
+          )}
+        </td>
+        <td>
+          <strong>
+            {snapshot ? formatMoney(snapshot.balanceBefore, activeSimulation?.currency ?? 'USD') : formatMoney(activeSimulation?.initialBalance ?? 0, activeSimulation?.currency ?? 'USD')}
+          </strong>
+        </td>
+        <td>
+          {operation.resultType === 'no_trade' ? (
+            <span className="simulation-inline-static">{formatMoney(0, activeSimulation?.currency ?? 'USD')}</span>
+          ) : isEditingCell(operation.id, 'investedAmount') ? (
+            <input
+              className="simulation-inline-editor"
+              type="number"
+              aria-label={`Invertido ${operation.operationIndex}`}
+              step="0.01"
+              min="0"
+              max={Number.isFinite(maxInvestedForRow) ? maxInvestedForRow : undefined}
+              value={operation.investedAmount}
+              autoFocus
+              onBlur={endCellEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                  endCellEdit();
+                }
+              }}
+              onChange={(event) => {
+                const parsed = Number.parseFloat(event.target.value || '0');
+                handleOperationChange(operation.id, { investedAmount: parsed }, maxInvestedForRow);
+              }}
+            />
+          ) : (
+            <button
+              type="button"
+              className="simulation-inline-display"
+              aria-label={`Editar invertido ${operation.operationIndex}`}
+              onClick={() => beginCellEdit(operation.id, 'investedAmount')}
+            >
+              {snapshot ? formatMoney(snapshot.investedAmountDisplay, activeSimulation?.currency ?? 'USD') : formatMoney(operation.investedAmount, activeSimulation?.currency ?? 'USD')}
+            </button>
+          )}
+        </td>
+        <td>
+          {operation.resultType === 'no_trade' ? (
+            <span className="simulation-inline-static muted">-</span>
+          ) : isEditingCell(operation.id, 'technicalResultR') ? (
+            <input
+              className="simulation-inline-editor"
+              type="number"
+              aria-label={`Tecnico ${operation.operationIndex}`}
+              step="0.01"
+              value={operation.technicalResultR ?? ''}
+              autoFocus
+              onBlur={endCellEdit}
+              onKeyDown={(event) => {
+                if (event.key === 'Escape' || event.key === 'Enter') {
+                  endCellEdit();
+                }
+              }}
+              onChange={(event) => handleOperationChange(operation.id, { technicalResultR: event.target.value === '' ? null : Number.parseFloat(event.target.value) })}
+            />
+          ) : (
+            <button
+              type="button"
+              className="simulation-inline-display"
+              aria-label={`Editar tecnico ${operation.operationIndex}`}
+              onClick={() => beginCellEdit(operation.id, 'technicalResultR')}
+            >
+              {operation.technicalResultR ?? ''}
+            </button>
+          )}
+        </td>
+        <td className={resultClass}>
+          <span className={`simulation-inline-static ${resultClass}`}>
+            {resultTypeLabel(operation.resultType)}
+          </span>
+        </td>
+        <td className={usdClass}>
+          <span className={`simulation-inline-static ${usdClass}`}>
+            {distributionAmountLabel(operation.monetaryResult, activeSimulation?.currency ?? 'USD')}
+          </span>
+        </td>
+        <td>
+          <strong>
+            {snapshot ? formatMoney(snapshot.balanceAfter, activeSimulation?.currency ?? 'USD') : formatMoney(activeSimulation?.initialBalance ?? 0, activeSimulation?.currency ?? 'USD')}
+          </strong>
+        </td>
+        <td>
+          <button
+            type="button"
+            className="simulation-row-delete-btn"
+            aria-label={`Eliminar operación ${operation.operationIndex}`}
+            title="Eliminar operación"
+            onClick={() => handleDeleteOperation(operation.id)}
+          >
+            <AppIcon name="delete" />
+          </button>
+        </td>
+      </tr>
+    );
+  }
+
+  function isEditingCell(operationId: string, field: EditableOperationField): boolean {
+    return editingCell?.operationId === operationId && editingCell.field === field;
+  }
+
+  function beginCellEdit(operationId: string, field: EditableOperationField): void {
+    setEditingCell({ operationId, field });
+  }
+
+  function endCellEdit(): void {
+    setEditingCell(null);
+  }
+
+  function formatOperationDateForDisplay(value: string): string {
+    if (!value) return 'Sin fecha';
+    const parsed = new Date(`${value}T12:00:00`);
+    if (Number.isNaN(parsed.getTime())) {
+      return value;
+    }
+
+    const weekday = new Intl.DateTimeFormat('es-MX', { weekday: 'long' }).format(parsed);
+    const dayMonthYear = new Intl.DateTimeFormat('es-MX', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+    }).format(parsed);
+
+    const weekdayCapitalized = weekday.charAt(0).toUpperCase() + weekday.slice(1);
+    return `${weekdayCapitalized}, ${dayMonthYear}`;
+  }
+
+  function formatOperationTimeForDisplay(value: string): string {
+    if (!value) return '--:--';
+    return value.slice(0, 5);
+  }
+
+  function operationSideLabel(side: SimulationOperationDraft['side']): string {
+    if (side === 'buy') return 'Buy';
+    if (side === 'sell') return 'Sell';
+    return 'N/A';
   }
 
   async function handleSaveActiveSimulation() {
@@ -639,17 +1411,19 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
 
   return (
     <section className="simulations-module">
-      <header className="simulations-hero">
-        <div>
-          <p className="simulations-hero-kicker">Escenarios de prueba</p>
-          <h2>Simulaciones</h2>
-          <p>Gestiona tus simulaciones guardadas y prepara nuevos escenarios sobre cuentas propias para el usuario <strong>{userEmail}</strong>.</p>
-        </div>
-        <button type="button" className="primary-btn simulations-create-btn" onClick={openWizard} aria-label="Nueva simulación">
-          <AppIcon name="simulation" />
-          Nueva simulación
-        </button>
-      </header>
+      {!isWorkspaceVisible && (
+        <header className="simulations-hero">
+          <div>
+            <p className="simulations-hero-kicker">Escenarios de prueba</p>
+            <h2>Simulaciones</h2>
+            <p>Gestiona tus simulaciones guardadas y prepara nuevos escenarios sobre cuentas propias para el usuario <strong>{userEmail}</strong>.</p>
+          </div>
+          <button type="button" className="primary-btn simulations-create-btn" onClick={openWizard} aria-label="Nueva simulación">
+            <AppIcon name="simulation" />
+            Nueva simulación
+          </button>
+        </header>
+      )}
 
       {isWizardOpen && (
         <div className="simulations-wizard-overlay" role="presentation" onMouseDown={(event) => {
@@ -959,40 +1733,209 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
 
       {generationMessage && <p className="simulations-inline-note">{generationMessage}</p>}
 
-      {(activeSimulation || isLoadingWorkspace || workspaceError) && (
+      {isWorkspaceVisible && (
         <section className="simulation-workspace" aria-label="Dashboard de simulación">
-          <div className="simulation-workspace-header">
-            <div>
-              <p className="simulations-hero-kicker">Simulación activa</p>
-              <h3>{activeSimulation?.name ?? 'Cargando simulación'}</h3>
-              {activeSimulation && (
-                <p>
-                  {activeSimulation.accountName} · {statusLabel(activeSimulation.status)} · Seed {activeSimulation.seed}
-                </p>
-              )}
+          <section ref={workspaceTopRef} className={`simulation-workspace-top${isWorkspaceTopCompact ? ' is-compact' : ''}`}>
+            <div className="simulation-workspace-header">
+              <div className="simulation-workspace-title-block">
+                <p className="simulations-hero-kicker">Simulación activa</p>
+                <div className="simulation-title-help" tabIndex={0} aria-label="Información de la simulación">
+                  <h3>{activeSimulation?.name ?? 'Cargando simulación'}</h3>
+                  {activeSimulation && !isLoadingWorkspace && !workspaceError && (
+                    <div className="simulation-info-popover" role="tooltip" aria-label="Resumen de la simulación activa">
+                      <div className="simulation-info-row">
+                        <span className="simulation-info-label"><AppIcon name="article" />Rango</span>
+                        <span className="simulation-info-value">{formatDateRange(activeSimulation.startDate, activeSimulation.endDate)}</span>
+                      </div>
+                      <div className="simulation-info-row">
+                        <span className="simulation-info-label"><AppIcon name="accounts" />Cuenta</span>
+                        <span className="simulation-info-value">{activeSimulation.accountName}</span>
+                      </div>
+                      <div className="simulation-info-row">
+                        <span className="simulation-info-label"><AppIcon name="play" />Valor inicial</span>
+                        <span className="simulation-info-value">{formatMoney(activeSimulation.initialBalance, activeSimulation.currency)}</span>
+                      </div>
+                      <div className="simulation-info-row">
+                        <span className="simulation-info-label"><AppIcon name="check" />Valor final</span>
+                        <span className="simulation-info-value">{formatMoney(simulationFinalBalance, activeSimulation.currency)}</span>
+                      </div>
+                      <div className="simulation-info-row">
+                        <span className="simulation-info-label"><AppIcon name="entry" />Operaciones</span>
+                        <span className="simulation-info-value">{filteredMetrics.totalOpportunities} visibles</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+                {activeSimulation && (
+                  <p className="simulation-workspace-meta-line">
+                    {activeSimulation.accountName} · {statusLabel(activeSimulation.status)}
+                  </p>
+                )}
+              </div>
+              <div className="simulation-workspace-actions">
+                <button type="button" className="secondary-btn" onClick={handleBackToSimulationsList} disabled={isSavingWorkspace || isLoadingWorkspace}>
+                  Volver
+                </button>
+                <button type="button" className="primary-btn" onClick={() => void handleSaveActiveSimulation()} disabled={!activeSimulation || isSavingWorkspace || isLoadingWorkspace || activeOperations.length === 0 || !hasUnsavedChanges}>
+                  {isSavingWorkspace ? 'Guardando...' : 'Guardar simulación'}
+                </button>
+              </div>
             </div>
-            <div className="simulation-workspace-actions">
-              <button type="button" className="secondary-btn" onClick={openWizard} disabled={isSavingWorkspace || isLoadingWorkspace}>
-                Nueva simulación
-              </button>
-              <button type="button" className="primary-btn" onClick={() => void handleSaveActiveSimulation()} disabled={!activeSimulation || isSavingWorkspace || isLoadingWorkspace || activeOperations.length === 0 || !hasUnsavedChanges}>
-                {isSavingWorkspace ? 'Guardando...' : 'Guardar simulación'}
-              </button>
+
+            {activeSimulation && !isLoadingWorkspace && !workspaceError && (
+              <>
+                <section className="simulation-workspace-filters" aria-label="Filtros de simulación">
+                  <label htmlFor="simulation-top-year-filter" className="dashboard-summary-filter-label">Filtrar por año</label>
+                  <select
+                    id="simulation-top-year-filter"
+                    className="dashboard-summary-filter"
+                    value={selectedYear}
+                    onChange={(event) => handleYearFilterChange(event.target.value)}
+                  >
+                    <option value="all">Todos los años</option>
+                    {availableYears.map((year) => (
+                      <option key={year} value={String(year)}>{year}</option>
+                    ))}
+                  </select>
+
+                  <label htmlFor="simulation-top-month-filter" className="dashboard-summary-filter-label">Filtrar por mes</label>
+                  <select
+                    id="simulation-top-month-filter"
+                    className="dashboard-summary-filter"
+                    value={selectedMonth}
+                    onChange={(event) => handleMonthFilterChange(event.target.value)}
+                    disabled={selectedYear === 'all'}
+                  >
+                    <option value="all">Todos los meses</option>
+                    {availableMonths.map((month) => (
+                      <option key={month} value={String(month)}>{simulationMonthLabel(month)}</option>
+                    ))}
+                  </select>
+                </section>
+              </>
+            )}
+          </section>
+
+          {isNewOperationModalOpen && activeSimulation && (
+            <div className="simulation-modal-overlay" role="presentation" onMouseDown={(event) => {
+              if (event.target === event.currentTarget) {
+                closeNewOperationModal();
+              }
+            }}>
+              <section className="simulation-modal" ref={newOperationModalRef} role="dialog" aria-modal="true" aria-label="Agregar operación">
+                <div className="simulation-modal-header">
+                  <h3>Nueva operación</h3>
+                  <button type="button" className="simulation-modal-close" onClick={closeNewOperationModal} aria-label="Cerrar modal">
+                    <AppIcon name="close" />
+                  </button>
+                </div>
+
+                <div className="simulation-modal-grid">
+                  <label>
+                    <span>Fecha</span>
+                    <input
+                      type="date"
+                      value={newOperationForm.operationDate}
+                      onChange={(event) => setNewOperationForm((prev) => ({ ...prev, operationDate: event.target.value }))}
+                      inputMode="none"
+                      onFocus={openDatePicker}
+                      onClick={openDatePicker}
+                      onKeyDown={preventManualDateTyping}
+                      onPaste={preventManualDatePasteOrDrop}
+                      onDrop={preventManualDatePasteOrDrop}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Hora</span>
+                    <input
+                      type="time"
+                      value={newOperationForm.operationTime}
+                      step={300}
+                      onChange={(event) => setNewOperationForm((prev) => ({ ...prev, operationTime: event.target.value }))}
+                    />
+                  </label>
+
+                  <label>
+                    <span>Tipo</span>
+                    <select
+                      value={newOperationForm.side ?? ''}
+                      disabled={newOperationForm.resultType === 'no_trade'}
+                      onChange={(event) => setNewOperationForm((prev) => ({ ...prev, side: parseSimulationSide(event.target.value) }))}
+                    >
+                      <option value="buy">Buy</option>
+                      <option value="sell">Sell</option>
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Resultado</span>
+                    <select
+                      value={newOperationForm.resultType}
+                      onChange={(event) => {
+                        const nextResultType = event.target.value as SimulationOperationDraft['resultType'];
+                        setNewOperationForm((prev) => ({
+                          ...prev,
+                          resultType: nextResultType,
+                          side: nextResultType === 'no_trade' ? null : (prev.side ?? 'buy'),
+                          technicalResultR: nextResultType === 'sl' ? '-1' : nextResultType === 'breakeven' ? '1' : prev.technicalResultR,
+                        }));
+                      }}
+                    >
+                      <option value="win">Exito</option>
+                      <option value="sl">SL</option>
+                      <option value="breakeven">Breakeven</option>
+                      <option value="no_trade">No operar</option>
+                    </select>
+                  </label>
+
+                  <label className="simulation-modal-span-2">
+                    <span>Técnico R</span>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newOperationForm.technicalResultR}
+                      disabled={newOperationForm.resultType !== 'win'}
+                      onChange={(event) => setNewOperationForm((prev) => ({ ...prev, technicalResultR: event.target.value }))}
+                    />
+                  </label>
+                </div>
+
+                {newOperationPreview && (
+                  <section className="simulation-modal-preview" aria-label="Vista previa de cálculo">
+                    <p>
+                      <span>Monto invertido (auto)</span>
+                      <strong>{formatMoney(newOperationPreview.autoInvested, activeSimulation.currency)}</strong>
+                    </p>
+                    <p>
+                      <span>Resultado monetario</span>
+                      <strong className={newOperationPreview.monetaryClass}>{distributionAmountLabel(newOperationPreview.operation.monetaryResult, activeSimulation.currency)}</strong>
+                    </p>
+                    <p>
+                      <span>Saldo final transacción</span>
+                      <strong className={newOperationPreview.resultClass}>{formatMoney(newOperationPreview.balanceAfter, activeSimulation.currency)}</strong>
+                    </p>
+                  </section>
+                )}
+
+                {newOperationError && <p className="simulations-error">{newOperationError}</p>}
+                {hasNewOperationDateTimeCollision && !newOperationError && (
+                  <p className="simulations-error">Ya existe una operación en la misma fecha y hora.</p>
+                )}
+
+                <div className="simulation-modal-actions">
+                  <button type="button" className="secondary-btn" onClick={closeNewOperationModal}>Cancelar</button>
+                  <button type="button" className="primary-btn" onClick={handleCreateNewOperation} disabled={hasNewOperationDateTimeCollision}>Agregar</button>
+                </div>
+              </section>
             </div>
-          </div>
+          )}
 
           {isLoadingWorkspace && <p className="simulations-loading">Cargando operaciones de la simulación...</p>}
           {workspaceError && <p className="simulations-error">{workspaceError}</p>}
 
           {activeSimulation && !isLoadingWorkspace && !workspaceError && (
             <>
-              <div className="simulation-workspace-meta">
-                <span>Rango: <strong>{formatDateRange(activeSimulation.startDate, activeSimulation.endDate)}</strong></span>
-                <span>Cuenta: <strong>{activeSimulation.accountName}</strong></span>
-                <span>Máximo diario: <strong>{activeSimulation.maxOperationsPerDay}</strong></span>
-                <span>Filtro activo: <strong>{filteredMetrics.totalOpportunities} operaciones visibles</strong></span>
-              </div>
-
               <DashboardSummaryLayout
                 idPrefix="simulation"
                 accountFilterValue={activeSimulation.accountName}
@@ -1011,6 +1954,7 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                   ...availableMonths.map((month) => ({ value: String(month), label: simulationMonthLabel(month) })),
                 ]}
                 monthFilterDisabled={selectedYear === 'all'}
+                hideToolbar
                 kpis={[
                   {
                     title: selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes',
@@ -1021,14 +1965,30 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                   {
                     title: 'Tasa de exito',
                     value: `${simulationWinRate.toFixed(1)}%`,
-                    trend: `Total ganado: ${formatMoney(simulationWinTotal, activeSimulation.currency)}`,
+                    trend: `W/L: ${filteredMetrics.totalWin}/${filteredMetrics.totalSl}`,
                     trendClass: 'positive',
                   },
                   {
                     title: 'Tasa de perdida',
                     value: `${simulationLossRate.toFixed(1)}%`,
-                    trend: `Total perdido: ${formatMoney(simulationLossTotal, activeSimulation.currency)}`,
+                    trend: `W/L: ${filteredMetrics.totalSl}/${filteredMetrics.totalWin}`,
                     trendClass: 'negative',
+                  },
+                  {
+                    title: 'Peso monetario ganado',
+                    value: `${simulationMonetaryWeights.winWeight.toFixed(1)}%`,
+                    trend: `Vs perdido: ${simulationMonetaryWeights.lossWeight.toFixed(1)}%`,
+                    trendClass: simulationMonetaryWeights.winWeight >= simulationMonetaryWeights.lossWeight ? 'positive' : 'negative',
+                  },
+                  {
+                    title: 'Profit Factor',
+                    value: simulationProfitFactor,
+                    trend: (
+                      <>
+                        <span className="positive">{formatMoney(simulationWinTotal, activeSimulation.currency)}</span> / <span className="negative">{formatMoney(Math.abs(simulationLossTotal), activeSimulation.currency)}</span>
+                      </>
+                    ),
+                    trendClass: 'neutral',
                   },
                   {
                     title: 'Mejor dia para operar',
@@ -1042,9 +2002,11 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                 chartLabelFormatter={(label) => {
                   if (selectedMonth !== 'all') {
                     const monthIndex = Number.parseInt(selectedMonth, 10);
-                    return `Dia ${label} de ${simulationMonthLabel(monthIndex)}`;
+                    return `Dia ${label} de ${fullMonthLabel(monthIndex)}`;
                   }
-                  return label;
+
+                  const monthIndex = timelineData.findIndex((item) => item.label === label);
+                  return monthIndex >= 0 ? fullMonthLabel(monthIndex) : label;
                 }}
                 amountFormatter={(value) => formatMoney(value, activeSimulation.currency)}
                 distributionAmountFormatter={(value) => distributionAmountLabel(value, activeSimulation.currency)}
@@ -1062,95 +2024,83 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                 ]}
               >
                 <section className="table-card">
-                <h2>Operaciones recientes</h2>
+                <div className="simulation-operations-header">
+                  <h2>Operaciones recientes</h2>
+                  <button
+                    type="button"
+                    className="simulation-add-operation-btn"
+                    onClick={openNewOperationModal}
+                    disabled={!activeSimulation || isSavingWorkspace || isLoadingWorkspace}
+                    aria-label="Agregar nueva operación"
+                    title="Agregar nueva operación"
+                  >
+                    +
+                  </button>
+                </div>
                 <div className="table-wrapper">
                 <table>
                   <thead>
                     <tr>
                       <th>Fecha</th>
+                      <th>Hora</th>
                       <th>Tipo</th>
-                      <th>Resultado</th>
+                      <th>Saldo antes de entrar</th>
                       <th>Invertido</th>
-                      <th>Saldo</th>
                       <th>Técnico R</th>
-                      <th>USD</th>
+                      <th>Resultado</th>
+                      <th>Resultado monetario</th>
+                      <th>Saldo al final</th>
+                      <th>Acciones</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {activeOperations.map((operation, index) => {
-                      const snapshot = operationRiskSnapshots[index];
+                    {groupedOperations.map((year) => {
+                      const isYearExpanded = expandedYears[year.key] ?? false;
 
                       return (
-                      <tr key={operation.id}>
-                        <td>
-                          <input
-                            type="date"
-                            aria-label={`Fecha ${operation.operationIndex}`}
-                            value={operation.operationDate}
-                            inputMode="none"
-                            onFocus={openDatePicker}
-                            onClick={openDatePicker}
-                            onKeyDown={preventManualDateTyping}
-                            onPaste={preventManualDatePasteOrDrop}
-                            onDrop={preventManualDatePasteOrDrop}
-                            onChange={(event) => handleOperationChange(operation.id, { operationDate: event.target.value })}
-                          />
-                        </td>
-                        <td>
-                          <select
-                            aria-label={`Tipo ${operation.operationIndex}`}
-                            value={operation.side ?? ''}
-                            disabled={operation.resultType === 'no_trade'}
-                            onChange={(event) => handleOperationChange(operation.id, { side: parseSimulationSide(event.target.value) })}
-                          >
-                            <option value="">N/A</option>
-                            <option value="buy">Buy</option>
-                            <option value="sell">Sell</option>
-                          </select>
-                        </td>
-                        <td>
-                          <select
-                            aria-label={`Resultado ${operation.operationIndex}`}
-                            value={operation.resultType}
-                            onChange={(event) => handleOperationChange(operation.id, { resultType: parseSimulationResultType(event.target.value) })}
-                          >
-                            <option value="win">Exito</option>
-                            <option value="sl">SL</option>
-                            <option value="breakeven">Breakeven</option>
-                            <option value="no_trade">No operar</option>
-                          </select>
-                        </td>
-                        <td>
-                          <strong>
-                            {snapshot ? formatMoney(snapshot.investedAmountDisplay, activeSimulation?.currency ?? 'USD') : formatMoney(operation.investedAmount, activeSimulation?.currency ?? 'USD')}
-                          </strong>
-                        </td>
-                        <td>
-                          <strong>
-                            {snapshot ? formatMoney(snapshot.balanceAfter, activeSimulation?.currency ?? 'USD') : formatMoney(activeSimulation?.initialBalance ?? 0, activeSimulation?.currency ?? 'USD')}
-                          </strong>
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            aria-label={`Tecnico ${operation.operationIndex}`}
-                            step="0.01"
-                            value={operation.technicalResultR ?? ''}
-                            disabled={operation.resultType === 'no_trade'}
-                            onChange={(event) => handleOperationChange(operation.id, { technicalResultR: event.target.value === '' ? null : Number.parseFloat(event.target.value) })}
-                          />
-                        </td>
-                        <td>
-                          <input
-                            type="number"
-                            aria-label={`USD ${operation.operationIndex}`}
-                            step="0.01"
-                            value={operation.monetaryResult}
-                            disabled={operation.resultType === 'no_trade'}
-                            onChange={(event) => handleOperationChange(operation.id, { monetaryResult: Number.parseFloat(event.target.value || '0') })}
-                          />
-                        </td>
-                      </tr>
+                        <Fragment key={year.key}>
+                          <tr key={year.key} className="simulation-group-row simulation-group-row-year">
+                            <td colSpan={10}>
+                              <button type="button" className="simulation-group-toggle" onClick={() => toggleYear(year.key)}>
+                                <AppIcon name={isYearExpanded ? 'chevronDown' : 'chevronRight'} /> {year.label}
+                              </button>
+                            </td>
+                          </tr>
+
+                          {isYearExpanded && year.months.map((month) => {
+                            const isMonthExpanded = expandedMonths[month.key] ?? false;
+
+                            return (
+                              <Fragment key={month.key}>
+                                <tr className="simulation-group-row simulation-group-row-month">
+                                  <td colSpan={10}>
+                                    <button type="button" className="simulation-group-toggle" onClick={() => toggleMonth(month.key)}>
+                                      <AppIcon name={isMonthExpanded ? 'chevronDown' : 'chevronRight'} /> {month.label}
+                                    </button>
+                                  </td>
+                                </tr>
+
+                                {isMonthExpanded && month.weeks.map((week) => {
+                                  const isWeekExpanded = expandedWeeks[week.key] ?? false;
+
+                                  return (
+                                    <Fragment key={week.key}>
+                                      <tr className="simulation-group-row simulation-group-row-week">
+                                        <td colSpan={10}>
+                                          <button type="button" className="simulation-group-toggle" onClick={() => toggleWeek(week.key)}>
+                                            <AppIcon name={isWeekExpanded ? 'chevronDown' : 'chevronRight'} /> {week.label}
+                                          </button>
+                                        </td>
+                                      </tr>
+
+                                      {isWeekExpanded && week.operations.map(({ operation, index }) => renderOperationRow(operation, index))}
+                                    </Fragment>
+                                  );
+                                })}
+                              </Fragment>
+                            );
+                          })}
+                        </Fragment>
                       );
                     })}
                   </tbody>
@@ -1170,14 +2120,14 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
       {isLoading && <p className="simulations-loading">Cargando simulaciones...</p>}
       {error && <p className="simulations-error">{error}</p>}
 
-      {!isLoading && !error && simulations.length === 0 && (
+      {!isWorkspaceVisible && !isLoading && !error && simulations.length === 0 && (
         <section className="simulations-empty">
           <h3>No hay simulaciones guardadas</h3>
           <p>Cuando guardes tu primera simulación aparecerá aquí para reabrirla y seguir editando.</p>
         </section>
       )}
 
-      {!isLoading && !error && simulations.length > 0 && (
+      {!isWorkspaceVisible && !isLoading && !error && simulations.length > 0 && (
         <section className="simulations-grid" aria-label="Lista de simulaciones guardadas">
           {simulations.map((simulation) => (
             <article key={simulation.id} className="simulation-card">

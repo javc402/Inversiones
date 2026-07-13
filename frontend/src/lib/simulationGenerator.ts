@@ -56,13 +56,19 @@ function randomIntInclusive(random: () => number, min: number, max: number): num
   return Math.floor(random() * (max - min + 1)) + min;
 }
 
+function buildRandomOperationTime(random: () => number): string {
+  const hour = randomIntInclusive(random, 8, 18);
+  const minute = randomIntInclusive(random, 0, 11) * 5;
+  return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+}
+
 function buildTechnicalResultR(resultType: SimulationResultType, random: () => number): number | null {
   if (resultType === 'no_trade') {
     return null;
   }
 
   if (resultType === 'breakeven') {
-    return 0;
+    return 1;
   }
 
   if (resultType === 'sl') {
@@ -148,7 +154,7 @@ export function generateSimulationArtifacts(input: SimulationGenerationInput): S
   const riskPctMax = Math.max(input.riskPctMin ?? 0.01, input.riskPctMax ?? 0.01);
   const opportunitiesByDate = operableDates.map((date) => ({
     date,
-    opportunities: randomIntInclusive(random, 0, maxOperationsPerDay),
+    opportunities: maxOperationsPerDay > 0 ? randomIntInclusive(random, 1, maxOperationsPerDay) : 0,
   }));
   const totalOpportunities = opportunitiesByDate.reduce((sum, item) => sum + item.opportunities, 0);
   const resultPool = buildResultPool(
@@ -180,6 +186,7 @@ export function generateSimulationArtifacts(input: SimulationGenerationInput): S
         totalNoTrade += 1;
         operations.push({
           operationDate: day.date,
+          operationTime: buildRandomOperationTime(random),
           operationIndex,
           side: null,
           resultType,
@@ -205,6 +212,7 @@ export function generateSimulationArtifacts(input: SimulationGenerationInput): S
 
       operations.push({
         operationDate: day.date,
+        operationTime: buildRandomOperationTime(random),
         operationIndex,
         side: random() < 0.5 ? 'buy' : 'sell',
         resultType,

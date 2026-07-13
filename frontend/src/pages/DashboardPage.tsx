@@ -87,6 +87,20 @@ export function calculateProfitFactor(winAmount: number, lossAmount: number): st
   return (winAmount / absoluteLoss).toFixed(2);
 }
 
+export function calculateMonetaryWeights(winAmount: number, lossAmount: number): { winWeight: number; lossWeight: number } {
+  const grossWin = Math.max(0, winAmount);
+  const grossLoss = Math.abs(Math.min(0, lossAmount));
+  const total = grossWin + grossLoss;
+  if (total === 0) {
+    return { winWeight: 0, lossWeight: 0 };
+  }
+
+  return {
+    winWeight: (grossWin / total) * 100,
+    lossWeight: (grossLoss / total) * 100,
+  };
+}
+
 export function getEntryExecutionDate(entry: Pick<MarketEntry, 'status' | 'plannedAt' | 'updatedAt' | 'createdAt'>): string {
   // Regla de negocio: el dashboard usa fecha de ejecucion (plannedAt).
   const planned = new Date(entry.plannedAt);
@@ -126,10 +140,6 @@ export function isTechnicalBreakEven(entry: Pick<MarketEntry, 'status' | 'result
 export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resultR' | 'riskAmount'>): number | null {
   if (entry.status !== 'closed' || entry.resultR === null) {
     return null;
-  }
-
-  if (isTechnicalBreakEven(entry)) {
-    return 0;
   }
 
   return entry.riskAmount * entry.resultR;
@@ -705,6 +715,8 @@ interface DashboardSummaryContentProps {
   winTotal: number;
   lossRate: number;
   lossTotal: number;
+  monetaryWinWeight: number;
+  monetaryLossWeight: number;
   monthlyProfitData: Array<{
     month: string;
     amount: number;
@@ -766,6 +778,8 @@ function DashboardSummaryContent({
   winTotal,
   lossRate,
   lossTotal,
+  monetaryWinWeight,
+  monetaryLossWeight,
   monthlyProfitData,
   distributionData,
   netResult,
@@ -861,6 +875,8 @@ function DashboardSummaryContent({
   const tradingInsights = useMemo(() => {
     return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
   }, [filteredEntries, selectedMonth]);
+  const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
+  const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
 
   function toggleTradeDetails(entryId: string) {
     setExpandedTradeIds((prev) => ({
@@ -893,8 +909,19 @@ function DashboardSummaryContent({
       monthFilterDisabled={selectedYear === 'all'}
       kpis={[
         { title: profitKpiTitle, value: formatCurrency(monthlyProfit), trend: `${filteredEntries.length} operaciones`, trendClass: monthlyProfit >= 0 ? 'positive' : 'negative' },
-        { title: 'Tasa de exito', value: `${winRate.toFixed(1)}%`, trend: `Total ganado: ${formatCurrency(winTotal)}`, trendClass: 'positive' },
-        { title: 'Tasa de perdida', value: `${lossRate.toFixed(1)}%`, trend: `Total perdido: ${formatCurrency(lossTotal)}`, trendClass: 'negative' },
+        { title: 'Tasa de exito', value: `${winRate.toFixed(1)}%`, trend: `W/L: ${wins}/${losses}`, trendClass: 'positive' },
+        { title: 'Tasa de perdida', value: `${lossRate.toFixed(1)}%`, trend: `W/L: ${losses}/${wins}`, trendClass: 'negative' },
+        { title: 'Peso monetario ganado', value: `${monetaryWinWeight.toFixed(1)}%`, trend: `Vs perdido: ${monetaryLossWeight.toFixed(1)}%`, trendClass: monetaryWinWeight >= monetaryLossWeight ? 'positive' : 'negative' },
+        {
+          title: 'Profit Factor',
+          value: profitFactor,
+          trend: (
+            <>
+              <span className="positive">{formatCurrency(winTotal)}</span> / <span className="negative">{formatCurrency(Math.abs(lossTotal))}</span>
+            </>
+          ),
+          trendClass: 'neutral',
+        },
         { title: 'Mejor dia para operar', value: tradingInsights.bestWeekdayLabel, trend: `Total: ${distributionAmountLabel(tradingInsights.bestWeekdayTotal)}`, trendClass: 'positive' },
       ]}
       chartTitle="Evolucion de ganancias"
@@ -1564,17 +1591,19 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [filteredEntries]);
 
   const winRate = useMemo(() => {
-    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
-    if (entriesWithResult.length === 0) return 0;
-    const wins = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
-    return (wins / entriesWithResult.length) * 100;
+    const wins = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
+    const losses = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
+    const resolved = wins + losses;
+    if (resolved === 0) return 0;
+    return (wins / resolved) * 100;
   }, [filteredEntries]);
 
   const lossRate = useMemo(() => {
-    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
-    if (entriesWithResult.length === 0) return 0;
-    const losses = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
-    return (losses / entriesWithResult.length) * 100;
+    const wins = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
+    const losses = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
+    const resolved = wins + losses;
+    if (resolved === 0) return 0;
+    return (losses / resolved) * 100;
   }, [filteredEntries]);
 
   const winTotal = useMemo(() => {
@@ -1653,6 +1682,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
 
   const profitFactor = useMemo(() => {
     return calculateProfitFactor(winTotal, lossTotal);
+  }, [winTotal, lossTotal]);
+
+  const { winWeight: monetaryWinWeight, lossWeight: monetaryLossWeight } = useMemo(() => {
+    return calculateMonetaryWeights(winTotal, lossTotal);
   }, [winTotal, lossTotal]);
 
   const winLossRatio = useMemo(() => {
@@ -1773,6 +1806,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       winTotal={winTotal}
       lossRate={lossRate}
       lossTotal={lossTotal}
+      monetaryWinWeight={monetaryWinWeight}
+      monetaryLossWeight={monetaryLossWeight}
       monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
       netResult={netResult}
