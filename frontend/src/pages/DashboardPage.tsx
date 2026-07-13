@@ -717,12 +717,6 @@ interface DashboardSummaryContentProps {
   lossTotal: number;
   monetaryWinWeight: number;
   monetaryLossWeight: number;
-  monthlyProfitData: Array<{
-    month: string;
-    amount: number;
-    lossAmount: number;
-    breakevenAmount: number;
-  }>;
   distributionData: Array<{
     name: 'Ganadas' | 'Perdidas' | 'Breakeven';
     value: number;
@@ -780,7 +774,6 @@ function DashboardSummaryContent({
   lossTotal,
   monetaryWinWeight,
   monetaryLossWeight,
-  monthlyProfitData,
   distributionData,
   netResult,
   profitFactor,
@@ -875,6 +868,22 @@ function DashboardSummaryContent({
   const tradingInsights = useMemo(() => {
     return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
   }, [filteredEntries, selectedMonth]);
+  const visibleEntryIds = useMemo(() => {
+    return new Set(filteredRecentTrades.map((trade) => trade.entryId));
+  }, [filteredRecentTrades]);
+
+  const chartEntries = useMemo(() => {
+    return filteredEntries.filter((entry) => visibleEntryIds.has(entry.id));
+  }, [filteredEntries, visibleEntryIds]);
+
+  const chartData = useMemo(() => {
+    const referenceDate = resolveMonthlyReferenceDate(chartEntries, selectedYear);
+    if (selectedMonth !== 'all') {
+      return calculateDailyProfitData(chartEntries, referenceDate);
+    }
+
+    return calculateMonthlyProfitData(chartEntries, referenceDate, 'fullYear');
+  }, [chartEntries, selectedMonth, selectedYear]);
   const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
   const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
 
@@ -925,7 +934,7 @@ function DashboardSummaryContent({
         { title: 'Mejor dia para operar', value: tradingInsights.bestWeekdayLabel, trend: `Total: ${distributionAmountLabel(tradingInsights.bestWeekdayTotal)}`, trendClass: 'positive' },
       ]}
       chartTitle="Evolucion de ganancias"
-      chartData={monthlyProfitData}
+      chartData={chartData}
       chartLabelFormatter={(label) => {
         if (selectedMonth !== 'all') {
           const monthIndex = Number.parseInt(selectedMonth, 10);
@@ -1619,15 +1628,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       }, 0);
   }, [filteredEntries]);
 
-  const monthlyProfitData = useMemo(() => {
-    const referenceDate = resolveMonthlyReferenceDate(filteredEntries, selectedYear);
-    if (selectedMonth !== 'all') {
-      return calculateDailyProfitData(filteredEntries, referenceDate);
-    }
-
-    return calculateMonthlyProfitData(filteredEntries, referenceDate, 'fullYear');
-  }, [filteredEntries, selectedYear, selectedMonth]);
-
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
     if (entriesWithResult.length === 0) {
@@ -1808,7 +1808,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       lossTotal={lossTotal}
       monetaryWinWeight={monetaryWinWeight}
       monetaryLossWeight={monetaryLossWeight}
-      monthlyProfitData={monthlyProfitData}
       distributionData={distributionData}
       netResult={netResult}
       profitFactor={profitFactor}
