@@ -1474,4 +1474,539 @@ describe('market-entries service', () => {
       },
     });
   });
+
+  it('valida create: link de operación inválido', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          setup: 'Breakout',
+          session: 'NY',
+          direction: 'buy',
+          operationLink: 'not a url',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'planned',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+      })
+    ).rejects.toThrow('El link de la operación no es válido.');
+  });
+
+  it('valida create: Resultado R con máximo dos decimales', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          setup: 'Breakout',
+          session: 'NY',
+          direction: 'buy',
+          resultR: 1.234,
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'closed',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 100, investmentPercent: 1 }],
+      })
+    ).rejects.toThrow('El Resultado R debe tener como máximo dos decimales.');
+  });
+
+  it('valida create no_entry: riesgo no puede ser negativo y debe ser numérico', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'no_entry',
+          noEntryReason: 'Sin entrada',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: -1, investmentPercent: 1 }],
+      } as never)
+    ).rejects.toThrow('El riesgo por cuenta no puede ser menor que 0 para registros sin entrada.');
+
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'free_text',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'no_entry',
+          noEntryReason: 'Sin entrada',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: Number.NaN, investmentPercent: 1 }],
+      } as never)
+    ).rejects.toThrow('El riesgo por cuenta debe ser un número válido.');
+  });
+
+  it('valida update: plannedAt inválido y contexto news incompleto en no_entry', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previous = {
+      id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+      risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const mockSelectPreviousA = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelectPreviousA });
+
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'open',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+        plannedAt: 'fecha-invalida',
+      })
+    ).rejects.toThrow('La fecha de ejecucion no es valida.');
+
+    const mockSelectPreviousB = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelectPreviousB });
+
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'no_entry',
+        contextSource: 'news',
+        newsArticleId: 'news-1',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+        noEntryReason: 'Sin entrada',
+      })
+    ).rejects.toThrow('Debes indicar el impacto de la noticia.');
+  });
+
+  it('valida update: cuenta, dirección y Resultado R en flujo normal', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previousWithoutAccount = {
+      id: 'entry-1', group_id: 'group-1', account_id: null, account_name: null,
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: null, entry_price: null, stop_loss: null, take_profit: null,
+      risk_amount: null, investment_percent: null, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const selectA = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previousWithoutAccount, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectA });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'open',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+      })
+    ).rejects.toThrow('Debes asociar una cuenta válida.');
+
+    const previousWithAccount = {
+      ...previousWithoutAccount,
+      account_id: 'acc-1',
+      account_name: 'Cuenta 1',
+      direction: 'buy',
+      risk_amount: 100,
+      investment_percent: 1,
+    };
+
+    const selectB = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previousWithAccount, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectB });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'open',
+        direction: 'otro' as never,
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+      })
+    ).rejects.toThrow('Debes indicar una dirección válida.');
+
+    const selectC = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previousWithAccount, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectC });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'closed',
+        direction: 'buy',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: 1.234,
+        note: 'x',
+      })
+    ).rejects.toThrow('El Resultado R debe tener como máximo dos decimales.');
+  });
+
+  it('valida update no_entry con cuenta asociada exige riesgo e inversión > 0', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previous = {
+      id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+      risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const selectA = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectA });
+
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'no_entry',
+        accountId: 'acc-1',
+        accountName: 'Cuenta 1',
+        riskAmount: 0,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+        noEntryReason: 'Sin entrada',
+      })
+    ).rejects.toThrow('El riesgo debe ser mayor que 0.');
+
+    const selectB = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectB });
+
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'no_entry',
+        accountId: 'acc-1',
+        accountName: 'Cuenta 1',
+        riskAmount: 1,
+        investmentPercent: 0,
+        resultR: null,
+        note: 'x',
+        noEntryReason: 'Sin entrada',
+      })
+    ).rejects.toThrow('El % de inversión debe ser mayor que 0.');
+  });
+
+  it('lista entradas mapeando fallbacks de columnas legacy', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEq = vi.fn().mockReturnThis();
+    const mockOrder = vi.fn().mockResolvedValueOnce({
+      data: [
+        {
+          id: 'entry-legacy',
+          group_id: 'group-1',
+          account_id: null,
+          account_name: null,
+          symbol: 'EURUSD',
+          symbol_detail: null,
+          market_context: 'Contexto',
+          context_source: 'free_text',
+          news_article_id: null,
+          news_impact: null,
+          setup: 'Breakout',
+          session: 'NY',
+          envelope_protocol: 'ob',
+          direction: null,
+          close_price: 1.2345,
+          operation_url: 'https://legacy.example.com',
+          risk_amount: null,
+          investment_percent: null,
+          risk_reward: 1.5,
+          no_entry_reason: null,
+          note: '',
+          status: 'planned',
+          planned_at: '2026-06-29T10:00:00.000Z',
+          created_at: '2026-06-29T10:00:00.000Z',
+          updated_at: '2026-06-29T10:00:00.000Z',
+        },
+      ],
+      error: null,
+    });
+
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelect });
+    mockSelect.mockReturnValueOnce({ eq: mockEq });
+    mockEq.mockReturnValueOnce({ order: mockOrder });
+
+    const rows = await listMarketEntriesByUser('user@example.com');
+    expect(rows[0].direction).toBe('buy');
+    expect(rows[0].closePrice).toBe(1.2345);
+    expect(rows[0].operationLink).toBe('https://legacy.example.com');
+    expect(rows[0].resultR).toBe(1.5);
+    expect(rows[0].riskAmount).toBe(0);
+  });
+
+  it('listMostUsedMarketContexts ignora market_context no string', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const mockEqContext = vi.fn().mockResolvedValueOnce({
+      data: [{ market_context: 123, context_source: 'free_text' }, { market_context: 'CPI', context_source: 'free_text' }],
+      error: null,
+    });
+    const mockEqUser = vi.fn().mockReturnValue({ eq: mockEqContext });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEqUser });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelect });
+
+    const contexts = await listMostUsedMarketContexts('user@example.com', 5);
+    expect(contexts).toEqual(['CPI']);
+  });
+
+  it('list y delete usan mensaje fallback cuando error no trae message', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const mockSelect = vi.fn().mockReturnThis();
+    const mockEq = vi.fn().mockReturnThis();
+    const mockOrder = vi.fn().mockResolvedValueOnce({ data: null, error: {} });
+    supabaseMocks.from.mockReturnValueOnce({ select: mockSelect });
+    mockSelect.mockReturnValueOnce({ eq: mockEq });
+    mockEq.mockReturnValueOnce({ order: mockOrder });
+    await expect(listMarketEntriesByUser('user@example.com')).rejects.toThrow('No se pudieron listar las entradas.');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const mockDelete = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({
+        eq: vi.fn().mockReturnValueOnce({
+          select: vi.fn().mockResolvedValueOnce({ data: null, error: {} }),
+        }),
+      }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ delete: mockDelete });
+    await expect(deleteMarketEntryById('user@example.com', 'entry-1')).rejects.toThrow('No se pudo eliminar la entrada.');
+  });
+
+  it('update no_entry sin cuenta asociada permite riesgo/inversión null en payload', async () => {
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previous = {
+      id: 'entry-1', group_id: 'group-1', account_id: null, account_name: null,
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: null, entry_price: null, stop_loss: null, take_profit: null,
+      risk_amount: null, investment_percent: null, result_r: null, no_entry_reason: 'old', note: '', status: 'no_entry',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const mockSelectPrevious = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    const mockUpdateSelect = vi.fn().mockResolvedValueOnce({ data: [previous], error: null });
+    const mockUpdateEntry = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ select: mockUpdateSelect }) }),
+    });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: mockSelectPrevious })
+      .mockReturnValueOnce({ update: mockUpdateEntry });
+
+    await updateMarketEntryById('user@example.com', 'entry-1', {
+      status: 'no_entry',
+      marketContext: 'Nuevo',
+      riskAmount: 0,
+      investmentPercent: 0,
+      resultR: null,
+      note: 'ok',
+      noEntryReason: 'nuevo motivo',
+    });
+
+    const updatePayload = mockUpdateEntry.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(updatePayload.risk_amount).toBeNull();
+    expect(updatePayload.investment_percent).toBeNull();
+  });
+
+  it('valida create no_entry news: requiere impacto cuando hay noticia', async () => {
+    await expect(
+      createMarketEntriesForAccounts('user@example.com', {
+        common: {
+          symbol: 'EURUSD',
+          marketContext: 'CPI',
+          contextSource: 'news',
+          newsArticleId: 'news-1',
+          note: '',
+          plannedAt: '2026-06-29T10:00',
+          status: 'no_entry',
+          noEntryReason: 'Sin entrada',
+        },
+        perAccount: [{ accountId: 'acc-1', accountName: 'Cuenta 1', riskAmount: 0, investmentPercent: 1 }],
+      } as never)
+    ).rejects.toThrow('Debes indicar el impacto de la noticia.');
+  });
+
+  it('valida update: contexto vacío y news sin articleId', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previous = {
+      id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+      risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const selectA = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectA });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'open',
+        marketContext: ' ',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+      })
+    ).rejects.toThrow('El contexto/noticia es obligatorio.');
+
+    const selectB = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectB });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'no_entry',
+        contextSource: 'news',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+        noEntryReason: 'Sin entrada',
+      })
+    ).rejects.toThrow('Debes seleccionar una noticia registrada.');
+  });
+
+  it('update aplica campos de contexto news en flujo no_entry y normal', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previous = {
+      id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: 'Cuenta 1',
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+      risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const selectNoEntry = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    const updateNoEntrySelect = vi.fn().mockResolvedValueOnce({ data: [previous], error: null });
+    const updateNoEntry = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ select: updateNoEntrySelect }) }),
+    });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: selectNoEntry })
+      .mockReturnValueOnce({ update: updateNoEntry });
+
+    await updateMarketEntryById('user@example.com', 'entry-1', {
+      status: 'no_entry',
+      contextSource: 'news',
+      newsArticleId: 'news-1',
+      newsImpact: 'high',
+      accountId: 'acc-1',
+      accountName: 'Cuenta 1',
+      riskAmount: 1,
+      investmentPercent: 1,
+      resultR: null,
+      note: 'ok',
+      noEntryReason: 'Sin entrada',
+    });
+
+    const noEntryPayload = updateNoEntry.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(noEntryPayload.news_article_id).toBe('news-1');
+    expect(noEntryPayload.news_impact).toBe('high');
+
+    const selectNormal = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previous, error: null }) }) }),
+    });
+    const updateNormalSelect = vi.fn().mockResolvedValueOnce({ data: [previous], error: null });
+    const updateNormal = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ select: updateNormalSelect }) }),
+    });
+
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: selectNormal })
+      .mockReturnValueOnce({ update: updateNormal });
+
+    await updateMarketEntryById('user@example.com', 'entry-1', {
+      status: 'open',
+      contextSource: 'news',
+      newsArticleId: 'news-2',
+      newsImpact: 'low',
+      direction: 'buy',
+      riskAmount: 100,
+      investmentPercent: 1,
+      resultR: null,
+      note: 'ok',
+    });
+
+    const normalPayload = updateNormal.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(normalPayload.news_article_id).toBe('news-2');
+    expect(normalPayload.news_impact).toBe('low');
+  });
+
+  it('valida update: account_name requerido en no_entry y flujo normal', async () => {
+    supabaseMocks.getUser.mockResolvedValue({ data: { user: { id: 'user-1' } }, error: null });
+
+    const previousNoEntry = {
+      id: 'entry-1', group_id: 'group-1', account_id: 'acc-1', account_name: ' ',
+      symbol: 'EURUSD', market_context: 'CPI', context_source: 'free_text', news_article_id: null,
+      setup: 'Breakout', session: 'NY', direction: 'buy', entry_price: 1.1, stop_loss: 1.09, take_profit: 1.12,
+      risk_amount: 100, investment_percent: 1, result_r: null, no_entry_reason: null, note: '', status: 'open',
+      planned_at: '2026-06-29T10:00:00.000Z', created_at: '2026-06-29T10:00:00.000Z', updated_at: '2026-06-29T10:00:00.000Z',
+    };
+
+    const selectA = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previousNoEntry, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectA });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'no_entry',
+        accountId: 'acc-1',
+        riskAmount: 1,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+        noEntryReason: 'Sin entrada',
+      })
+    ).rejects.toThrow('Debes asociar un nombre de cuenta válido.');
+
+    const previousNormal = {
+      ...previousNoEntry,
+      account_id: 'acc-1',
+      account_name: '  ',
+      direction: 'buy',
+    };
+    const selectB = vi.fn().mockReturnValueOnce({
+      eq: vi.fn().mockReturnValueOnce({ eq: vi.fn().mockReturnValueOnce({ single: vi.fn().mockResolvedValueOnce({ data: previousNormal, error: null }) }) }),
+    });
+    supabaseMocks.from.mockReturnValueOnce({ select: selectB });
+    await expect(
+      updateMarketEntryById('user@example.com', 'entry-1', {
+        status: 'open',
+        direction: 'buy',
+        riskAmount: 100,
+        investmentPercent: 1,
+        resultR: null,
+        note: 'x',
+      })
+    ).rejects.toThrow('Debes asociar un nombre de cuenta válido.');
+  });
 });

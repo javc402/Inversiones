@@ -62,7 +62,22 @@ vi.mock('recharts', () => {
   }
 })
 
-import SimulationsModule from './SimulationsModule';
+import SimulationsModule, {
+  applySelectedAccountToForm,
+  calculateOperationRiskSnapshots,
+  distributionAmountLabel,
+  formatDateRange,
+  formatPercentRange,
+  resolveAccountDisplayName,
+  resultTypeLabel,
+  shouldAskDiscardConfirmation,
+  statusLabel,
+  toggleWeekdaySelection,
+  validateStep,
+  validateStepOne,
+  validateStepThree,
+  validateStepTwo,
+} from './SimulationsModule';
 
 describe('SimulationsModule', () => {
   beforeEach(() => {
@@ -457,6 +472,16 @@ describe('SimulationsModule', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Nueva simulación' }));
     await screen.findByRole('dialog', { name: 'Asistente de creación de simulación' });
 
+    const overlay = document.querySelector('.simulations-wizard-overlay') as HTMLDivElement;
+    fireEvent.mouseDown(overlay);
+
+    await waitFor(() => {
+      expect(screen.queryByRole('dialog', { name: 'Asistente de creación de simulación' })).not.toBeInTheDocument();
+    });
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Nueva simulación' }));
+    await screen.findByRole('dialog', { name: 'Asistente de creación de simulación' });
+
     fireEvent.mouseDown(document.body);
 
     await waitFor(() => {
@@ -562,7 +587,8 @@ describe('SimulationsModule', () => {
 
     render(<SimulationsModule userEmail="usuario@demo.com" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Abrir/ }));
+    const openButtons = await screen.findAllByRole('button', { name: /Abrir/ });
+    fireEvent.click(openButtons[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
     expect(workspace).toBeInTheDocument();
     expect(within(workspace).getByText('Q1 Backtest')).toBeInTheDocument();
@@ -627,6 +653,28 @@ describe('SimulationsModule', () => {
     expect(screen.queryByText('Q1 Backtest')).not.toBeInTheDocument();
   });
 
+  it('muestra fallback cuando falla la eliminación de simulación', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(true);
+    deleteSimulationMock.mockRejectedValueOnce('boom');
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    expect(await screen.findByText('Q1 Backtest')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Eliminar/ }));
+
+    expect(await screen.findByText('No se pudo eliminar la simulación.')).toBeInTheDocument();
+    confirmMock.mockRestore();
+  });
+
   it('filtra el dashboard activo por año y mes', async () => {
     listSimulationsMock.mockResolvedValueOnce([
       {
@@ -645,7 +693,7 @@ describe('SimulationsModule', () => {
 
     render(<SimulationsModule userEmail="usuario@demo.com" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Abrir/ }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
 
     expect(within(workspace).getByText('Filtro activo:')).toBeInTheDocument();
@@ -677,7 +725,7 @@ describe('SimulationsModule', () => {
 
     render(<SimulationsModule userEmail="usuario@demo.com" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Abrir/ }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
     fireEvent.change(within(workspace).getByLabelText('USD 2'), { target: { value: '-50' } });
     fireEvent.click(within(workspace).getByRole('button', { name: 'Guardar simulación' }));
@@ -739,7 +787,7 @@ describe('SimulationsModule', () => {
 
     render(<SimulationsModule userEmail="usuario@demo.com" />);
 
-    fireEvent.click(await screen.findByRole('button', { name: /Abrir/ }));
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
     const workspace = await screen.findByLabelText('Dashboard de simulación');
     expect(workspace).toBeInTheDocument();
 
@@ -748,5 +796,203 @@ describe('SimulationsModule', () => {
 
     expect(confirmMock).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('Asistente de creación de simulación')).not.toBeInTheDocument();
+  });
+
+  it('no muestra opción de guardado cuando no hay simulación activa', async () => {
+    listSimulationsMock.mockResolvedValueOnce([]);
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    expect(await screen.findByText('No hay simulaciones guardadas')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Guardar simulación' })).not.toBeInTheDocument();
+    expect(saveSimulationMock).not.toHaveBeenCalled();
+  });
+
+  it('resetea mes al cambiar año a all y maneja confirmación negativa al abrir workspace', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+      {
+        id: 'sim-2', userId: 'user-1', name: 'Q2 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-04-01', endDate: '2026-06-30', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 456, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+    listSimulationOperationsMock.mockResolvedValue([
+      { id: 'op-1', simulationId: 'sim-1', userId: 'user-1', operationDate: '2026-01-05', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 100, technicalResultR: 1, monetaryResult: 100, note: '', isManualEdit: false, createdAt: '', updatedAt: '' },
+    ]);
+
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    fireEvent.click((await screen.findAllByRole('button', { name: /Abrir/ }))[0]);
+    const workspace = await screen.findByLabelText('Dashboard de simulación');
+    fireEvent.change(within(workspace).getByLabelText('Filtrar por año'), { target: { value: '2026' } });
+    fireEvent.change(within(workspace).getByLabelText('Filtrar por mes'), { target: { value: '0' } });
+    fireEvent.change(within(workspace).getByLabelText('Filtrar por año'), { target: { value: 'all' } });
+    expect(within(workspace).getByLabelText('Filtrar por mes')).toHaveValue('all');
+
+    fireEvent.change(screen.getByLabelText('USD 1'), { target: { value: '50' } });
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    fireEvent.click(screen.getAllByRole('button', { name: /Abrir/ })[1]);
+    expect(confirmMock).toHaveBeenCalled();
+    expect(screen.getByLabelText('Dashboard de simulación')).toBeInTheDocument();
+    confirmMock.mockRestore();
+  });
+
+  it('cubre cancelación de borrado y catch no-Error al abrir operaciones', async () => {
+    listSimulationsMock.mockResolvedValueOnce([
+      {
+        id: 'sim-1', userId: 'user-1', name: 'Q1 Backtest', sourceAccountId: null, accountName: 'Cuenta Demo', initialBalance: 10000,
+        currency: 'USD', startDate: '2026-01-01', endDate: '2026-03-31', weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'], maxOperationsPerDay: 4,
+        pctWin: 40, pctSl: 30, pctBreakeven: 20, pctNoTrade: 10, seed: 123, status: 'saved', totalOpportunities: 2,
+        totalExecuted: 2, totalWin: 1, totalSl: 1, totalBreakeven: 0, totalNoTrade: 0, netResult: 0, generatedAt: null, createdAt: '', updatedAt: '',
+      },
+    ]);
+    listSimulationOperationsMock.mockRejectedValueOnce('boom');
+
+    const confirmMock = vi.spyOn(window, 'confirm').mockReturnValue(false);
+    render(<SimulationsModule userEmail="usuario@demo.com" />);
+
+    expect(await screen.findByText('Q1 Backtest')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /Eliminar/ }));
+    expect(confirmMock).toHaveBeenCalled();
+    confirmMock.mockRestore();
+
+    fireEvent.click(screen.getAllByRole('button', { name: /Abrir/ })[0]);
+    expect(await screen.findByText('No se pudieron cargar las operaciones de la simulación.')).toBeInTheDocument();
+  });
+});
+
+describe('SimulationsModule helpers', () => {
+  const baseForm = {
+    simulationName: 'Sim 1',
+    accountMode: 'existing',
+    selectedAccountId: 'acc-1',
+    accountName: 'Cuenta',
+    initialBalance: '1000',
+    currency: 'USD',
+    startDate: '2026-01-01',
+    endDate: '2026-01-31',
+    weekdays: ['mon', 'tue'],
+    maxOperationsPerDay: '2',
+    riskPctMin: '0.1',
+    riskPctMax: '0.2',
+    pctWin: '40',
+    pctSl: '30',
+    pctBreakeven: '20',
+    pctNoTrade: '10',
+  };
+
+  it('formatea etiquetas y montos de distribución', () => {
+    expect(formatDateRange('2026-01-01', '2026-01-31')).toBe('2026-01-01 .. 2026-01-31');
+
+    expect(statusLabel('saved')).toBe('Guardada');
+    expect(statusLabel('draft')).toBe('Borrador');
+
+    expect(resultTypeLabel('win')).toBe('Exito');
+    expect(resultTypeLabel('sl')).toBe('SL');
+    expect(resultTypeLabel('no_trade')).toBe('No operar');
+    expect(resultTypeLabel('breakeven')).toBe('Breakeven');
+
+    expect(distributionAmountLabel(20, 'USD')).toMatch(/^\+/);
+    expect(distributionAmountLabel(-20, 'USD')).toMatch(/^-/);
+    expect(distributionAmountLabel(0, 'USD')).not.toMatch(/^[+-]/);
+
+    expect(formatPercentRange('', '')).toBe('0 - 0');
+    expect(formatPercentRange('0.1', '0.2')).toBe('0.1 - 0.2');
+  });
+
+  it('aplica cuenta seleccionada y alterna weekdays', () => {
+    expect(resolveAccountDisplayName({ alias: '  Alias ', name: 'Cuenta' } as never)).toBe('Alias');
+    expect(resolveAccountDisplayName({ alias: '', name: 'Cuenta' } as never)).toBe('Cuenta');
+
+    const updated = applySelectedAccountToForm(baseForm as never, {
+      alias: 'Topstep',
+      name: 'Cuenta Real',
+      initial_balance: 2500,
+      base_currency: 'EUR',
+    } as never);
+    expect(updated.accountName).toBe('Topstep');
+    expect(updated.initialBalance).toBe('2500');
+    expect(updated.currency).toBe('EUR');
+
+    expect(toggleWeekdaySelection(['mon', 'tue'], 'wed')).toEqual(['mon', 'tue', 'wed']);
+    expect(toggleWeekdaySelection(['mon', 'tue'], 'mon')).toEqual(['tue']);
+  });
+
+  it('calcula snapshots de riesgo con clamp a cero', () => {
+    const snapshots = calculateOperationRiskSnapshots(100, [
+      { monetaryResult: 20, investedAmount: 10 },
+      { monetaryResult: -200, investedAmount: 30 },
+    ] as never);
+
+    expect(snapshots).toEqual([
+      { balanceBefore: 100, balanceAfter: 120, investedAmountDisplay: 10 },
+      { balanceBefore: 120, balanceAfter: 0, investedAmountDisplay: 30 },
+    ]);
+  });
+
+  it('valida paso 1 para cuenta existente y nueva', () => {
+    expect(validateStepOne({ ...baseForm, simulationName: ' ' } as never)).toBe('El nombre de la simulación es obligatorio.');
+    expect(validateStepOne({ ...baseForm, selectedAccountId: '' } as never)).toBe('Debes seleccionar una cuenta existente.');
+
+    expect(validateStepOne({
+      ...baseForm,
+      accountMode: 'new',
+      accountName: ' ',
+      selectedAccountId: '',
+    } as never)).toBe('El nombre de la cuenta es obligatorio.');
+
+    expect(validateStepOne({
+      ...baseForm,
+      accountMode: 'new',
+      selectedAccountId: '',
+      accountName: 'Cuenta',
+      initialBalance: '0',
+    } as never)).toBe('El capital inicial debe ser mayor a 0.');
+
+    expect(validateStepOne({
+      ...baseForm,
+      accountMode: 'new',
+      selectedAccountId: '',
+      accountName: 'Cuenta',
+      initialBalance: '100',
+    } as never)).toBe('');
+  });
+
+  it('valida paso 2 con todos los errores y caso válido', () => {
+    expect(validateStepTwo({ ...baseForm, startDate: '' } as never)).toBe('La fecha de inicio es obligatoria.');
+    expect(validateStepTwo({ ...baseForm, endDate: '' } as never)).toBe('La fecha de fin es obligatoria.');
+    expect(validateStepTwo({ ...baseForm, startDate: '2026-02-01', endDate: '2026-01-01' } as never)).toBe('La fecha de inicio no puede ser mayor que la fecha de fin.');
+    expect(validateStepTwo({ ...baseForm, weekdays: [] } as never)).toBe('Debes seleccionar al menos un día de operación.');
+    expect(validateStepTwo(baseForm as never)).toBe('');
+  });
+
+  it('valida paso 3 con reglas de límites y suma de porcentajes', () => {
+    expect(validateStepThree({ ...baseForm, maxOperationsPerDay: '0' } as never)).toBe('El máximo de operaciones por día debe ser un entero mayor a 0.');
+
+    expect(validateStepThree({ ...baseForm, riskPctMin: '-1' } as never)).toBe('El riesgo por operación debe estar entre 0 y 1.');
+    expect(validateStepThree({ ...baseForm, riskPctMin: '0.4', riskPctMax: '0.2' } as never)).toBe('El riesgo mínimo por operación no puede ser mayor que el máximo.');
+
+    expect(validateStepThree({ ...baseForm, pctWin: '101' } as never)).toBe('Los porcentajes deben estar entre 0 y 100.');
+    expect(validateStepThree({ ...baseForm, pctNoTrade: '9' } as never)).toBe('La suma de Exito, SL, Breakeven y No operar debe ser exactamente 100.');
+
+    expect(validateStepThree(baseForm as never)).toBe('');
+  });
+
+  it('valida dispatcher por paso y confirmación de descarte', () => {
+    expect(validateStep(1, { ...baseForm, simulationName: ' ' } as never)).toBe('El nombre de la simulación es obligatorio.');
+    expect(validateStep(2, { ...baseForm, endDate: '' } as never)).toBe('La fecha de fin es obligatoria.');
+    expect(validateStep(3, { ...baseForm, maxOperationsPerDay: '0' } as never)).toBe('El máximo de operaciones por día debe ser un entero mayor a 0.');
+    expect(validateStep(4, baseForm as never)).toBe('');
+
+    expect(shouldAskDiscardConfirmation(null, true)).toBe(false);
+    expect(shouldAskDiscardConfirmation({ id: 'sim-1' } as never, false)).toBe(false);
+    expect(shouldAskDiscardConfirmation({ id: 'sim-1' } as never, true)).toBe(true);
   });
 });

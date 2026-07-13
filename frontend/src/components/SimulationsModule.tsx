@@ -33,7 +33,6 @@ import {
   normalizeSimulationOperationDraft,
   parseSimulationResultType,
   parseSimulationSide,
-  SimulationOperationDraft,
   summarizeSimulationOperations,
   toSimulationOperationInputs,
 } from '@lib/simulationWorkspace';
@@ -102,15 +101,15 @@ const wizardStepTitle: Record<WizardStep, string> = {
   4: 'Resumen previo',
 };
 
-function formatDateRange(startDate: string, endDate: string): string {
+export function formatDateRange(startDate: string, endDate: string): string {
   return `${startDate} .. ${endDate}`;
 }
 
-function statusLabel(status: Simulation['status']): string {
+export function statusLabel(status: Simulation['status']): string {
   return status === 'saved' ? 'Guardada' : 'Borrador';
 }
 
-function resultTypeLabel(value: SimulationOperationDraft['resultType']): string {
+export function resultTypeLabel(value: SimulationOperationDraft['resultType']): string {
   if (value === 'win') return 'Exito';
   if (value === 'sl') return 'SL';
   if (value === 'no_trade') return 'No operar';
@@ -125,21 +124,21 @@ function formatMoney(value: number, currency: string): string {
   }).format(value);
 }
 
-function distributionAmountLabel(value: number, currency: string): string {
+export function distributionAmountLabel(value: number, currency: string): string {
   if (value > 0) return `+${formatMoney(value, currency)}`;
   if (value < 0) return `-${formatMoney(Math.abs(value), currency)}`;
   return formatMoney(0, currency);
 }
 
-function resolveAccountDisplayName(account: TradingAccount): string {
+export function resolveAccountDisplayName(account: TradingAccount): string {
   return account.alias?.trim() || account.name;
 }
 
-function shouldAskDiscardConfirmation(activeSimulation: Simulation | null, hasUnsavedChanges: boolean): boolean {
+export function shouldAskDiscardConfirmation(activeSimulation: Simulation | null, hasUnsavedChanges: boolean): boolean {
   return activeSimulation !== null && hasUnsavedChanges;
 }
 
-function applySelectedAccountToForm(prev: SimulationDraftForm, account: TradingAccount): SimulationDraftForm {
+export function applySelectedAccountToForm(prev: SimulationDraftForm, account: TradingAccount): SimulationDraftForm {
   return {
     ...prev,
     accountName: resolveAccountDisplayName(account),
@@ -148,7 +147,7 @@ function applySelectedAccountToForm(prev: SimulationDraftForm, account: TradingA
   };
 }
 
-function toggleWeekdaySelection(weekdays: SimulationWeekday[], weekday: SimulationWeekday): SimulationWeekday[] {
+export function toggleWeekdaySelection(weekdays: SimulationWeekday[], weekday: SimulationWeekday): SimulationWeekday[] {
   return weekdays.includes(weekday) ? weekdays.filter((item) => item !== weekday) : [...weekdays, weekday];
 }
 
@@ -156,11 +155,11 @@ function toNumber(value: string): number {
   return Number.parseFloat(value);
 }
 
-function formatPercentRange(min: string, max: string): string {
+export function formatPercentRange(min: string, max: string): string {
   return `${min || '0'} - ${max || '0'}`;
 }
 
-function calculateOperationRiskSnapshots(initialBalance: number, operations: SimulationOperationDraft[]): Array<{ balanceBefore: number; balanceAfter: number; investedAmountDisplay: number }> {
+export function calculateOperationRiskSnapshots(initialBalance: number, operations: SimulationOperationDraft[]): Array<{ balanceBefore: number; balanceAfter: number; investedAmountDisplay: number }> {
   let runningBalance = initialBalance;
 
   return operations.map((operation) => {
@@ -176,7 +175,7 @@ function calculateOperationRiskSnapshots(initialBalance: number, operations: Sim
   });
 }
 
-function validateStepOne(form: SimulationDraftForm): string {
+export function validateStepOne(form: SimulationDraftForm): string {
   if (!form.simulationName.trim()) return 'El nombre de la simulación es obligatorio.';
 
   if (form.accountMode === 'existing') {
@@ -191,7 +190,7 @@ function validateStepOne(form: SimulationDraftForm): string {
   return '';
 }
 
-function validateStepTwo(form: SimulationDraftForm): string {
+export function validateStepTwo(form: SimulationDraftForm): string {
   if (!form.startDate) return 'La fecha de inicio es obligatoria.';
   if (!form.endDate) return 'La fecha de fin es obligatoria.';
   if (form.startDate > form.endDate) return 'La fecha de inicio no puede ser mayor que la fecha de fin.';
@@ -199,7 +198,7 @@ function validateStepTwo(form: SimulationDraftForm): string {
   return '';
 }
 
-function validateStepThree(form: SimulationDraftForm): string {
+export function validateStepThree(form: SimulationDraftForm): string {
   const maxOperations = Number.parseInt(form.maxOperationsPerDay, 10);
   if (!Number.isInteger(maxOperations) || maxOperations <= 0) {
     return 'El máximo de operaciones por día debe ser un entero mayor a 0.';
@@ -224,7 +223,7 @@ function validateStepThree(form: SimulationDraftForm): string {
   return total === 100 ? '' : 'La suma de Exito, SL, Breakeven y No operar debe ser exactamente 100.';
 }
 
-function validateStep(step: WizardStep, form: SimulationDraftForm): string {
+export function validateStep(step: WizardStep, form: SimulationDraftForm): string {
   if (step === 1) return validateStepOne(form);
   if (step === 2) return validateStepTwo(form);
   if (step === 3) return validateStepThree(form);

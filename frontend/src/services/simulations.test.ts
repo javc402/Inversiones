@@ -900,4 +900,158 @@ describe('simulations service', () => {
 
     await expect(updateSimulationOperation('sim-1', 'op-1', { side: 'sell' })).rejects.toThrow('db update fail');
   });
+
+  it('list/get/create/update en fallback legacy propagan legacyError', async () => {
+    const missingColumn = new Error('column risk_pct_min does not exist');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const listOrderCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const listOrderLegacy = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy list fail') });
+    const listEqUserCurrent = vi.fn().mockReturnValue({ order: listOrderCurrent });
+    const listEqUserLegacy = vi.fn().mockReturnValue({ order: listOrderLegacy });
+    const listSelectCurrent = vi.fn().mockReturnValue({ eq: listEqUserCurrent });
+    const listSelectLegacy = vi.fn().mockReturnValue({ eq: listEqUserLegacy });
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: listSelectCurrent })
+      .mockReturnValueOnce({ select: listSelectLegacy });
+    await expect(listSimulations()).rejects.toThrow('legacy list fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const getMaybeCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const getMaybeLegacy = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy get fail') });
+    const getEqUserCurrent = vi.fn().mockReturnValue({ maybeSingle: getMaybeCurrent });
+    const getEqUserLegacy = vi.fn().mockReturnValue({ maybeSingle: getMaybeLegacy });
+    const getEqIdCurrent = vi.fn().mockReturnValue({ eq: getEqUserCurrent });
+    const getEqIdLegacy = vi.fn().mockReturnValue({ eq: getEqUserLegacy });
+    const getSelectCurrent = vi.fn().mockReturnValue({ eq: getEqIdCurrent });
+    const getSelectLegacy = vi.fn().mockReturnValue({ eq: getEqIdLegacy });
+    supabaseMocks.from
+      .mockReturnValueOnce({ select: getSelectCurrent })
+      .mockReturnValueOnce({ select: getSelectLegacy });
+    await expect(getSimulationById('sim-1')).rejects.toThrow('legacy get fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const createSingleCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const createSingleLegacy = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy create fail') });
+    const createSelectCurrent = vi.fn().mockReturnValue({ single: createSingleCurrent });
+    const createSelectLegacy = vi.fn().mockReturnValue({ single: createSingleLegacy });
+    const createInsertCurrent = vi.fn().mockReturnValue({ select: createSelectCurrent });
+    const createInsertLegacy = vi.fn().mockReturnValue({ select: createSelectLegacy });
+    supabaseMocks.from
+      .mockReturnValueOnce({ insert: createInsertCurrent })
+      .mockReturnValueOnce({ insert: createInsertLegacy });
+    await expect(
+      createSimulationDraft({
+        name: 'Sim',
+        accountName: 'Cuenta 1',
+        initialBalance: 1000,
+        startDate: '2026-01-01',
+        endDate: '2026-01-10',
+        weekdays: ['mon'],
+        maxOperationsPerDay: 1,
+        pctWin: 40,
+        pctSl: 30,
+        pctBreakeven: 20,
+        pctNoTrade: 10,
+        seed: 1,
+      })
+    ).rejects.toThrow('legacy create fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const updateSingleCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const updateSingleLegacy = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy update fail') });
+    const updateSelectCurrent = vi.fn().mockReturnValue({ single: updateSingleCurrent });
+    const updateSelectLegacy = vi.fn().mockReturnValue({ single: updateSingleLegacy });
+    const updateEqUserCurrent = vi.fn().mockReturnValue({ select: updateSelectCurrent });
+    const updateEqUserLegacy = vi.fn().mockReturnValue({ select: updateSelectLegacy });
+    const updateEqIdCurrent = vi.fn().mockReturnValue({ eq: updateEqUserCurrent });
+    const updateEqIdLegacy = vi.fn().mockReturnValue({ eq: updateEqUserLegacy });
+    const updateCurrent = vi.fn().mockReturnValue({ eq: updateEqIdCurrent });
+    const updateLegacy = vi.fn().mockReturnValue({ eq: updateEqIdLegacy });
+    supabaseMocks.from
+      .mockReturnValueOnce({ update: updateCurrent })
+      .mockReturnValueOnce({ update: updateLegacy });
+    await expect(
+      updateSimulation('sim-1', {
+        name: 'Sim',
+        accountName: 'Cuenta 1',
+        initialBalance: 1000,
+        startDate: '2026-01-01',
+        endDate: '2026-01-10',
+        weekdays: ['mon'],
+        maxOperationsPerDay: 1,
+        pctWin: 40,
+        pctSl: 30,
+        pctBreakeven: 20,
+        pctNoTrade: 10,
+        seed: 1,
+      })
+    ).rejects.toThrow('legacy update fail');
+  });
+
+  it('delete/listOps/replace/updateOp propagan errores directos y legacy', async () => {
+    const missingColumn = new Error('column risk_pct does not exist');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const deleteEqUser = vi.fn().mockResolvedValueOnce({ error: new Error('delete fail') });
+    const deleteEqId = vi.fn().mockReturnValue({ eq: deleteEqUser });
+    const deleteFn = vi.fn().mockReturnValue({ eq: deleteEqId });
+    supabaseMocks.from.mockReturnValueOnce({ delete: deleteFn });
+    await expect(deleteSimulation('sim-1')).rejects.toThrow('delete fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const listOpsOrder = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('ops fail') });
+    const listOpsEqUser = vi.fn().mockReturnValue({ order: listOpsOrder });
+    const listOpsEqSim = vi.fn().mockReturnValue({ eq: listOpsEqUser });
+    const listOpsSelect = vi.fn().mockReturnValue({ eq: listOpsEqSim });
+    supabaseMocks.from.mockReturnValueOnce({ select: listOpsSelect });
+    await expect(listSimulationOperations('sim-1')).rejects.toThrow('ops fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const delEqUser2 = vi.fn().mockResolvedValueOnce({ error: null });
+    const delEqSim2 = vi.fn().mockReturnValue({ eq: delEqUser2 });
+    const delFn2 = vi.fn().mockReturnValue({ eq: delEqSim2 });
+    const insertSelectCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('insert hard fail') });
+    const insertCurrent = vi.fn().mockReturnValue({ select: insertSelectCurrent });
+    supabaseMocks.from
+      .mockReturnValueOnce({ delete: delFn2 })
+      .mockReturnValueOnce({ insert: insertCurrent });
+    await expect(
+      replaceSimulationOperations('sim-1', [{ operationDate: '2026-01-01', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 1, technicalResultR: 1, monetaryResult: 1 }])
+    ).rejects.toThrow('insert hard fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const delEqUser3 = vi.fn().mockResolvedValueOnce({ error: null });
+    const delEqSim3 = vi.fn().mockReturnValue({ eq: delEqUser3 });
+    const delFn3 = vi.fn().mockReturnValue({ eq: delEqSim3 });
+    const insertSelectCurrent2 = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const insertSelectLegacy2 = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy insert fail') });
+    const insertCurrent2 = vi.fn().mockReturnValue({ select: insertSelectCurrent2 });
+    const insertLegacy2 = vi.fn().mockReturnValue({ select: insertSelectLegacy2 });
+    supabaseMocks.from
+      .mockReturnValueOnce({ delete: delFn3 })
+      .mockReturnValueOnce({ insert: insertCurrent2 })
+      .mockReturnValueOnce({ insert: insertLegacy2 });
+    await expect(
+      replaceSimulationOperations('sim-1', [{ operationDate: '2026-01-01', operationIndex: 1, side: 'buy', resultType: 'win', investedAmount: 1, technicalResultR: 1, monetaryResult: 1 }])
+    ).rejects.toThrow('legacy insert fail');
+
+    supabaseMocks.getUser.mockResolvedValueOnce({ data: { user: { id: 'user-1' } }, error: null });
+    const updateSingleCurrent = vi.fn().mockResolvedValueOnce({ data: null, error: missingColumn });
+    const updateSingleLegacy = vi.fn().mockResolvedValueOnce({ data: null, error: new Error('legacy op update fail') });
+    const updateSelectCurrent = vi.fn().mockReturnValue({ single: updateSingleCurrent });
+    const updateSelectLegacy = vi.fn().mockReturnValue({ single: updateSingleLegacy });
+    const updateEqUserCurrent = vi.fn().mockReturnValue({ select: updateSelectCurrent });
+    const updateEqUserLegacy = vi.fn().mockReturnValue({ select: updateSelectLegacy });
+    const updateEqSimCurrent = vi.fn().mockReturnValue({ eq: updateEqUserCurrent });
+    const updateEqSimLegacy = vi.fn().mockReturnValue({ eq: updateEqUserLegacy });
+    const updateEqIdCurrent = vi.fn().mockReturnValue({ eq: updateEqSimCurrent });
+    const updateEqIdLegacy = vi.fn().mockReturnValue({ eq: updateEqSimLegacy });
+    const updateCurrent = vi.fn().mockReturnValue({ eq: updateEqIdCurrent });
+    const updateLegacy = vi.fn().mockReturnValue({ eq: updateEqIdLegacy });
+    supabaseMocks.from
+      .mockReturnValueOnce({ update: updateCurrent })
+      .mockReturnValueOnce({ update: updateLegacy });
+    await expect(updateSimulationOperation('sim-1', 'op-1', { side: 'buy' })).rejects.toThrow('legacy op update fail');
+  });
 });

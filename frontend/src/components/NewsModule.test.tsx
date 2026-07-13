@@ -394,6 +394,110 @@ describe('NewsModule', () => {
     });
   });
 
+  it('should render fallback de portada y texto Sin fuente cuando aplica', async () => {
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'n1',
+        userEmail: 'test@example.com',
+        title: 'Sin imagen',
+        slug: 'sin-imagen',
+        sourceUrl: '',
+        summary: 'Resumen',
+        content: 'Contenido',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: ['uno'],
+        status: 'draft',
+        scheduledAt: '',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+    ] as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    expect(await screen.findByText('Sin fuente')).toBeInTheDocument();
+    expect(screen.getByText('IN')).toBeInTheDocument();
+  });
+
+  it('should show fallback message when delete throws non-Error', async () => {
+    vi.spyOn(globalThis, 'confirm').mockReturnValue(true);
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([
+      {
+        id: 'n1',
+        userEmail: 'test@example.com',
+        title: 'Eliminar',
+        slug: 'eliminar',
+        sourceUrl: 'https://test.com',
+        summary: 'Resumen',
+        content: 'Contenido',
+        coverImageUrl: '',
+        category: 'Mercados',
+        tags: [],
+        status: 'draft',
+        scheduledAt: '',
+        publishedAt: null,
+        createdAt: '2026-06-24T10:00:00Z',
+        updatedAt: '2026-06-24T10:00:00Z',
+      },
+    ] as never);
+    vi.mocked(newsService.deleteNewsArticle).mockRejectedValueOnce('boom' as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Eliminar noticia' }));
+
+    expect(await screen.findByText('No se pudo eliminar la noticia.')).toBeInTheDocument();
+  });
+
+  it('should show fallback submit error when create throws non-Error', async () => {
+    vi.mocked(newsService.createNewsArticle).mockRejectedValueOnce('boom' as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: /Nueva noticia/i }));
+    fireEvent.change(screen.getByPlaceholderText('Ej. Mercado abre con sesgo alcista'), { target: { value: 'Articulo nuevo' } });
+    fireEvent.change(screen.getByPlaceholderText('mi-noticia'), { target: { value: 'articulo-nuevo' } });
+    fireEvent.change(screen.getAllByPlaceholderText('https://...')[0], { target: { value: 'https://source.com' } });
+    const textareas = screen.getAllByRole('textbox').filter((el) => el.tagName.toLowerCase() === 'textarea');
+    fireEvent.change(textareas[0], { target: { value: 'Resumen prueba' } });
+    fireEvent.change(textareas[1], { target: { value: 'Contenido prueba' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Guardar noticia' }));
+
+    expect((await screen.findAllByText('No se pudo guardar la noticia.')).length).toBeGreaterThan(0);
+  });
+
+  it('should show fallback message for toggle and publish when service throws non-Error', async () => {
+    const article = {
+      id: 'n1',
+      userEmail: 'test@example.com',
+      title: 'Article',
+      slug: 'article',
+      sourceUrl: 'https://test.com',
+      summary: 'Summary',
+      content: 'Content',
+      coverImageUrl: '',
+      category: 'Mercados',
+      tags: [],
+      status: 'draft' as const,
+      scheduledAt: '',
+      publishedAt: null,
+      createdAt: '2026-06-24T10:00:00Z',
+      updatedAt: '2026-06-24T10:00:00Z',
+    };
+    vi.mocked(newsService.listUserNews).mockResolvedValueOnce([article]);
+    vi.mocked(newsService.toggleNewsPublication).mockRejectedValueOnce('boom' as never);
+    vi.mocked(newsService.publishArticleNow).mockRejectedValueOnce('boom' as never);
+
+    render(<NewsModule userEmail="test@example.com" />);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Publicar noticia' }));
+    expect(await screen.findByText('No se pudo cambiar el estado.')).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Publicar ahora' }));
+    expect(await screen.findByText('No se pudo publicar la noticia.')).toBeInTheDocument();
+  });
+
   it('should delete article when confirmed', async () => {
     const article = {
       id: 'n1',

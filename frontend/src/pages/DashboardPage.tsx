@@ -204,7 +204,7 @@ function daysInMonth(referenceDate: Date): number {
   return new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 0).getDate();
 }
 
-function calculateTradingInsights(entries: MarketEntry[], mode: TradingInsightsMode): TradingInsights {
+export function calculateTradingInsights(entries: MarketEntry[], mode: TradingInsightsMode): TradingInsights {
   const byWeek = new Map<number, number>();
   const byDay = new Map<string, { amount: number; day: number; month: number }>();
   const byWeekday = new Map<number, { total: number; trades: number }>();
@@ -270,7 +270,7 @@ function calculateTradingInsights(entries: MarketEntry[], mode: TradingInsightsM
   };
 }
 
-function fullMonthLabelFromShort(shortLabel: string): string {
+export function fullMonthLabelFromShort(shortLabel: string): string {
   const monthIndex = monthLabels.indexOf(shortLabel);
   if (monthIndex < 0) {
     return shortLabel;
@@ -484,7 +484,7 @@ type DashboardEditForm = {
   noEntryReason: string;
 };
 
-function toDateTimeLocalValue(value: string): string {
+export function toDateTimeLocalValue(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return new Date().toISOString().slice(0, 16);
@@ -493,7 +493,7 @@ function toDateTimeLocalValue(value: string): string {
   return parsed.toISOString().slice(0, 16);
 }
 
-function formatUsdInput(value: string): string {
+export function formatUsdInput(value: string): string {
   const normalized = value
     .replace(/\$/g, '')
     .replace(/,/g, '')
@@ -511,7 +511,7 @@ function formatUsdInput(value: string): string {
   return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function sanitizeUsdDraft(value: string): string {
+export function sanitizeUsdDraft(value: string): string {
   const cleaned = value
     .replace(/\$/g, '')
     .replace(/,/g, '.')
@@ -533,7 +533,7 @@ function sanitizeUsdDraft(value: string): string {
   return decimalPart.length > 0 ? `${integerPart}.${decimalPart}` : integerPart;
 }
 
-function toEditableUsdInput(value: string): string {
+export function toEditableUsdInput(value: string): string {
   const normalized = value
     .replace(/\$/g, '')
     .replace(/,/g, '')
@@ -584,7 +584,7 @@ function AccordionSection({ open, children, className }: Readonly<AccordionSecti
   );
 }
 
-function openOperationLink(operationLink: string | null) {
+export function openOperationLink(operationLink: string | null) {
   if (!operationLink) {
     return;
   }
@@ -597,7 +597,7 @@ function notifyEntriesChangedFromDashboard() {
   window.dispatchEvent(new CustomEvent('inversiones:entries-changed', { detail: { action: 'dashboard_update' } }));
 }
 
-function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYear: string): Date {
+export function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYear: string): Date {
   if (filteredEntries.length > 0) {
     const latestTimestamp = filteredEntries.reduce((latest, entry) => {
       const current = new Date(getEntryExecutionDate(entry)).getTime();
@@ -620,7 +620,7 @@ function resolveMonthlyReferenceDate(filteredEntries: MarketEntry[], selectedYea
   return new Date();
 }
 
-function parseDashboardEditValues(form: DashboardEditForm): {
+export function parseDashboardEditValues(form: DashboardEditForm): {
   resultRValue: number | null;
   riskAmount: number;
 } {

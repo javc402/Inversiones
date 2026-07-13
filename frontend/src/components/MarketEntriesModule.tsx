@@ -36,7 +36,7 @@ export function createAccountRow(accountId = '', riskAmount = ''): AccountRowFor
   };
 }
 
-function parseCurrencyAmount(value: string): number {
+export function parseCurrencyAmount(value: string): number {
   const normalized = value
     .replace(/\$/g, '')
     .replace(/,/g, '')
@@ -50,7 +50,7 @@ function parseCurrencyAmount(value: string): number {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-function formatCurrencyAmountInput(value: string): string {
+export function formatCurrencyAmountInput(value: string): string {
   const normalized = value
     .replace(/\$/g, '')
     .replace(/,/g, '')
@@ -68,7 +68,7 @@ function formatCurrencyAmountInput(value: string): string {
   return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function sanitizeCurrencyAmountDraft(value: string): string {
+export function sanitizeCurrencyAmountDraft(value: string): string {
   const cleaned = value
     .replace(/\$/g, '')
     .replace(/,/g, '.')
@@ -90,7 +90,7 @@ function sanitizeCurrencyAmountDraft(value: string): string {
   return decimalPart.length > 0 ? `${integerPart}.${decimalPart}` : integerPart;
 }
 
-function toEditableCurrencyAmount(value: string): string {
+export function toEditableCurrencyAmount(value: string): string {
   const normalized = value
     .replace(/\$/g, '')
     .replace(/,/g, '')
@@ -220,11 +220,11 @@ const defaultEditForm: EditForm = {
   note: '',
 };
 
-function normalizeEditableEntryStatus(status: MarketEntryStatus): MarketEntryStatus {
+export function normalizeEditableEntryStatus(status: MarketEntryStatus): MarketEntryStatus {
   return status === 'no_entry' ? 'no_entry' : 'closed';
 }
 
-function toDateTimeLocalValue(value: string): string {
+export function toDateTimeLocalValue(value: string): string {
   const parsed = new Date(value);
   if (Number.isNaN(parsed.getTime())) {
     return new Date().toISOString().slice(0, 16);
@@ -310,7 +310,7 @@ export function toNumberOrNull(value: string): number | null {
   return Number(trimmed.replace(',', '.'));
 }
 
-function toErrorMessage(error: unknown, fallback: string): string {
+export function toErrorMessage(error: unknown, fallback: string): string {
   if (error instanceof Error) {
     return error.message;
   }
