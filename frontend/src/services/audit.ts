@@ -12,7 +12,7 @@ export interface AuditChange {
   after: unknown;
 }
 
-export type AuditTargetType = 'account' | 'user' | 'config' | 'system';
+export type AuditTargetType = 'account' | 'user' | 'config' | 'system' | 'news' | 'simulation' | 'market_entry';
 
 type AuditMetadataValue = string | number | boolean | null | AuditMetadataObject | AuditMetadataValue[];
 
@@ -133,5 +133,24 @@ export async function logChangesWithStandardFormat(
     fieldsChanged: changes.map(c => c.field),
     changeDetails: changes.length > 0 ? changes : undefined,
     ...additionalMetadata,
+  });
+}
+
+export function logAuditError(
+  action: string,
+  module: string,
+  targetType: AuditTargetType,
+  error: unknown,
+  metadata?: Record<string, unknown>
+): void {
+  const errorName = error instanceof Error ? error.name : 'UnknownError';
+  const errorMessage = error instanceof Error ? error.message : String(error);
+
+  void logAuditActivity(`${action}.error`, {
+    module,
+    targetType,
+    errorName,
+    errorMessage,
+    ...metadata,
   });
 }

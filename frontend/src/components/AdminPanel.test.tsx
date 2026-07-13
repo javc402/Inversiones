@@ -307,7 +307,7 @@ describe('AdminPanel Component', () => {
     });
   });
 
-  it('should allow removing admin role from self user', async () => {
+  it('should keep admin toggle disabled for self admin user', async () => {
     vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce([
       {
         id: '1',
@@ -320,19 +320,11 @@ describe('AdminPanel Component', () => {
         roles: { name: 'admin' as const },
       },
     ] as any);
-    vi.mocked(rolesService.removeAdminRole).mockResolvedValueOnce(undefined);
-
     render(<AdminPanel />);
 
     expect(await screen.findByRole('heading', { name: 'self@example.com' })).toBeInTheDocument();
-    const removeButton = screen.getByRole('button', { name: 'Quitar admin' });
-    expect(removeButton).toBeEnabled();
-
-    fireEvent.click(removeButton);
-
-    await waitFor(() => {
-      expect(rolesService.removeAdminRole).toHaveBeenCalledWith('self-id');
-    });
+    const adminToggleButton = screen.getByRole('button', { name: 'Quitar admin' });
+    expect(adminToggleButton).toBeDisabled();
   });
 
   it('should show fallback error when assign admin fails', async () => {
@@ -472,4 +464,25 @@ describe('AdminPanel Component', () => {
       expect(rolesService.removeAdminRole).toHaveBeenCalledWith('user-2');
     });
   });
+
+  it('should show enabled admin toggle for non-self admin users', async () => {
+    vi.mocked(rolesService.listAllUsers).mockResolvedValueOnce([
+      {
+        id: '1',
+        user_id: 'admin-1',
+        role_id: 'role-1',
+        status: 'active',
+        email: 'admin@example.com',
+        created_at: '2026-06-23',
+        updated_at: '2026-06-23',
+        roles: { name: 'admin' as const },
+      },
+    ] as any);
+
+    render(<AdminPanel />);
+
+    expect(await screen.findByRole('heading', { name: 'admin@example.com' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Quitar admin' })).toBeEnabled();
+  });
+
 });

@@ -15,6 +15,7 @@ vi.mock('@lib/supabase', () => ({
 }));
 
 import {
+  buildMarketEntriesErrorMetadata,
   createMarketEntriesForAccounts,
   deleteMarketEntryById,
   listMarketEntriesByUser,
@@ -1419,5 +1420,58 @@ describe('market-entries service', () => {
 
     expect(result.affectedEntries).toBe(0);
     expect(result.groupApplied).toBe(true);
+  });
+
+  it('normaliza metadata de error con estructura exacta y nulls por defecto', () => {
+    expect(buildMarketEntriesErrorMetadata('list')).toEqual({
+      errorSource: 'frontend_service',
+      errorModule: 'market_entries',
+      errorAction: 'list',
+      errorContext: {
+        targetId: null,
+        status: null,
+        symbol: null,
+        limit: null,
+        applyCommonToGroup: null,
+      },
+    });
+  });
+
+  it('normaliza metadata de error con contexto parcial por acción', () => {
+    expect(
+      buildMarketEntriesErrorMetadata('update', {
+        targetId: 'entry-1',
+        status: 'closed',
+        applyCommonToGroup: true,
+      })
+    ).toEqual({
+      errorSource: 'frontend_service',
+      errorModule: 'market_entries',
+      errorAction: 'update',
+      errorContext: {
+        targetId: 'entry-1',
+        status: 'closed',
+        symbol: null,
+        limit: null,
+        applyCommonToGroup: true,
+      },
+    });
+
+    expect(
+      buildMarketEntriesErrorMetadata('list_contexts', {
+        limit: 8,
+      })
+    ).toEqual({
+      errorSource: 'frontend_service',
+      errorModule: 'market_entries',
+      errorAction: 'list_contexts',
+      errorContext: {
+        targetId: null,
+        status: null,
+        symbol: null,
+        limit: 8,
+        applyCommonToGroup: null,
+      },
+    });
   });
 });

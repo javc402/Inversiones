@@ -1,4 +1,5 @@
 import { supabase } from '@lib/supabase';
+import { logAuditActivity, logAuditError } from './audit';
 
 export type SimulationStatus = 'draft' | 'saved';
 export type SimulationWeekday = 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun';
@@ -474,106 +475,187 @@ function toLegacySimulationPayload(input: SimulationInput, weekdays: SimulationW
 }
 
 export async function listSimulations(status?: SimulationStatus): Promise<Simulation[]> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return [];
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return [];
 
-  let query = supabase.from('simulations').select(SIMULATION_COLUMNS).eq('user_id', userId);
-  if (status) {
-    query = query.eq('status', status);
+    let query = supabase.from('simulations').select(SIMULATION_COLUMNS).eq('user_id', userId);
+    if (status) {
+      query = query.eq('status', status);
+    }
+
+    const { data, error } = await query.order('updated_at', { ascending: false });
+    if (!error) {
+    const rows = ((data ?? []) as unknown as SimulationRow[]).map(mapSimulationRow);
+
+    void logAuditActivity('simulations.list', {
+      module: 'simulations',
+      targetType: 'simulation',
+      resultCount: rows.length,
+      statusFilter: status ?? null,
+    });
+
+    return rows;
   }
 
-  const { data, error } = await query.order('updated_at', { ascending: false });
-  if (!error) {
-    return ((data ?? []) as unknown as SimulationRow[]).map(mapSimulationRow);
-  }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
 
-  if (!isMissingColumnError(error)) {
+    let legacyQuery = supabase.from('simulations').select(LEGACY_SIMULATION_COLUMNS).eq('user_id', userId);
+    if (status) {
+      legacyQuery = legacyQuery.eq('status', status);
+    }
+
+    const { data: legacyData, error: legacyError } = await legacyQuery.order('updated_at', { ascending: false });
+    if (legacyError) throw legacyError;
+
+    const rows = ((legacyData ?? []) as unknown as Array<Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>>).map(mapLegacySimulationRow);
+
+  void logAuditActivity('simulations.list', {
+    module: 'simulations',
+    targetType: 'simulation',
+    resultCount: rows.length,
+    statusFilter: status ?? null,
+    schemaMode: 'legacy',
+  });
+
+    return rows;
+  } catch (error) {
+    logAuditError('simulations.list', 'simulations', 'simulation', error, {
+      statusFilter: status ?? null,
+    });
     throw error;
   }
-
-  let legacyQuery = supabase.from('simulations').select(LEGACY_SIMULATION_COLUMNS).eq('user_id', userId);
-  if (status) {
-    legacyQuery = legacyQuery.eq('status', status);
-  }
-
-  const { data: legacyData, error: legacyError } = await legacyQuery.order('updated_at', { ascending: false });
-  if (legacyError) throw legacyError;
-
-  return ((legacyData ?? []) as unknown as Array<Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>>).map(mapLegacySimulationRow);
 }
 
 export async function getSimulationById(simulationId: string): Promise<Simulation | null> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return null;
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return null;
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('simulations')
     .select(SIMULATION_COLUMNS)
     .eq('id', simulationId)
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (!error) {
+    if (!error) {
     if (!data) return null;
+    const simulation = mapSimulationRow(data as unknown as SimulationRow);
 
-    return mapSimulationRow(data as unknown as SimulationRow);
+    void logAuditActivity('simulations.get_by_id', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulation.id,
+      status: simulation.status,
+    });
+
+    return simulation;
   }
 
-  if (!isMissingColumnError(error)) {
-    throw error;
-  }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
 
-  const { data: legacyData, error: legacyError } = await supabase
+    const { data: legacyData, error: legacyError } = await supabase
     .from('simulations')
     .select(LEGACY_SIMULATION_COLUMNS)
     .eq('id', simulationId)
     .eq('user_id', userId)
     .maybeSingle();
 
-  if (legacyError) throw legacyError;
-  if (!legacyData) return null;
+    if (legacyError) throw legacyError;
+    if (!legacyData) return null;
 
-  return mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+    const simulation = mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+
+  void logAuditActivity('simulations.get_by_id', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: simulation.id,
+    status: simulation.status,
+    schemaMode: 'legacy',
+  });
+
+    return simulation;
+  } catch (error) {
+    logAuditError('simulations.get_by_id', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+    });
+    throw error;
+  }
 }
 
 export async function createSimulationDraft(input: SimulationInput): Promise<Simulation> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) throw new Error('No hay un usuario autenticado para crear simulaciones.');
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) throw new Error('No hay un usuario autenticado para crear simulaciones.');
 
-  const weekdays = validateSimulationInput(input);
-  const payload = {
+    const weekdays = validateSimulationInput(input);
+    const payload = {
     ...toSimulationPayload({ ...input, status: input.status ?? 'draft' }, weekdays),
     user_id: userId,
   };
 
-  const { data, error } = await supabase.from('simulations').insert(payload).select(SIMULATION_COLUMNS).single();
-  if (!error) {
-    return mapSimulationRow(data as unknown as SimulationRow);
+    const { data, error } = await supabase.from('simulations').insert(payload).select(SIMULATION_COLUMNS).single();
+    if (!error) {
+    const created = mapSimulationRow(data as unknown as SimulationRow);
+
+    void logAuditActivity('simulations.create', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: created.id,
+      status: created.status,
+      accountName: created.accountName,
+    });
+
+    return created;
   }
 
-  if (!isMissingColumnError(error)) {
-    throw error;
-  }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
 
-  const legacyPayload = {
+    const legacyPayload = {
     ...toLegacySimulationPayload({ ...input, status: input.status ?? 'draft' }, weekdays),
     user_id: userId,
   };
 
-  const { data: legacyData, error: legacyError } = await supabase.from('simulations').insert(legacyPayload).select(LEGACY_SIMULATION_COLUMNS).single();
-  if (legacyError) throw legacyError;
+    const { data: legacyData, error: legacyError } = await supabase.from('simulations').insert(legacyPayload).select(LEGACY_SIMULATION_COLUMNS).single();
+    if (legacyError) throw legacyError;
 
-  return mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+    const created = mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+
+  void logAuditActivity('simulations.create', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: created.id,
+    status: created.status,
+    accountName: created.accountName,
+    schemaMode: 'legacy',
+  });
+
+    return created;
+  } catch (error) {
+    logAuditError('simulations.create', 'simulations', 'simulation', error, {
+      status: input.status ?? 'draft',
+      accountName: input.accountName,
+    });
+    throw error;
+  }
 }
 
 export async function updateSimulation(simulationId: string, input: SimulationInput): Promise<Simulation> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) throw new Error('No hay un usuario autenticado para actualizar simulaciones.');
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) throw new Error('No hay un usuario autenticado para actualizar simulaciones.');
 
-  const weekdays = validateSimulationInput(input);
-  const payload = toSimulationPayload(input, weekdays);
+    const weekdays = validateSimulationInput(input);
+    const payload = toSimulationPayload(input, weekdays);
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('simulations')
     .update(payload)
     .eq('id', simulationId)
@@ -581,16 +663,26 @@ export async function updateSimulation(simulationId: string, input: SimulationIn
     .select(SIMULATION_COLUMNS)
     .single();
 
-  if (!error) {
-    return mapSimulationRow(data as unknown as SimulationRow);
+    if (!error) {
+    const updated = mapSimulationRow(data as unknown as SimulationRow);
+
+    void logAuditActivity('simulations.update', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: updated.id,
+      status: updated.status,
+      accountName: updated.accountName,
+    });
+
+    return updated;
   }
 
-  if (!isMissingColumnError(error)) {
-    throw error;
-  }
+    if (!isMissingColumnError(error)) {
+      throw error;
+    }
 
-  const legacyPayload = toLegacySimulationPayload(input, weekdays);
-  const { data: legacyData, error: legacyError } = await supabase
+    const legacyPayload = toLegacySimulationPayload(input, weekdays);
+    const { data: legacyData, error: legacyError } = await supabase
     .from('simulations')
     .update(legacyPayload)
     .eq('id', simulationId)
@@ -598,9 +690,28 @@ export async function updateSimulation(simulationId: string, input: SimulationIn
     .select(LEGACY_SIMULATION_COLUMNS)
     .single();
 
-  if (legacyError) throw legacyError;
+    if (legacyError) throw legacyError;
 
-  return mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+    const updated = mapLegacySimulationRow(legacyData as unknown as Omit<SimulationRow, 'risk_pct_min' | 'risk_pct_max'>);
+
+  void logAuditActivity('simulations.update', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: updated.id,
+    status: updated.status,
+    accountName: updated.accountName,
+    schemaMode: 'legacy',
+  });
+
+    return updated;
+  } catch (error) {
+    logAuditError('simulations.update', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+      status: input.status ?? null,
+      accountName: input.accountName,
+    });
+    throw error;
+  }
 }
 
 export async function saveSimulation(input: SaveSimulationInput): Promise<Simulation> {
@@ -612,26 +723,40 @@ export async function saveSimulation(input: SaveSimulationInput): Promise<Simula
 }
 
 export async function deleteSimulation(simulationId: string): Promise<void> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) throw new Error('No hay un usuario autenticado para eliminar simulaciones.');
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) throw new Error('No hay un usuario autenticado para eliminar simulaciones.');
 
-  const { error } = await supabase.from('simulations').delete().eq('id', simulationId).eq('user_id', userId);
-  if (error) throw error;
+    const { error } = await supabase.from('simulations').delete().eq('id', simulationId).eq('user_id', userId);
+    if (error) throw error;
+
+    void logAuditActivity('simulations.delete', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulationId,
+    });
+  } catch (error) {
+    logAuditError('simulations.delete', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+    });
+    throw error;
+  }
 }
 
 export async function listSimulationOperations(simulationId: string): Promise<SimulationOperation[]> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) return [];
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) return [];
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('simulation_operations')
     .select(SIMULATION_OPERATION_COLUMNS)
     .eq('simulation_id', simulationId)
     .eq('user_id', userId)
     .order('operation_date', { ascending: true });
 
-  if (!error) {
-    return ((data ?? []) as unknown as SimulationOperationRow[])
+    if (!error) {
+    const operations = ((data ?? []) as unknown as SimulationOperationRow[])
       .map(mapSimulationOperationRow)
     .sort((a, b) => {
       if (a.operationDate === b.operationDate) {
@@ -639,20 +764,29 @@ export async function listSimulationOperations(simulationId: string): Promise<Si
       }
       return a.operationDate.localeCompare(b.operationDate);
     });
+
+    void logAuditActivity('simulations.operations.list', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulationId,
+      resultCount: operations.length,
+    });
+
+    return operations;
   }
 
-  if (!isMissingColumnError(error)) throw error;
+    if (!isMissingColumnError(error)) throw error;
 
-  const { data: legacyData, error: legacyError } = await supabase
+    const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
     .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''))
     .eq('simulation_id', simulationId)
     .eq('user_id', userId)
     .order('operation_date', { ascending: true });
 
-  if (legacyError) throw legacyError;
+    if (legacyError) throw legacyError;
 
-  return ((legacyData ?? []) as unknown as SimulationOperationRow[])
+    const operations = ((legacyData ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
     .sort((a, b) => {
       if (a.operationDate === b.operationDate) {
@@ -660,30 +794,54 @@ export async function listSimulationOperations(simulationId: string): Promise<Si
       }
       return a.operationDate.localeCompare(b.operationDate);
     });
+
+  void logAuditActivity('simulations.operations.list', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: simulationId,
+    resultCount: operations.length,
+    schemaMode: 'legacy',
+  });
+
+    return operations;
+  } catch (error) {
+    logAuditError('simulations.operations.list', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+    });
+    throw error;
+  }
 }
 
 export async function replaceSimulationOperations(
   simulationId: string,
   operations: SimulationOperationInput[]
 ): Promise<SimulationOperation[]> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) throw new Error('No hay un usuario autenticado para guardar operaciones de simulación.');
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) throw new Error('No hay un usuario autenticado para guardar operaciones de simulación.');
 
-  operations.forEach(validateOperationInput);
+    operations.forEach(validateOperationInput);
 
-  const { error: deleteError } = await supabase
+    const { error: deleteError } = await supabase
     .from('simulation_operations')
     .delete()
     .eq('simulation_id', simulationId)
     .eq('user_id', userId);
 
-  if (deleteError) throw deleteError;
+    if (deleteError) throw deleteError;
 
-  if (operations.length === 0) {
-    return [];
-  }
+    if (operations.length === 0) {
+    void logAuditActivity('simulations.operations.replace', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulationId,
+      operationCount: 0,
+    });
 
-  const payload = operations.map((item) => ({
+      return [];
+    }
+
+    const payload = operations.map((item) => ({
     simulation_id: simulationId,
     user_id: userId,
     operation_date: item.operationDate,
@@ -697,13 +855,13 @@ export async function replaceSimulationOperations(
     is_manual_edit: item.isManualEdit ?? false,
   }));
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('simulation_operations')
     .insert(payload)
     .select(SIMULATION_OPERATION_COLUMNS);
 
-  if (!error) {
-    return ((data ?? []) as unknown as SimulationOperationRow[])
+    if (!error) {
+    const insertedOperations = ((data ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
     .sort((a, b) => {
       if (a.operationDate === b.operationDate) {
@@ -711,18 +869,27 @@ export async function replaceSimulationOperations(
       }
       return a.operationDate.localeCompare(b.operationDate);
     });
+
+    void logAuditActivity('simulations.operations.replace', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulationId,
+      operationCount: insertedOperations.length,
+    });
+
+    return insertedOperations;
   }
 
-  if (!isMissingColumnError(error)) throw error;
+    if (!isMissingColumnError(error)) throw error;
 
-  const { data: legacyData, error: legacyError } = await supabase
+    const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
     .insert(payload)
     .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''));
 
-  if (legacyError) throw legacyError;
+    if (legacyError) throw legacyError;
 
-  return ((legacyData ?? []) as unknown as SimulationOperationRow[])
+    const insertedOperations = ((legacyData ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
     .sort((a, b) => {
       if (a.operationDate === b.operationDate) {
@@ -730,6 +897,23 @@ export async function replaceSimulationOperations(
       }
       return a.operationDate.localeCompare(b.operationDate);
     });
+
+  void logAuditActivity('simulations.operations.replace', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: simulationId,
+    operationCount: insertedOperations.length,
+    schemaMode: 'legacy',
+  });
+
+    return insertedOperations;
+  } catch (error) {
+    logAuditError('simulations.operations.replace', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+      operationCount: operations.length,
+    });
+    throw error;
+  }
 }
 
 export async function updateSimulationOperation(
@@ -737,13 +921,14 @@ export async function updateSimulationOperation(
   operationId: string,
   input: SimulationOperationEditableInput
 ): Promise<SimulationOperation> {
-  const userId = await getAuthenticatedUserId();
-  if (!userId) throw new Error('No hay un usuario autenticado para editar operaciones de simulación.');
+  try {
+    const userId = await getAuthenticatedUserId();
+    if (!userId) throw new Error('No hay un usuario autenticado para editar operaciones de simulación.');
 
-  const payload = buildSimulationOperationUpdatePayload(input);
-  validateNoTradeEditablePayload(payload);
+    const payload = buildSimulationOperationUpdatePayload(input);
+    validateNoTradeEditablePayload(payload);
 
-  const { data, error } = await supabase
+    const { data, error } = await supabase
     .from('simulation_operations')
     .update(payload)
     .eq('id', operationId)
@@ -752,13 +937,24 @@ export async function updateSimulationOperation(
     .select(SIMULATION_OPERATION_COLUMNS)
     .single();
 
-  if (!error) {
-    return mapSimulationOperationRow(data as unknown as SimulationOperationRow);
+    if (!error) {
+    const updatedOperation = mapSimulationOperationRow(data as unknown as SimulationOperationRow);
+
+    void logAuditActivity('simulations.operations.update', {
+      module: 'simulations',
+      targetType: 'simulation',
+      targetId: simulationId,
+      operationId: updatedOperation.id,
+      resultType: updatedOperation.resultType,
+      isManualEdit: updatedOperation.isManualEdit,
+    });
+
+    return updatedOperation;
   }
 
-  if (!isMissingColumnError(error)) throw error;
+    if (!isMissingColumnError(error)) throw error;
 
-  const { data: legacyData, error: legacyError } = await supabase
+    const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
     .update(payload)
     .eq('id', operationId)
@@ -767,7 +963,26 @@ export async function updateSimulationOperation(
     .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''))
     .single();
 
-  if (legacyError) throw legacyError;
+    if (legacyError) throw legacyError;
 
-  return mapSimulationOperationRow(legacyData as unknown as SimulationOperationRow);
+    const updatedOperation = mapSimulationOperationRow(legacyData as unknown as SimulationOperationRow);
+
+  void logAuditActivity('simulations.operations.update', {
+    module: 'simulations',
+    targetType: 'simulation',
+    targetId: simulationId,
+    operationId: updatedOperation.id,
+    resultType: updatedOperation.resultType,
+    isManualEdit: updatedOperation.isManualEdit,
+    schemaMode: 'legacy',
+  });
+
+    return updatedOperation;
+  } catch (error) {
+    logAuditError('simulations.operations.update', 'simulations', 'simulation', error, {
+      targetId: simulationId,
+      operationId,
+    });
+    throw error;
+  }
 }

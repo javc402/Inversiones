@@ -16,11 +16,8 @@ import {
   updateMarketEntryById,
 } from '../services/market-entries';
 import { listUserNews, NewsArticle } from '@services/news';
-import { logAuditActivity } from '@services/audit';
 import { openDatePicker, preventManualDatePasteOrDrop, preventManualDateTyping } from '@lib/dateInputGuards';
 import '../styles/market-entries-module.css';
-
-type AuditTargetTypeWithSystem = 'account' | 'user' | 'config' | 'system';
 
 type ModalMode = 'create' | 'edit';
 
@@ -1575,24 +1572,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       setSuccess(`Entrada creada en ${created.length} cuenta(s).`);
       notifyEntriesChanged('create');
 
-      void logAuditActivity('market_entries.create_batch', {
-        module: 'market_entries',
-        targetType: 'system' as AuditTargetTypeWithSystem,
-        source: 'frontend',
-        symbol: commonForm.symbol,
-        symbolDetail: commonForm.symbol === 'OTRO' ? commonForm.symbolDetail : null,
-        contextSource: commonForm.contextSource,
-        newsArticleId: commonForm.contextSource === 'news' ? commonForm.newsArticleId : null,
-        newsImpact: commonForm.contextSource === 'news' ? commonForm.newsImpact : null,
-        candleProtocol: commonForm.candleProtocol,
-        operationLink: commonForm.operationLink || null,
-        status: commonForm.status,
-        accountsCount: perAccount.length,
-        accountIds: perAccount.map((item) => item.accountId),
-        riskByAccount: perAccount.map((item) => ({ accountId: item.accountId, riskAmount: item.riskAmount, investmentPercent: item.investmentPercent })),
-        noEntryReason: isNoEntryOnCreate ? commonForm.noEntryReason : null,
-      });
-
       closeModal();
     } catch (submitError) {
       setError(toErrorMessage(submitError, 'No se pudo guardar la entrada.'));
@@ -1649,19 +1628,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       );
       notifyEntriesChanged('update');
 
-      void logAuditActivity('market_entries.update', {
-        module: 'market_entries',
-        targetType: 'system' as AuditTargetTypeWithSystem,
-        source: 'frontend',
-        targetId: result.updatedEntry.id,
-        accountId: result.updatedEntry.accountId,
-        groupApplied: result.groupApplied,
-        affectedEntries: result.affectedEntries,
-        fieldsChanged: result.groupApplied
-          ? ['status', 'note', 'riskAmount', 'resultR', 'operationLink']
-          : ['status', 'riskAmount', 'resultR', 'operationLink', 'note'],
-      });
-
       closeModal();
     } catch (submitError) {
       setError(toErrorMessage(submitError, 'No se pudo actualizar la entrada.'));
@@ -1682,13 +1648,6 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       setSuccess('Entrada eliminada.');
       notifyEntriesChanged('delete');
 
-      void logAuditActivity('market_entries.delete', {
-        module: 'market_entries',
-        targetType: 'system' as AuditTargetTypeWithSystem,
-        source: 'frontend',
-        targetId: entry.id,
-        accountId: entry.accountId,
-      });
     } catch (deleteError) {
       setError(toErrorMessage(deleteError, 'No se pudo eliminar la entrada.'));
     }

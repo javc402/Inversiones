@@ -1,5 +1,5 @@
 import { supabase } from '@lib/supabase';
-import { logAuditActivity } from './audit';
+import { logAuditActivity, logAuditError } from './audit';
 
 interface RpcResponse<T = unknown> {
   data: T | null;
@@ -145,6 +145,7 @@ export async function getCurrentUserRole(): Promise<Role | null> {
 
     return role as Role;
   } catch (error) {
+    logAuditError('roles.get_current_user_role', 'roles', 'user', error);
     console.error('Error fetching user role:', error);
     return null;
   }
@@ -171,6 +172,7 @@ export async function getCurrentUserProfile(): Promise<UserProfile | null> {
 
     return data as UserProfile;
   } catch (error) {
+    logAuditError('roles.get_current_user_profile', 'roles', 'user', error);
     console.error('Error fetching user profile:', error);
     throw error;
   }
@@ -240,6 +242,7 @@ export async function listAllUsers(): Promise<UserProfile[]> {
 
     return (data || []) as unknown as UserProfile[];
   } catch (error) {
+    logAuditError('roles.list_all_users', 'roles', 'user', error);
     console.error('Error listing users:', error);
     throw error;
   }
@@ -287,6 +290,10 @@ export async function updateUserStatus(
       newStatus: status,
     });
   } catch (error) {
+    logAuditError('roles.update_user_status', 'roles', 'user', error, {
+      targetUserId: userId,
+      newStatus: status,
+    });
     console.error('Error updating user status:', error);
     throw error;
   }
@@ -340,6 +347,9 @@ export async function assignAdminRole(userId: string): Promise<void> {
       targetUserId: userId,
     });
   } catch (error) {
+    logAuditError('roles.assign_admin_role', 'roles', 'user', error, {
+      targetUserId: userId,
+    });
     console.error('Error assigning admin role:', error);
     throw error;
   }
@@ -393,6 +403,9 @@ export async function removeAdminRole(userId: string): Promise<void> {
       targetUserId: userId,
     });
   } catch (error) {
+    logAuditError('roles.remove_admin_role', 'roles', 'user', error, {
+      targetUserId: userId,
+    });
     console.error('Error removing admin role:', error);
     throw error;
   }
@@ -411,6 +424,9 @@ export async function approveUserRegistration(userId: string): Promise<void> {
       targetUserId: userId,
     });
   } catch (error) {
+    logAuditError('roles.approve_user_registration', 'roles', 'user', error, {
+      targetUserId: userId,
+    });
     console.error('Error approving user registration:', error);
     throw error;
   }
@@ -429,6 +445,9 @@ export async function rejectUserRegistration(userId: string): Promise<void> {
       targetUserId: userId,
     });
   } catch (error) {
+    logAuditError('roles.reject_user_registration', 'roles', 'user', error, {
+      targetUserId: userId,
+    });
     console.error('Error rejecting user registration:', error);
     throw error;
   }

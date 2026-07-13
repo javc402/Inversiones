@@ -1,6 +1,6 @@
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { supabase } from '@lib/supabase';
-import { detectChanges, logAuditActivity, logChangesWithStandardFormat } from '@services/audit';
+import { detectChanges, logAuditActivity, logAuditError, logChangesWithStandardFormat } from '@services/audit';
 
 vi.mock('@lib/supabase', () => ({
   supabase: {
@@ -156,6 +156,54 @@ describe('audit service', () => {
         metadata: expect.objectContaining({
           fieldsChanged: ['name'],
           extraMeta: true,
+        }),
+      })
+    );
+  });
+
+  it('logAuditError registra nombre y mensaje cuando recibe Error', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-1' } as any },
+      error: null,
+    } as any);
+    const insert = vi.fn().mockResolvedValueOnce({ error: null });
+    vi.mocked(supabase.from).mockReturnValueOnce({ insert } as never);
+
+    logAuditError('accounts.update', 'accounts', 'account', new Error('boom'), {
+      targetId: 'acc-1',
+    });
+
+    await Promise.resolve();
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        action: 'accounts.update.error',
+        metadata: expect.objectContaining({
+          errorName: 'Error',
+          errorMessage: 'boom',
+          targetId: 'acc-1',
+        }),
+      })
+    );
+  });
+
+  it('logAuditError usa UnknownError cuando recibe valor no Error', async () => {
+    vi.mocked(supabase.auth.getUser).mockResolvedValueOnce({
+      data: { user: { id: 'user-1' } as any },
+      error: null,
+    } as any);
+    const insert = vi.fn().mockResolvedValueOnce({ error: null });
+    vi.mocked(supabase.from).mockReturnValueOnce({ insert } as never);
+
+    logAuditError('accounts.update', 'accounts', 'account', 404);
+
+    await Promise.resolve();
+
+    expect(insert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metadata: expect.objectContaining({
+          errorName: 'UnknownError',
+          errorMessage: '404',
         }),
       })
     );
