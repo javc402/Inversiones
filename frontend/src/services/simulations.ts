@@ -937,7 +937,7 @@ export async function replaceSimulationOperations(
 
     const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
-    .insert(payload.map(({ operation_time, ...legacyItem }) => legacyItem))
+    .insert(payload.map(({ operation_time: _operation_time, ...legacyItem }) => legacyItem))
     .select(LEGACY_SIMULATION_OPERATION_COLUMNS);
 
     if (legacyError) throw legacyError;
