@@ -33,6 +33,7 @@ import {
   normalizeSimulationOperationDraft,
   parseSimulationResultType,
   parseSimulationSide,
+  type SimulationOperationDraft,
   summarizeSimulationOperations,
   toSimulationOperationInputs,
 } from '@lib/simulationWorkspace';

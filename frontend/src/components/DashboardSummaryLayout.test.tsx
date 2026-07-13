@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import type { ReactNode } from 'react';
 import { describe, expect, it, vi } from 'vitest';
 
 import DashboardSummaryLayout, {
@@ -15,7 +16,7 @@ const capturedPieTooltipProps: Array<Record<string, unknown>> = [];
 const capturedLegendProps: Array<Record<string, unknown>> = [];
 
 vi.mock('recharts', () => {
-  const passthrough = ({ children }: { children?: unknown }) => <div>{children}</div>;
+  const passthrough = ({ children }: { children?: ReactNode }) => <div>{children}</div>;
 
   return {
     ResponsiveContainer: passthrough,

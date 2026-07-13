@@ -1435,7 +1435,7 @@ describe('MarketEntriesModule', () => {
 
     window.dispatchEvent(new CustomEvent('inversiones:accounts-changed'));
     await waitFor(() => {
-      expect(accountsService.listTradingAccounts.mock.calls.length).toBeGreaterThanOrEqual(2);
+      expect(vi.mocked(accountsService.listTradingAccounts).mock.calls.length).toBeGreaterThanOrEqual(2);
     });
 
     getItemSpy.mockRestore();
