@@ -423,6 +423,40 @@ export function calculateDailyProfitData(filteredEntries: MarketEntry[], referen
     breakevenAmount: breakevenByDay.get(item.key) ?? 0,
   }));
 }
+
+export function calculateAllYearsProfitData(filteredEntries: MarketEntry[]): MonthlyProfitPoint[] {
+  const monthlyMap = new Map<string, MonthlyProfitPoint>();
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(referenceDate.getTime())) {
+      continue;
+    }
+
+    const key = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${monthLabels[referenceDate.getMonth()] ?? String(referenceDate.getMonth() + 1)} ${referenceDate.getFullYear()}`;
+    const current = monthlyMap.get(key) ?? { month: label, amount: 0, lossAmount: 0, breakevenAmount: 0 };
+
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      current.breakevenAmount += entryAmount;
+    } else if (entryAmount > 0) {
+      current.amount += entryAmount;
+    } else if (entryAmount < 0) {
+      current.lossAmount += entryAmount;
+    }
+
+    monthlyMap.set(key, current);
+  }
+
+  return [...monthlyMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, value]) => value);
+}
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
   simulacion: 'Simulaciones',
@@ -487,6 +521,7 @@ type DashboardEditForm = {
   newsArticleId: string;
   newsImpact: MarketNewsImpact | '';
   plannedAt: string;
+  closeAt?: string;
   riskAmount: string;
   resultR: string;
   operationLink: string;
@@ -501,6 +536,44 @@ export function toDateTimeLocalValue(value: string): string {
   }
 
   return parsed.toISOString().slice(0, 16);
+}
+
+function parseDateTimeValue(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addMinutesToDateTimeInput(value: string, minutes: number): string {
+  const parsed = parseDateTimeValue(value);
+  if (!parsed) {
+    return new Date(Date.now() + minutes * 60_000).toISOString().slice(0, 16);
+  }
+
+  return new Date(parsed.getTime() + minutes * 60_000).toISOString().slice(0, 16);
+}
+
+function ensureCloseAfterStart(startValue: string, closeValue: string): string {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+  if (!start) {
+    return closeValue;
+  }
+
+  if (!close || close.getTime() <= start.getTime()) {
+    return addMinutesToDateTimeInput(startValue, 1);
+  }
+
+  return closeValue;
+}
+
+function isCloseAfterStart(startValue: string, closeValue: string): boolean {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+  if (!start || !close) {
+    return false;
+  }
+
+  return close.getTime() > start.getTime();
 }
 
 export function formatUsdInput(value: string): string {
@@ -880,6 +953,10 @@ function DashboardSummaryContent({
     const referenceDate = resolveMonthlyReferenceDate(chartEntries, selectedYear);
     if (selectedMonth !== 'all') {
       return calculateDailyProfitData(chartEntries, referenceDate);
+    }
+
+    if (selectedYear === 'all') {
+      return calculateAllYearsProfitData(chartEntries);
     }
 
     return calculateMonthlyProfitData(chartEntries, referenceDate, 'fullYear');
@@ -1731,6 +1808,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       newsArticleId: entry.newsArticleId ?? '',
       newsImpact: entry.newsImpact ?? '',
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
+      closeAt: ensureCloseAfterStart(toDateTimeLocalValue(entry.plannedAt), toDateTimeLocalValue(entry.closeAt ?? entry.plannedAt)),
       riskAmount: entry.status === 'no_entry' ? '$0.00' : formatUsdInput(String(entry.riskAmount)),
       resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
@@ -1764,6 +1842,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     setEditError('');
 
     try {
+      if (dashboardEditForm.status === 'closed' && !isCloseAfterStart(dashboardEditForm.plannedAt, dashboardEditForm.closeAt ?? '')) {
+        throw new Error('La fecha de cierre debe ser mayor que la fecha de ejecucion.');
+      }
+
       const { resultRValue, riskAmount } = parseDashboardEditValues(dashboardEditForm);
 
       await updateMarketEntryById(userEmail, editingEntry.id, {
@@ -1773,6 +1855,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         newsArticleId: dashboardEditForm.status === 'no_entry' ? dashboardEditForm.newsArticleId : null,
         newsImpact: dashboardEditForm.status === 'no_entry' ? (dashboardEditForm.newsImpact || null) : null,
         plannedAt: dashboardEditForm.plannedAt,
+        closeAt: dashboardEditForm.status === 'closed' ? (dashboardEditForm.closeAt ?? null) : null,
         accountId: editingEntry.accountId,
         accountName: editingEntry.accountName,
         direction: dashboardEditForm.status === 'no_entry' ? undefined : editingEntry.direction,
@@ -2030,7 +2113,16 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   <input
                     type="datetime-local"
                     value={dashboardEditForm.plannedAt}
-                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                    onChange={(event) => {
+                      const nextPlannedAt = event.target.value;
+                      setDashboardEditForm((prev) => prev
+                        ? {
+                            ...prev,
+                            plannedAt: nextPlannedAt,
+                            closeAt: ensureCloseAfterStart(nextPlannedAt, prev.closeAt ?? ''),
+                          }
+                        : prev);
+                    }}
                     inputMode="none"
                     onFocus={openDatePicker}
                     onClick={openDatePicker}
@@ -2045,8 +2137,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                     <span>Fecha de cierre</span>
                     <input
                       type="datetime-local"
-                      value={dashboardEditForm.plannedAt}
-                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                      value={dashboardEditForm.closeAt ?? ''}
+                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, closeAt: event.target.value } : prev)}
                       inputMode="none"
                       onFocus={openDatePicker}
                       onClick={openDatePicker}

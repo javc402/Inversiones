@@ -161,6 +161,7 @@ interface EntryCommonForm {
   noEntryReason: string;
   note: string;
   plannedAt: string;
+  closeAt?: string;
   status: MarketEntryStatus;
 }
 
@@ -171,6 +172,7 @@ interface EditForm {
   newsArticleId: string;
   newsImpact: MarketNewsImpact | '';
   plannedAt: string;
+  closeAt?: string;
   accountId: string;
   accountName: string;
   direction: MarketEntryDirection | '';
@@ -200,6 +202,7 @@ const defaultCommonForm: EntryCommonForm = {
   noEntryReason: '',
   note: '',
   plannedAt: new Date().toISOString().slice(0, 16),
+  closeAt: new Date(Date.now() + 60_000).toISOString().slice(0, 16),
   status: 'closed',
 };
 
@@ -210,6 +213,7 @@ const defaultEditForm: EditForm = {
   newsArticleId: '',
   newsImpact: '',
   plannedAt: new Date().toISOString().slice(0, 16),
+  closeAt: new Date(Date.now() + 60_000).toISOString().slice(0, 16),
   accountId: '',
   accountName: '',
   direction: '',
@@ -231,6 +235,45 @@ export function toDateTimeLocalValue(value: string): string {
   }
 
   return parsed.toISOString().slice(0, 16);
+}
+
+function parseDateTimeValue(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addMinutesToDateTimeInput(value: string, minutes: number): string {
+  const parsed = parseDateTimeValue(value);
+  if (!parsed) {
+    return new Date(Date.now() + minutes * 60_000).toISOString().slice(0, 16);
+  }
+
+  return new Date(parsed.getTime() + minutes * 60_000).toISOString().slice(0, 16);
+}
+
+function ensureCloseAfterStart(startValue: string, closeValue: string): string {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+
+  if (!start) {
+    return closeValue;
+  }
+
+  if (!close || close.getTime() <= start.getTime()) {
+    return addMinutesToDateTimeInput(startValue, 1);
+  }
+
+  return closeValue;
+}
+
+function isCloseAfterStart(startValue: string, closeValue: string): boolean {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+  if (!start || !close) {
+    return false;
+  }
+
+  return close.getTime() > start.getTime();
 }
 
 export function formatDate(value: string): string {
@@ -442,6 +485,7 @@ export function buildCreateMarketEntryRequest(
         noEntryReason: isNoEntryOnCreate ? commonForm.marketContext : undefined,
         note: commonForm.note,
         plannedAt: commonForm.plannedAt,
+        closeAt: isCompletedOnCreate ? commonForm.closeAt : undefined,
         status: commonForm.status,
       },
       perAccount,
@@ -832,7 +876,14 @@ function MarketEntriesCreateForm({
           <input
             type="datetime-local"
             value={commonForm.plannedAt}
-            onChange={(event) => setCommonForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+            onChange={(event) => setCommonForm((prev) => {
+              const nextPlannedAt = event.target.value;
+              return {
+                ...prev,
+                plannedAt: nextPlannedAt,
+                closeAt: ensureCloseAfterStart(nextPlannedAt, prev.closeAt ?? ''),
+              };
+            })}
             inputMode="none"
             onFocus={openDatePicker}
             onClick={openDatePicker}
@@ -845,18 +896,18 @@ function MarketEntriesCreateForm({
 
         <AccordionSection open={isCompletedOnCreate}>
           <label className="entries-dates-field">
-            <EntryFieldLabel text="Fecha de cierre" help="Se sincroniza con la fecha de ejecucion para registros en estado completada." />
+            <EntryFieldLabel text="Fecha de cierre" help="Debe ser siempre posterior a la fecha de ejecucion (incluyendo hora)." />
             <input
               type="datetime-local"
-              value={commonForm.plannedAt}
+              value={commonForm.closeAt ?? ''}
+              onChange={(event) => setCommonForm((prev) => ({ ...prev, closeAt: event.target.value }))}
               inputMode="none"
               onFocus={openDatePicker}
               onClick={openDatePicker}
               onKeyDown={preventManualDateTyping}
               onPaste={preventManualDatePasteOrDrop}
               onDrop={preventManualDatePasteOrDrop}
-              readOnly
-              aria-readonly="true"
+              required={isCompletedOnCreate}
             />
           </label>
         </AccordionSection>
@@ -1123,7 +1174,14 @@ function MarketEntriesEditForm({
           <input
             type="datetime-local"
             value={editForm.plannedAt}
-            onChange={(event) => setEditForm((prev) => ({ ...prev, plannedAt: event.target.value }))}
+            onChange={(event) => setEditForm((prev) => {
+              const nextPlannedAt = event.target.value;
+              return {
+                ...prev,
+                plannedAt: nextPlannedAt,
+                closeAt: ensureCloseAfterStart(nextPlannedAt, prev.closeAt ?? ''),
+              };
+            })}
             inputMode="none"
             onFocus={openDatePicker}
             onClick={openDatePicker}
@@ -1136,18 +1194,18 @@ function MarketEntriesEditForm({
 
         <AccordionSection open={isCompletedOnEdit}>
           <label className="entries-dates-field">
-            <EntryFieldLabel text="Fecha de cierre" help="Usa la misma fecha/hora de ejecucion para registrar el cierre en estado completada." />
+            <EntryFieldLabel text="Fecha de cierre" help="Debe ser siempre posterior a la fecha de ejecucion (incluyendo hora)." />
             <input
               type="datetime-local"
-              value={editForm.plannedAt}
+              value={editForm.closeAt ?? ''}
+              onChange={(event) => setEditForm((prev) => ({ ...prev, closeAt: event.target.value }))}
               inputMode="none"
               onFocus={openDatePicker}
               onClick={openDatePicker}
               onKeyDown={preventManualDateTyping}
               onPaste={preventManualDatePasteOrDrop}
               onDrop={preventManualDatePasteOrDrop}
-              readOnly
-              aria-readonly="true"
+              required={isCompletedOnEdit}
             />
           </label>
         </AccordionSection>
@@ -1422,6 +1480,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       newsArticleId: entry.newsArticleId ?? '',
       newsImpact: entry.newsImpact ?? '',
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
+      closeAt: ensureCloseAfterStart(toDateTimeLocalValue(entry.plannedAt), toDateTimeLocalValue(entry.closeAt ?? entry.plannedAt)),
       accountId: entry.accountId,
       accountName: entry.accountName,
       direction: entry.direction ?? '',
@@ -1565,6 +1624,11 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
 
     try {
       const perAccount = buildCreatePerAccountSelection(accounts, perAccountRows, isNoEntryOnCreate);
+
+      if (isCompletedOnCreate && !isCloseAfterStart(commonForm.plannedAt, commonForm.closeAt ?? '')) {
+        throw new Error('La fecha de cierre debe ser mayor que la fecha de ejecucion.');
+      }
+
       const { createInput } = buildCreateMarketEntryRequest(commonForm, perAccount, isNoEntryOnCreate, isCompletedOnCreate);
       const created = await createMarketEntriesForAccounts(userEmail, createInput);
 
@@ -1600,6 +1664,10 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         throw new Error('No se pudo interpretar el Resultado R ingresado.');
       }
 
+      if (editForm.status === 'closed' && !isCloseAfterStart(editForm.plannedAt, editForm.closeAt ?? '')) {
+        throw new Error('La fecha de cierre debe ser mayor que la fecha de ejecucion.');
+      }
+
       const result = await updateMarketEntryById(userEmail, editingEntry.id, {
         status: editForm.status,
         marketContext: editForm.marketContext,
@@ -1607,6 +1675,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         newsArticleId: editForm.status === 'no_entry' ? editForm.newsArticleId : null,
         newsImpact: editForm.status === 'no_entry' ? (editForm.newsImpact || null) : null,
         plannedAt: editForm.plannedAt,
+        closeAt: editForm.status === 'closed' ? (editForm.closeAt ?? null) : null,
         accountId: editForm.accountId || editingEntry.accountId,
         accountName: editForm.accountName || editingEntry.accountName,
         direction: editForm.status === 'no_entry' ? undefined : (editForm.direction || undefined),
