@@ -2,7 +2,7 @@ name: Deploy - Produccion y Dev
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 jobs:
@@ -15,6 +15,8 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
@@ -29,23 +31,35 @@ jobs:
           cd frontend
           npm ci
 
+      - name: Prepare output from current gh-pages
+        run: |
+          mkdir -p out
+          if git ls-remote --exit-code --heads origin gh-pages > /dev/null; then
+            git fetch origin gh-pages
+            git worktree add gh-pages-current origin/gh-pages
+            rsync -a gh-pages-current/ out/
+            git worktree remove gh-pages-current --force
+          fi
+
       - name: Build PRODUCCION (ruta raiz)
+        if: github.ref == 'refs/heads/main'
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL }}" > frontend/.env.production
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY }}" >> frontend/.env.production
           echo "VITE_API_URL=${{ secrets.VITE_API_URL }}" >> frontend/.env.production
           cd frontend
           VITE_BASE_PATH=/Inversiones/ npm run build
-          mkdir -p ../out
-          cp -r dist/* ../out/
+          rsync -a --delete --exclude dev dist/ ../out/
 
       - name: Build DESARROLLO (ruta /dev)
+        if: github.ref == 'refs/heads/dev'
         run: |
           echo "VITE_SUPABASE_URL=${{ secrets.VITE_SUPABASE_URL_DEV }}" > frontend/.env.production
           echo "VITE_SUPABASE_ANON_KEY=${{ secrets.VITE_SUPABASE_ANON_KEY_DEV }}" >> frontend/.env.production
           echo "VITE_API_URL=${{ secrets.VITE_API_URL_DEV }}" >> frontend/.env.production
           cd frontend
           VITE_BASE_PATH=/Inversiones/dev/ npm run build
+          rm -rf ../out/dev
           mkdir -p ../out/dev
           cp -r dist/* ../out/dev/
 
