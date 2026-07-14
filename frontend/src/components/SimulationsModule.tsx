@@ -505,6 +505,7 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
   );
   const simulationProfitFactor = useMemo(() => calculateSimulationProfitFactor(simulationWinTotal, simulationLossTotal), [simulationLossTotal, simulationWinTotal]);
   const simulationWinLossRatio = useMemo(() => calculateSimulationWinLossRatio(filteredActiveOperations), [filteredActiveOperations]);
+  const simulationFinancialNet = useMemo(() => simulationWinTotal + simulationLossTotal, [simulationLossTotal, simulationWinTotal]);
   const simulationInsights = useMemo(
     () => calculateSimulationTradingInsights(filteredActiveOperations, selectedMonth === 'all' ? 'year' : 'month'),
     [filteredActiveOperations, selectedMonth],
@@ -1958,9 +1959,9 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                 kpis={[
                   {
                     title: selectedMonth === 'all' ? 'Ganancias del año' : 'Ganancias del mes',
-                    value: formatMoney(filteredMetrics.netResult, activeSimulation.currency),
+                    value: formatMoney(simulationFinancialNet, activeSimulation.currency),
                     trend: `${filteredMetrics.totalOpportunities} operaciones`,
-                    trendClass: filteredMetrics.netResult >= 0 ? 'positive' : 'negative',
+                    trendClass: simulationFinancialNet >= 0 ? 'positive' : 'negative',
                   },
                   {
                     title: 'Tasa de exito',
@@ -2018,7 +2019,7 @@ export default function SimulationsModule({ userEmail }: Readonly<SimulationsMod
                 distributionTitle="Distribucion de operaciones"
                 distributionData={distributionData}
                 distributionMetrics={[
-                  { title: 'Neto del periodo', value: distributionAmountLabel(filteredMetrics.netResult, activeSimulation.currency), valueClass: filteredMetrics.netResult >= 0 ? 'positive' : 'negative' },
+                  { title: 'Neto del periodo', value: distributionAmountLabel(simulationFinancialNet, activeSimulation.currency), valueClass: simulationFinancialNet >= 0 ? 'positive' : 'negative' },
                   { title: 'Profit Factor', value: simulationProfitFactor },
                   { title: 'Win/Loss ratio', value: simulationWinLossRatio },
                 ]}

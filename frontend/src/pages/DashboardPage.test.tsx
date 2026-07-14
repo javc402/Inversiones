@@ -2205,7 +2205,7 @@ describe('DashboardPage', () => {
 
     expect(financialResultAmount({ status: 'open', resultR: 1, riskAmount: 100 } as never)).toBeNull()
     expect(financialResultAmount({ status: 'closed', resultR: null, riskAmount: 100 } as never)).toBeNull()
-    expect(financialResultAmount({ status: 'closed', resultR: 1, riskAmount: 100 } as never)).toBe(100)
+    expect(financialResultAmount({ status: 'closed', resultR: 1, riskAmount: 100 } as never)).toBe(0)
     expect(financialResultAmount({ status: 'closed', resultR: 2, riskAmount: 100 } as never)).toBe(200)
 
     expect(getEntryExecutionDate({

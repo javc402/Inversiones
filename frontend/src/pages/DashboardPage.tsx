@@ -142,6 +142,11 @@ export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resul
     return null;
   }
 
+  // Break tecnico 1:1 se considera neutral en resultado financiero.
+  if (entry.resultR === 1) {
+    return 0;
+  }
+
   return entry.riskAmount * entry.resultR;
 }
 
@@ -345,7 +350,7 @@ export function calculateMonthlyProfitData(
       continue;
     }
 
-    // La serie temporal refleja el resultado monetario de la operacion por fecha de ejecucion.
+    // En gráficas, break técnico conserva su magnitud monetaria para lectura de contexto.
     const entryAmount = entry.riskAmount * entry.resultR;
     if (isTechnicalBreakEven(entry)) {
       breakevenByMonth.set(monthKey, (breakevenByMonth.get(monthKey) ?? 0) + entryAmount);

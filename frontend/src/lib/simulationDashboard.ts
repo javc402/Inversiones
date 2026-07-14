@@ -35,6 +35,14 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+function simulationFinancialAmount(operation: SimulationOperationDraft): number {
+  if (operation.resultType === 'breakeven' || operation.resultType === 'no_trade') {
+    return 0;
+  }
+
+  return operation.monetaryResult;
+}
+
 function appendAmount(point: SimulationTimelinePoint, operation: SimulationOperationDraft): void {
   if (operation.resultType === 'breakeven') {
     point.breakevenAmount = round2(point.breakevenAmount + operation.monetaryResult);
@@ -264,11 +272,24 @@ export function calculateSimulationMonetaryWeights(winTotal: number, lossTotal: 
 }
 
 export function calculateSimulationWinTotal(operations: SimulationOperationDraft[]): number {
-  return round2(operations.reduce((sum, operation) => sum + Math.max(operation.monetaryResult, 0), 0));
+  return round2(operations.reduce((sum, operation) => {
+    if (operation.resultType !== 'win') {
+      return sum;
+    }
+
+    return sum + Math.max(simulationFinancialAmount(operation), 0);
+  }, 0));
 }
 
 export function calculateSimulationLossTotal(operations: SimulationOperationDraft[]): number {
-  return round2(operations.reduce((sum, operation) => operation.monetaryResult < 0 ? sum + operation.monetaryResult : sum, 0));
+  return round2(operations.reduce((sum, operation) => {
+    if (operation.resultType !== 'sl') {
+      return sum;
+    }
+
+    const amount = simulationFinancialAmount(operation);
+    return amount < 0 ? sum + amount : sum;
+  }, 0));
 }
 
 export function calculateSimulationProfitFactor(winTotal: number, lossTotal: number): string {
@@ -302,7 +323,7 @@ export function calculateSimulationTradingInsights(
       continue;
     }
 
-    const amount = operation.monetaryResult;
+    const amount = simulationFinancialAmount(operation);
     const week = weekOfPeriod(date, mode);
     byWeek.set(week, (byWeek.get(week) ?? 0) + amount);
 
