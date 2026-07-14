@@ -251,6 +251,23 @@ describe('AccountsModule', () => {
     });
   });
 
+  it('marca como obligatorios los campos de riesgo cuando la cuenta es funded', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([]);
+
+    render(<AccountsModule />);
+
+    fireEvent.click(await screen.findByRole('button', { name: '+ Nueva cuenta' }));
+    const dialog = screen.getByRole('dialog', { name: 'Formulario cuenta' });
+
+    fireEvent.change(within(dialog).getAllByRole('combobox')[1], { target: { value: 'funded' } });
+
+    const fundedSpinButtons = within(dialog).getAllByRole('spinbutton');
+
+    expect(fundedSpinButtons[1]).toBeRequired();
+    expect(fundedSpinButtons[2]).toBeRequired();
+    expect(fundedSpinButtons[3]).toBeRequired();
+  });
+
   it('bloquea doble submit al guardar cuenta', async () => {
     vi.mocked(accountsService.listTradingAccounts)
       .mockResolvedValueOnce([])
@@ -628,7 +645,9 @@ describe('AccountsModule', () => {
 
     expect(await screen.findByText('Reglas de fondeo')).toBeInTheDocument();
     const fundedSpinButtons = within(dialog).getAllByRole('spinbutton');
-    fireEvent.change(fundedSpinButtons[fundedSpinButtons.length - 1], { target: { value: '10' } });
+    fireEvent.change(fundedSpinButtons[1], { target: { value: '1.5' } });
+    fireEvent.change(fundedSpinButtons[2], { target: { value: '3' } });
+    fireEvent.change(fundedSpinButtons[3], { target: { value: '10' } });
 
     fireEvent.click(screen.getByRole('button', { name: 'Guardar cuenta' }));
 
