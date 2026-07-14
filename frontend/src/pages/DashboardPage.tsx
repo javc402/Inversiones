@@ -87,6 +87,20 @@ export function calculateProfitFactor(winAmount: number, lossAmount: number): st
   return (winAmount / absoluteLoss).toFixed(2);
 }
 
+export function calculateMonetaryWeights(winAmount: number, lossAmount: number): { winWeight: number; lossWeight: number } {
+  const grossWin = Math.max(0, winAmount);
+  const grossLoss = Math.abs(Math.min(0, lossAmount));
+  const total = grossWin + grossLoss;
+  if (total === 0) {
+    return { winWeight: 0, lossWeight: 0 };
+  }
+
+  return {
+    winWeight: (grossWin / total) * 100,
+    lossWeight: (grossLoss / total) * 100,
+  };
+}
+
 export function getEntryExecutionDate(entry: Pick<MarketEntry, 'status' | 'plannedAt' | 'updatedAt' | 'createdAt'>): string {
   // Regla de negocio: el dashboard usa fecha de ejecucion (plannedAt).
   const planned = new Date(entry.plannedAt);
@@ -128,7 +142,8 @@ export function financialResultAmount(entry: Pick<MarketEntry, 'status' | 'resul
     return null;
   }
 
-  if (isTechnicalBreakEven(entry)) {
+  // Break tecnico 1:1 se considera neutral en resultado financiero.
+  if (entry.resultR === 1) {
     return 0;
   }
 
@@ -335,7 +350,7 @@ export function calculateMonthlyProfitData(
       continue;
     }
 
-    // La serie temporal refleja el resultado monetario de la operacion por fecha de ejecucion.
+    // En gráficas, break técnico conserva su magnitud monetaria para lectura de contexto.
     const entryAmount = entry.riskAmount * entry.resultR;
     if (isTechnicalBreakEven(entry)) {
       breakevenByMonth.set(monthKey, (breakevenByMonth.get(monthKey) ?? 0) + entryAmount);
@@ -413,6 +428,40 @@ export function calculateDailyProfitData(filteredEntries: MarketEntry[], referen
     breakevenAmount: breakevenByDay.get(item.key) ?? 0,
   }));
 }
+
+export function calculateAllYearsProfitData(filteredEntries: MarketEntry[]): MonthlyProfitPoint[] {
+  const monthlyMap = new Map<string, MonthlyProfitPoint>();
+
+  for (const entry of filteredEntries) {
+    if (entry.resultR === null) {
+      continue;
+    }
+
+    const referenceDate = new Date(getEntryExecutionDate(entry));
+    if (Number.isNaN(referenceDate.getTime())) {
+      continue;
+    }
+
+    const key = `${referenceDate.getFullYear()}-${String(referenceDate.getMonth() + 1).padStart(2, '0')}`;
+    const label = `${monthLabels[referenceDate.getMonth()] ?? String(referenceDate.getMonth() + 1)} ${referenceDate.getFullYear()}`;
+    const current = monthlyMap.get(key) ?? { month: label, amount: 0, lossAmount: 0, breakevenAmount: 0 };
+
+    const entryAmount = entry.riskAmount * entry.resultR;
+    if (isTechnicalBreakEven(entry)) {
+      current.breakevenAmount += entryAmount;
+    } else if (entryAmount > 0) {
+      current.amount += entryAmount;
+    } else if (entryAmount < 0) {
+      current.lossAmount += entryAmount;
+    }
+
+    monthlyMap.set(key, current);
+  }
+
+  return [...monthlyMap.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([, value]) => value);
+}
 const pageTitleByTab: Record<DashboardTab, string> = {
   resumen: 'Dashboard de Inversiones',
   simulacion: 'Simulaciones',
@@ -477,6 +526,7 @@ type DashboardEditForm = {
   newsArticleId: string;
   newsImpact: MarketNewsImpact | '';
   plannedAt: string;
+  closeAt?: string;
   riskAmount: string;
   resultR: string;
   operationLink: string;
@@ -491,6 +541,44 @@ export function toDateTimeLocalValue(value: string): string {
   }
 
   return parsed.toISOString().slice(0, 16);
+}
+
+function parseDateTimeValue(value: string): Date | null {
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function addMinutesToDateTimeInput(value: string, minutes: number): string {
+  const parsed = parseDateTimeValue(value);
+  if (!parsed) {
+    return new Date(Date.now() + minutes * 60_000).toISOString().slice(0, 16);
+  }
+
+  return new Date(parsed.getTime() + minutes * 60_000).toISOString().slice(0, 16);
+}
+
+function ensureCloseAfterStart(startValue: string, closeValue: string): string {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+  if (!start) {
+    return closeValue;
+  }
+
+  if (!close || close.getTime() <= start.getTime()) {
+    return addMinutesToDateTimeInput(startValue, 1);
+  }
+
+  return closeValue;
+}
+
+function isCloseAfterStart(startValue: string, closeValue: string): boolean {
+  const start = parseDateTimeValue(startValue);
+  const close = parseDateTimeValue(closeValue);
+  if (!start || !close) {
+    return false;
+  }
+
+  return close.getTime() > start.getTime();
 }
 
 export function formatUsdInput(value: string): string {
@@ -705,12 +793,8 @@ interface DashboardSummaryContentProps {
   winTotal: number;
   lossRate: number;
   lossTotal: number;
-  monthlyProfitData: Array<{
-    month: string;
-    amount: number;
-    lossAmount: number;
-    breakevenAmount: number;
-  }>;
+  monetaryWinWeight: number;
+  monetaryLossWeight: number;
   distributionData: Array<{
     name: 'Ganadas' | 'Perdidas' | 'Breakeven';
     value: number;
@@ -766,7 +850,8 @@ function DashboardSummaryContent({
   winTotal,
   lossRate,
   lossTotal,
-  monthlyProfitData,
+  monetaryWinWeight,
+  monetaryLossWeight,
   distributionData,
   netResult,
   profitFactor,
@@ -861,6 +946,28 @@ function DashboardSummaryContent({
   const tradingInsights = useMemo(() => {
     return calculateTradingInsights(filteredEntries, selectedMonth === 'all' ? 'year' : 'month');
   }, [filteredEntries, selectedMonth]);
+  const visibleEntryIds = useMemo(() => {
+    return new Set(filteredRecentTrades.map((trade) => trade.entryId));
+  }, [filteredRecentTrades]);
+
+  const chartEntries = useMemo(() => {
+    return filteredEntries.filter((entry) => visibleEntryIds.has(entry.id));
+  }, [filteredEntries, visibleEntryIds]);
+
+  const chartData = useMemo(() => {
+    const referenceDate = resolveMonthlyReferenceDate(chartEntries, selectedYear);
+    if (selectedMonth !== 'all') {
+      return calculateDailyProfitData(chartEntries, referenceDate);
+    }
+
+    if (selectedYear === 'all') {
+      return calculateAllYearsProfitData(chartEntries);
+    }
+
+    return calculateMonthlyProfitData(chartEntries, referenceDate, 'fullYear');
+  }, [chartEntries, selectedMonth, selectedYear]);
+  const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
+  const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
 
   function toggleTradeDetails(entryId: string) {
     setExpandedTradeIds((prev) => ({
@@ -893,12 +1000,23 @@ function DashboardSummaryContent({
       monthFilterDisabled={selectedYear === 'all'}
       kpis={[
         { title: profitKpiTitle, value: formatCurrency(monthlyProfit), trend: `${filteredEntries.length} operaciones`, trendClass: monthlyProfit >= 0 ? 'positive' : 'negative' },
-        { title: 'Tasa de exito', value: `${winRate.toFixed(1)}%`, trend: `Total ganado: ${formatCurrency(winTotal)}`, trendClass: 'positive' },
-        { title: 'Tasa de perdida', value: `${lossRate.toFixed(1)}%`, trend: `Total perdido: ${formatCurrency(lossTotal)}`, trendClass: 'negative' },
+        { title: 'Tasa de exito', value: `${winRate.toFixed(1)}%`, trend: `W/L: ${wins}/${losses}`, trendClass: 'positive' },
+        { title: 'Tasa de perdida', value: `${lossRate.toFixed(1)}%`, trend: `W/L: ${losses}/${wins}`, trendClass: 'negative' },
+        { title: 'Peso monetario ganado', value: `${monetaryWinWeight.toFixed(1)}%`, trend: `Vs perdido: ${monetaryLossWeight.toFixed(1)}%`, trendClass: monetaryWinWeight >= monetaryLossWeight ? 'positive' : 'negative' },
+        {
+          title: 'Profit Factor',
+          value: profitFactor,
+          trend: (
+            <>
+              <span className="positive">{formatCurrency(winTotal)}</span> / <span className="negative">{formatCurrency(Math.abs(lossTotal))}</span>
+            </>
+          ),
+          trendClass: 'neutral',
+        },
         { title: 'Mejor dia para operar', value: tradingInsights.bestWeekdayLabel, trend: `Total: ${distributionAmountLabel(tradingInsights.bestWeekdayTotal)}`, trendClass: 'positive' },
       ]}
       chartTitle="Evolucion de ganancias"
-      chartData={monthlyProfitData}
+      chartData={chartData}
       chartLabelFormatter={(label) => {
         if (selectedMonth !== 'all') {
           const monthIndex = Number.parseInt(selectedMonth, 10);
@@ -1564,17 +1682,19 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
   }, [filteredEntries]);
 
   const winRate = useMemo(() => {
-    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
-    if (entriesWithResult.length === 0) return 0;
-    const wins = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
-    return (wins / entriesWithResult.length) * 100;
+    const wins = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
+    const losses = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
+    const resolved = wins + losses;
+    if (resolved === 0) return 0;
+    return (wins / resolved) * 100;
   }, [filteredEntries]);
 
   const lossRate = useMemo(() => {
-    const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
-    if (entriesWithResult.length === 0) return 0;
-    const losses = entriesWithResult.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
-    return (losses / entriesWithResult.length) * 100;
+    const wins = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Ganancia').length;
+    const losses = filteredEntries.filter((entry) => financialOutcomeLabel(entry) === 'Perdida').length;
+    const resolved = wins + losses;
+    if (resolved === 0) return 0;
+    return (losses / resolved) * 100;
   }, [filteredEntries]);
 
   const winTotal = useMemo(() => {
@@ -1589,15 +1709,6 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         return value < 0 ? sum + value : sum;
       }, 0);
   }, [filteredEntries]);
-
-  const monthlyProfitData = useMemo(() => {
-    const referenceDate = resolveMonthlyReferenceDate(filteredEntries, selectedYear);
-    if (selectedMonth !== 'all') {
-      return calculateDailyProfitData(filteredEntries, referenceDate);
-    }
-
-    return calculateMonthlyProfitData(filteredEntries, referenceDate, 'fullYear');
-  }, [filteredEntries, selectedYear, selectedMonth]);
 
   const distributionData = useMemo<DistributionSlice[]>(() => {
     const entriesWithResult = filteredEntries.filter((entry) => entry.resultR !== null);
@@ -1655,6 +1766,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     return calculateProfitFactor(winTotal, lossTotal);
   }, [winTotal, lossTotal]);
 
+  const { winWeight: monetaryWinWeight, lossWeight: monetaryLossWeight } = useMemo(() => {
+    return calculateMonetaryWeights(winTotal, lossTotal);
+  }, [winTotal, lossTotal]);
+
   const winLossRatio = useMemo(() => {
     const wins = distributionData.find((entry) => entry.name === 'Ganadas')?.operations ?? 0;
     const losses = distributionData.find((entry) => entry.name === 'Perdidas')?.operations ?? 0;
@@ -1698,6 +1813,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       newsArticleId: entry.newsArticleId ?? '',
       newsImpact: entry.newsImpact ?? '',
       plannedAt: toDateTimeLocalValue(entry.plannedAt),
+      closeAt: ensureCloseAfterStart(toDateTimeLocalValue(entry.plannedAt), toDateTimeLocalValue(entry.closeAt ?? entry.plannedAt)),
       riskAmount: entry.status === 'no_entry' ? '$0.00' : formatUsdInput(String(entry.riskAmount)),
       resultR: entry.resultR === null ? '0.00' : Number(entry.resultR).toFixed(2),
       operationLink: entry.operationLink ?? '',
@@ -1731,6 +1847,10 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
     setEditError('');
 
     try {
+      if (dashboardEditForm.status === 'closed' && !isCloseAfterStart(dashboardEditForm.plannedAt, dashboardEditForm.closeAt ?? '')) {
+        throw new Error('La fecha de cierre debe ser mayor que la fecha de ejecucion.');
+      }
+
       const { resultRValue, riskAmount } = parseDashboardEditValues(dashboardEditForm);
 
       await updateMarketEntryById(userEmail, editingEntry.id, {
@@ -1740,6 +1860,7 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
         newsArticleId: dashboardEditForm.status === 'no_entry' ? dashboardEditForm.newsArticleId : null,
         newsImpact: dashboardEditForm.status === 'no_entry' ? (dashboardEditForm.newsImpact || null) : null,
         plannedAt: dashboardEditForm.plannedAt,
+        closeAt: dashboardEditForm.status === 'closed' ? (dashboardEditForm.closeAt ?? null) : null,
         accountId: editingEntry.accountId,
         accountName: editingEntry.accountName,
         direction: dashboardEditForm.status === 'no_entry' ? undefined : editingEntry.direction,
@@ -1773,7 +1894,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
       winTotal={winTotal}
       lossRate={lossRate}
       lossTotal={lossTotal}
-      monthlyProfitData={monthlyProfitData}
+      monetaryWinWeight={monetaryWinWeight}
+      monetaryLossWeight={monetaryLossWeight}
       distributionData={distributionData}
       netResult={netResult}
       profitFactor={profitFactor}
@@ -1996,7 +2118,16 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                   <input
                     type="datetime-local"
                     value={dashboardEditForm.plannedAt}
-                    onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                    onChange={(event) => {
+                      const nextPlannedAt = event.target.value;
+                      setDashboardEditForm((prev) => prev
+                        ? {
+                            ...prev,
+                            plannedAt: nextPlannedAt,
+                            closeAt: ensureCloseAfterStart(nextPlannedAt, prev.closeAt ?? ''),
+                          }
+                        : prev);
+                    }}
                     inputMode="none"
                     onFocus={openDatePicker}
                     onClick={openDatePicker}
@@ -2011,8 +2142,8 @@ export default function DashboardPage({ userEmail, initialRole, onSignOut }: Rea
                     <span>Fecha de cierre</span>
                     <input
                       type="datetime-local"
-                      value={dashboardEditForm.plannedAt}
-                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, plannedAt: event.target.value } : prev)}
+                      value={dashboardEditForm.closeAt ?? ''}
+                      onChange={(event) => setDashboardEditForm((prev) => prev ? { ...prev, closeAt: event.target.value } : prev)}
                       inputMode="none"
                       onFocus={openDatePicker}
                       onClick={openDatePicker}

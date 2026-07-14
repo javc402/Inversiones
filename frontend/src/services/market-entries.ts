@@ -35,6 +35,7 @@ export interface MarketEntry {
   note: string;
   status: MarketEntryStatus;
   plannedAt: string;
+  closeAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -59,6 +60,7 @@ export interface MarketEntryCommonInput {
   noEntryReason?: string;
   note: string;
   plannedAt: string;
+  closeAt?: string;
   status: MarketEntryStatus;
 }
 
@@ -88,6 +90,7 @@ interface UpdateMarketEntryInput {
   closePrice?: number | null;
   resultR: number | null;
   plannedAt?: string;
+  closeAt?: string | null;
   operationLink?: string;
   note: string;
   noEntryReason?: string;
@@ -148,12 +151,17 @@ interface MarketEntryRow {
   note: string;
   status: MarketEntryStatus;
   planned_at: string;
+  close_at?: string | null;
   created_at: string;
   updated_at: string;
 }
 
 function nowIso(): string {
   return new Date().toISOString();
+}
+
+function isMissingColumnError(error: unknown): boolean {
+  return error instanceof Error && /column .* does not exist|could not find/i.test(error.message);
 }
 
 function createGroupId(): string {
@@ -194,9 +202,34 @@ function mapRowToEntry(row: MarketEntryRow): MarketEntry {
     note: row.note,
     status: row.status,
     plannedAt: row.planned_at,
+    closeAt: row.close_at ?? null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function parseDateTimeOrThrow(value: string, message: string): Date {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    throw new TypeError(message);
+  }
+
+  return parsed;
+}
+
+function ensureCloseAfterPlannedAt(plannedAt: string, closeAt: string | undefined | null): string {
+  const plannedDate = parseDateTimeOrThrow(plannedAt, 'La fecha de ejecucion no es valida.');
+
+  if (!closeAt) {
+    return new Date(plannedDate.getTime() + 60_000).toISOString();
+  }
+
+  const closeDate = parseDateTimeOrThrow(closeAt, 'La fecha de cierre no es valida.');
+  if (closeDate.getTime() <= plannedDate.getTime()) {
+    throw new Error('La fecha de cierre debe ser mayor que la fecha de ejecucion.');
+  }
+
+  return closeAt;
 }
 
 async function getAuthenticatedUserId(): Promise<string | null> {
@@ -264,6 +297,8 @@ function validateResultR(value: number | null | undefined): void {
 }
 
 function validateCommonInput(common: MarketEntryCommonInput): void {
+  parseDateTimeOrThrow(common.plannedAt, 'La fecha de ejecucion no es valida.');
+
   if (common.status === 'no_entry') {
     if (!common.symbol?.trim()) {
       throw new Error('Debes seleccionar un símbolo.');
@@ -290,6 +325,7 @@ function validateCommonInput(common: MarketEntryCommonInput): void {
   if (!common.direction) throw new Error('La dirección es obligatoria.');
   validateOptionalUrl(common.operationLink);
   if (common.status === 'closed') {
+    ensureCloseAfterPlannedAt(common.plannedAt, common.closeAt);
     validateResultR(common.resultR);
   }
 }
@@ -334,10 +370,11 @@ function validateUpdateMarketEntryInput(next: UpdateMarketEntryInput): void {
   }
 
   if (next.plannedAt) {
-    const executionDate = new Date(next.plannedAt);
-    if (Number.isNaN(executionDate.getTime())) {
-      throw new TypeError('La fecha de ejecucion no es valida.');
-    }
+    parseDateTimeOrThrow(next.plannedAt, 'La fecha de ejecucion no es valida.');
+  }
+
+  if (next.closeAt) {
+    parseDateTimeOrThrow(next.closeAt, 'La fecha de cierre no es valida.');
   }
 
   validateOptionalUrl(next.operationLink);
@@ -362,6 +399,11 @@ function buildMarketEntryUpdatePayload(
   trimmedNote: string,
   isNoEntryFlow: boolean
 ) {
+  const resolvedPlannedAt = next.plannedAt ?? previous.planned_at;
+  const resolvedCloseAt = next.status === 'closed'
+    ? ensureCloseAfterPlannedAt(resolvedPlannedAt, next.closeAt ?? previous.close_at)
+    : null;
+
   if (isNoEntryFlow) {
     const accountId = next.accountId ?? previous.account_id ?? null;
     const accountName = next.accountName?.trim() || previous.account_name || null;
@@ -377,7 +419,8 @@ function buildMarketEntryUpdatePayload(
       news_impact: (next.contextSource ?? previous.context_source) === 'news'
         ? (next.newsImpact ?? previous.news_impact ?? null)
         : null,
-      planned_at: next.plannedAt ?? previous.planned_at,
+      planned_at: resolvedPlannedAt,
+      close_at: null,
       account_id: accountId,
       account_name: accountName,
       direction: null,
@@ -401,7 +444,8 @@ function buildMarketEntryUpdatePayload(
     news_impact: (next.contextSource ?? previous.context_source) === 'news'
       ? (next.newsImpact ?? previous.news_impact ?? null)
       : null,
-    planned_at: next.plannedAt ?? previous.planned_at,
+    planned_at: resolvedPlannedAt,
+    close_at: resolvedCloseAt,
     account_id: next.accountId ?? previous.account_id,
     account_name: next.accountName?.trim() || previous.account_name,
     direction: next.direction ?? previous.direction,
@@ -581,13 +625,37 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
         note: input.common.note.trim(),
         status: input.common.status,
         planned_at: input.common.plannedAt,
+        close_at: input.common.status === 'closed'
+          ? ensureCloseAfterPlannedAt(input.common.plannedAt, input.common.closeAt)
+          : null,
         created_at: timestamp,
         updated_at: timestamp,
       }));
 
     const { data, error } = await supabase.from('market_entries').insert(payload as never).select('*');
 
-    if (error) throw new Error(error.message ?? 'No se pudo crear la entrada en la base de datos.');
+    let persistedData = data;
+    if (error) {
+      if (!isMissingColumnError(error)) {
+        throw new Error(error.message ?? 'No se pudo crear la entrada en la base de datos.');
+      }
+
+      const legacyPayload = payload.map(({ close_at: _close_at, ...legacyItem }) => {
+        void _close_at;
+        return legacyItem;
+      });
+
+      const { data: legacyData, error: legacyError } = await supabase
+        .from('market_entries')
+        .insert(legacyPayload as never)
+        .select('*');
+
+      if (legacyError) {
+        throw new Error(legacyError.message ?? 'No se pudo crear la entrada en la base de datos.');
+      }
+
+      persistedData = legacyData;
+    }
 
     void logAuditActivity('market_entries.create_batch', {
     module: 'market_entries',
@@ -606,7 +674,7 @@ export async function createMarketEntriesForAccounts(_userEmail: string, input: 
     noEntryReason: input.common.status === 'no_entry' ? input.common.noEntryReason : null,
   });
 
-    return (data ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
+    return (persistedData ?? []).map((row) => mapRowToEntry(row as MarketEntryRow));
   } catch (error) {
     logAuditError(
       'market_entries.create_batch',
@@ -655,17 +723,40 @@ export async function updateMarketEntryById(
     validateFinalUpdatePayload(baseUpdate, next.status);
 
     const { data: updatedRows, error: updateError } = await supabase
-    .from('market_entries')
-    .update(baseUpdate)
-    .eq('id', entryId)
-    .eq('user_id', userId)
-    .select('*');
+      .from('market_entries')
+      .update(baseUpdate)
+      .eq('id', entryId)
+      .eq('user_id', userId)
+      .select('*');
 
-    if (updateError || !updatedRows || updatedRows.length === 0) {
-      throw new Error(updateError?.message ?? 'No se pudo actualizar la entrada solicitada.');
+    let persistedRows = updatedRows;
+    if (updateError) {
+      if (!isMissingColumnError(updateError)) {
+        throw new Error(updateError.message ?? 'No se pudo actualizar la entrada solicitada.');
+      }
+
+      const { close_at: _close_at, ...legacyBaseUpdate } = baseUpdate;
+      void _close_at;
+
+      const { data: legacyUpdatedRows, error: legacyUpdateError } = await supabase
+        .from('market_entries')
+        .update(legacyBaseUpdate)
+        .eq('id', entryId)
+        .eq('user_id', userId)
+        .select('*');
+
+      if (legacyUpdateError) {
+        throw new Error(legacyUpdateError.message ?? 'No se pudo actualizar la entrada solicitada.');
+      }
+
+      persistedRows = legacyUpdatedRows;
     }
 
-    const updated = mapRowToEntry(updatedRows[0] as MarketEntryRow);
+    if (!persistedRows || persistedRows.length === 0) {
+      throw new Error('No se pudo actualizar la entrada solicitada.');
+    }
+
+    const updated = mapRowToEntry(persistedRows[0] as MarketEntryRow);
     const shouldApplyCommonToGroup = Boolean(options?.applyCommonToGroup);
 
     let affectedEntries = 1;
@@ -706,6 +797,9 @@ export async function updateMarketEntryById(
         ...updated,
         status: next.status,
         plannedAt: next.plannedAt ?? updated.plannedAt,
+        closeAt: next.status === 'closed'
+          ? (next.closeAt ?? updated.closeAt ?? null)
+          : null,
         riskAmount: isNoEntryFlow ? updated.riskAmount : next.riskAmount,
         investmentPercent: isNoEntryFlow ? updated.investmentPercent : next.investmentPercent,
         resultR: isNoEntryFlow ? updated.resultR : next.resultR,

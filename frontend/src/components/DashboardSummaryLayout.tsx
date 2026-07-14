@@ -10,7 +10,7 @@ export interface DashboardSelectOption {
 export interface DashboardKpiItem {
   title: string;
   value: string;
-  trend: string;
+  trend: ReactNode;
   trendClass: 'positive' | 'negative' | 'neutral' | 'breakeven';
 }
 
@@ -55,6 +55,7 @@ interface DashboardSummaryLayoutProps {
   onMonthFilterChange: (value: string) => void;
   monthOptions: DashboardSelectOption[];
   monthFilterDisabled?: boolean;
+  hideToolbar?: boolean;
   kpis: DashboardKpiItem[];
   chartTitle: string;
   chartData: DashboardChartPoint[];
@@ -81,6 +82,7 @@ export default function DashboardSummaryLayout({
   onMonthFilterChange,
   monthOptions,
   monthFilterDisabled = false,
+  hideToolbar = false,
   kpis,
   chartTitle,
   chartData,
@@ -97,83 +99,109 @@ export default function DashboardSummaryLayout({
 
   return (
     <>
-      <button
-        type="button"
-        className="dashboard-filters-fab"
-        aria-label="Mostrar u ocultar filtros"
-        aria-expanded={filtersPanelOpen}
-        onClick={() => setFiltersPanelOpen((prev) => !prev)}
-      >
-        <AppIcon name="settings" />
-        <span>Filtros</span>
-      </button>
-
-      <button
-        type="button"
-        className={`dashboard-filters-overlay ${filtersPanelOpen ? 'visible' : ''}`}
-        aria-label="Cerrar panel de filtros"
-        onClick={() => setFiltersPanelOpen(false)}
-      />
-
-      <section className={`dashboard-summary-toolbar ${filtersPanelOpen ? 'open' : ''}`}>
-        <div className="dashboard-summary-toolbar-mobile-head">
-          <p>Filtros del dashboard</p>
+      {!hideToolbar && (
+        <>
           <button
             type="button"
-            className="dashboard-summary-toolbar-close"
-            aria-label="Cerrar filtros"
-            onClick={() => setFiltersPanelOpen(false)}
+            className="dashboard-filters-fab"
+            aria-label="Mostrar u ocultar filtros"
+            aria-expanded={filtersPanelOpen}
+            onClick={() => setFiltersPanelOpen((prev) => !prev)}
           >
-            <AppIcon name="close" />
+            <AppIcon name="settings" />
+            <span>Filtros</span>
           </button>
-        </div>
 
-        <label htmlFor={`${idPrefix}-account-filter`} className="dashboard-summary-filter-label">{accountFilterLabel}</label>
-        <select
-          id={`${idPrefix}-account-filter`}
-          className="dashboard-summary-filter"
-          value={accountFilterValue}
-          onChange={(event) => onAccountFilterChange(event.target.value)}
-        >
-          {accountOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+          <button
+            type="button"
+            className={`dashboard-filters-overlay ${filtersPanelOpen ? 'visible' : ''}`}
+            aria-label="Cerrar panel de filtros"
+            onClick={() => setFiltersPanelOpen(false)}
+          />
 
-        <label htmlFor={`${idPrefix}-year-filter`} className="dashboard-summary-filter-label">Filtrar por año</label>
-        <select
-          id={`${idPrefix}-year-filter`}
-          className="dashboard-summary-filter"
-          value={yearFilterValue}
-          onChange={(event) => onYearFilterChange(event.target.value)}
-        >
-          {yearOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
+          <section className={`dashboard-summary-toolbar ${filtersPanelOpen ? 'open' : ''}`}>
+            <div className="dashboard-summary-toolbar-mobile-head">
+              <p>Filtros del dashboard</p>
+              <button
+                type="button"
+                className="dashboard-summary-toolbar-close"
+                aria-label="Cerrar filtros"
+                onClick={() => setFiltersPanelOpen(false)}
+              >
+                <AppIcon name="close" />
+              </button>
+            </div>
 
-        <label htmlFor={`${idPrefix}-month-filter`} className="dashboard-summary-filter-label">Filtrar por mes</label>
-        <select
-          id={`${idPrefix}-month-filter`}
-          className="dashboard-summary-filter"
-          value={monthFilterValue}
-          onChange={(event) => onMonthFilterChange(event.target.value)}
-          disabled={monthFilterDisabled}
-        >
-          {monthOptions.map((option) => (
-            <option key={option.value} value={option.value}>{option.label}</option>
-          ))}
-        </select>
-      </section>
+            <label htmlFor={`${idPrefix}-account-filter`} className="dashboard-summary-filter-label">{accountFilterLabel}</label>
+            <select
+              id={`${idPrefix}-account-filter`}
+              className="dashboard-summary-filter"
+              value={accountFilterValue}
+              onChange={(event) => onAccountFilterChange(event.target.value)}
+            >
+              {accountOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            <label htmlFor={`${idPrefix}-year-filter`} className="dashboard-summary-filter-label">Filtrar por año</label>
+            <select
+              id={`${idPrefix}-year-filter`}
+              className="dashboard-summary-filter"
+              value={yearFilterValue}
+              onChange={(event) => onYearFilterChange(event.target.value)}
+            >
+              {yearOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+
+            <label htmlFor={`${idPrefix}-month-filter`} className="dashboard-summary-filter-label">Filtrar por mes</label>
+            <select
+              id={`${idPrefix}-month-filter`}
+              className="dashboard-summary-filter"
+              value={monthFilterValue}
+              onChange={(event) => onMonthFilterChange(event.target.value)}
+              disabled={monthFilterDisabled}
+            >
+              {monthOptions.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </section>
+        </>
+      )}
 
       <section className="kpi-grid">
-        {kpis.map((kpi) => (
-          <article key={kpi.title} className="kpi-card">
-            <h2>{kpi.title}</h2>
-            <p className="kpi-value">{kpi.value}</p>
-            <span className={`kpi-trend ${kpi.trendClass}`}>{kpi.trend}</span>
-          </article>
-        ))}
+        {kpis.map((kpi) => {
+          const compactValue = kpi.value.replace(/\s+/g, '');
+          const currencyMatch = /^([A-Z]{3})\s+(.+)$/.exec(kpi.value);
+
+          return (
+            <article key={kpi.title} className="kpi-card">
+              <h2>{kpi.title}</h2>
+              <p
+                className={`kpi-value ${currencyMatch ? 'kpi-value--currency' : ''} ${
+                  compactValue.length >= 14
+                    ? 'kpi-value--xs'
+                    : compactValue.length >= 11
+                      ? 'kpi-value--sm'
+                      : ''
+                }`.trim()}
+              >
+                {currencyMatch ? (
+                  <>
+                    <span className="kpi-value-currency">{currencyMatch[1] === 'USD' ? '$' : currencyMatch[1]}</span>
+                    <span className="kpi-value-amount">{currencyMatch[2]}</span>
+                  </>
+                ) : (
+                  kpi.value
+                )}
+              </p>
+              <span className={`kpi-trend ${kpi.trendClass}`}>{kpi.trend}</span>
+            </article>
+          );
+        })}
       </section>
 
       <section className="chart-grid">
@@ -190,7 +218,7 @@ export default function DashboardSummaryLayout({
                   formatter={(value: number, name: string) => {
                     if (name === 'perdidas') return [amountFormatter(value), 'Perdidas'];
                     if (name === 'breakeven') return [amountFormatter(value), 'Breakeven'];
-                    return [amountFormatter(value), 'Resultado neto (solo ganancias)'];
+                    return [amountFormatter(value), 'Ganancias'];
                   }}
                 />
                 <Area type="monotone" dataKey="amount" name="neto" stroke="#1e5ba8" fill="#bfdbfe" fillOpacity={0.42} strokeWidth={2} />
@@ -202,7 +230,7 @@ export default function DashboardSummaryLayout({
           <div className="chart-color-legend" aria-label="Leyenda de colores de la gráfica">
             <span className="chart-color-legend-item">
               <span className="chart-color-dot chart-color-dot-net" aria-hidden="true" />
-              <span>Resultado neto (solo ganancias)</span>
+              <span>Ganancias</span>
             </span>
             <span className="chart-color-legend-item">
               <span className="chart-color-dot chart-color-dot-loss" aria-hidden="true" />

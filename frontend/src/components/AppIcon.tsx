@@ -8,6 +8,9 @@ export type AppIconName =
   | 'settings'
   | 'logout'
   | 'system'
+  | 'trendingUp'
+  | 'trendingDown'
+  | 'horizontalRule'
   | 'chevronDown'
   | 'chevronRight'
   | 'statusOnline'
@@ -46,6 +49,9 @@ const iconNames: Record<AppIconName, string> = {
   settings: 'settings',
   logout: 'logout',
   system: 'memory',
+  trendingUp: 'trending_up',
+  trendingDown: 'trending_down',
+  horizontalRule: 'horizontal_rule',
   chevronDown: 'expand_more',
   chevronRight: 'chevron_right',
   statusOnline: 'check_circle',

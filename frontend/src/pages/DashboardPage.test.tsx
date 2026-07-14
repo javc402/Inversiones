@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import React from 'react'
 import DashboardPage, {
@@ -435,8 +435,7 @@ describe('DashboardPage', () => {
     expect(screen.getByText('Ganancias del mes')).toBeInTheDocument()
     const monthlyProfitCard = screen.getByText('Ganancias del mes').closest('article')
     const normalizedCardText = monthlyProfitCard?.textContent?.replace(/\s+/g, ' ') ?? ''
-    const normalizedAmount = formatCurrency(200).replace(/\s+/g, ' ')
-    expect(normalizedCardText).toContain(normalizedAmount)
+    expect(normalizedCardText).toContain('200.00')
     expect(screen.getByText('1 operaciones')).toBeInTheDocument()
   })
 
@@ -708,22 +707,33 @@ describe('DashboardPage', () => {
     const gananciaCardText = screen.getByText('Ganancias del mes').closest('article')?.textContent ?? ''
     const exitoCardText = screen.getByText('Tasa de exito').closest('article')?.textContent ?? ''
     const perdidaCardText = screen.getByText('Tasa de perdida').closest('article')?.textContent ?? ''
+    const pesoMonetarioCardText = screen.getByText('Peso monetario ganado').closest('article')?.textContent ?? ''
+    const profitFactorCardText = screen.getByRole('heading', { name: 'Profit Factor', level: 2 }).closest('article')?.textContent ?? ''
     const mejorDiaCardText = screen.getAllByText('Mejor dia para operar')[0]?.closest('article')?.textContent ?? ''
     const resumenDistribucion = screen.getByLabelText('Métricas de desempeño').textContent ?? ''
 
     const normalizedGananciaCardText = gananciaCardText.replace(/\s+/g, ' ').trim()
     const normalizedExitoCardText = exitoCardText.replace(/\s+/g, ' ').trim()
     const normalizedPerdidaCardText = perdidaCardText.replace(/\s+/g, ' ').trim()
+    const normalizedPesoMonetarioCardText = pesoMonetarioCardText.replace(/\s+/g, ' ').trim()
+    const normalizedProfitFactorCardText = profitFactorCardText.replace(/\s+/g, ' ').trim()
     const normalizedMejorDiaCardText = mejorDiaCardText.replace(/\s+/g, ' ').trim()
 
     expect(normalizedGananciaCardText).toContain('3 operaciones')
-    expect(normalizedGananciaCardText).toContain(formatCurrency(150).replace(/\s+/g, ' ').trim())
+    expect(normalizedGananciaCardText).toContain('150.00')
 
     expect(normalizedExitoCardText).toContain('50.0%')
-    expect(normalizedExitoCardText).toContain(formatCurrency(200).replace(/\s+/g, ' ').trim())
+    expect(normalizedExitoCardText).toContain('W/L: 1/1')
 
     expect(normalizedPerdidaCardText).toContain('50.0%')
-    expect(normalizedPerdidaCardText).toContain(formatCurrency(-50).replace(/\s+/g, ' ').trim())
+    expect(normalizedPerdidaCardText).toContain('W/L: 1/1')
+
+    expect(normalizedPesoMonetarioCardText).toContain('80.0%')
+    expect(normalizedPesoMonetarioCardText).toContain('Vs perdido: 20.0%')
+
+    expect(normalizedProfitFactorCardText).toContain('4.00')
+    expect(normalizedProfitFactorCardText).toContain(formatCurrency(200).replace(/\s+/g, ' ').trim())
+    expect(normalizedProfitFactorCardText).toContain(formatCurrency(50).replace(/\s+/g, ' ').trim())
 
     expect(normalizedMejorDiaCardText).toContain('Mejor dia para operar')
     expect(normalizedMejorDiaCardText).toContain(distributionAmountLabel(200).replace(/\s+/g, ' ').trim())
@@ -1100,9 +1110,10 @@ describe('DashboardPage', () => {
 
     render(<DashboardPage userEmail="usuario@demo.com" onSignOut={vi.fn().mockResolvedValue(undefined)} />)
 
-    expect(await screen.findByText('Distribucion de operaciones')).toBeInTheDocument()
-    expect(screen.getByText((content) => content.includes('Total: +USD') && content.includes('160.00'))).toBeInTheDocument()
-    expect(screen.getByText((content) => content.includes('Promedio: +USD') && content.includes('80.00'))).toBeInTheDocument()
+  expect(await screen.findByText('Distribucion de operaciones')).toBeInTheDocument()
+  const distributionSummary = screen.getByLabelText('Resumen de distribución de operaciones')
+  expect(within(distributionSummary).getByText((content) => content.includes('Total:') && content.includes('160.00'))).toBeInTheDocument()
+  expect(within(distributionSummary).getByText((content) => content.includes('Promedio:') && content.includes('80.00'))).toBeInTheDocument()
   })
 
   it('aplica filtros por columnas en la tabla de operaciones recientes', async () => {

@@ -64,7 +64,7 @@ describe('simulationGenerator', () => {
     const noTradeRows = result.operations.filter((operation) => operation.resultType === 'no_trade');
     const executedRows = result.operations.filter((operation) => operation.resultType !== 'no_trade');
 
-    expect(noTradeRows.length).toBe(result.totalNoTrade);
+    expect(noTradeRows).toHaveLength(result.totalNoTrade);
     expect(noTradeRows.every((operation) => operation.side === null && operation.investedAmount === 0 && operation.technicalResultR === null && operation.monetaryResult === 0)).toBe(true);
     expect(executedRows.every((operation) => operation.side === 'buy' || operation.side === 'sell')).toBe(true);
     expect(result.netResult).toBe(executedRows.reduce((sum, operation) => sum + operation.monetaryResult, 0));
@@ -146,5 +146,54 @@ describe('simulationGenerator', () => {
     expect(result.totalOpportunities).toBe(0);
     expect(result.totalExecuted).toBe(0);
     expect(result.netResult).toBe(0);
+  });
+
+  it('genera exactamente una operación por cada día hábil cuando el máximo diario es 1', () => {
+    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z'));
+
+    const startDate = '2026-01-01';
+    const endDate = '2026-12-31';
+    const weekdays = ['mon', 'tue', 'wed', 'thu', 'fri'] as const;
+    const operableDays = countSimulationOperableDays(startDate, endDate, [...weekdays]);
+
+    const result = generateSimulationArtifacts({
+      startDate,
+      endDate,
+      weekdays: [...weekdays],
+      maxOperationsPerDay: 1,
+      pctWin: 40,
+      pctSl: 30,
+      pctBreakeven: 20,
+      pctNoTrade: 10,
+      initialBalance: 5000,
+      seed: 99,
+    });
+
+    expect(result.totalOpportunities).toBe(operableDays);
+    expect(result.operations).toHaveLength(operableDays);
+  });
+
+  it('garantiza al menos una operación por cada día hábil cuando el máximo diario es mayor a 1', () => {
+    vi.setSystemTime(new Date('2026-07-10T12:00:00.000Z'));
+
+    const result = generateSimulationArtifacts({
+      startDate: '2026-01-05',
+      endDate: '2026-01-09',
+      weekdays: ['mon', 'tue', 'wed', 'thu', 'fri'],
+      maxOperationsPerDay: 2,
+      pctWin: 25,
+      pctSl: 25,
+      pctBreakeven: 25,
+      pctNoTrade: 25,
+      initialBalance: 5000,
+      seed: 123,
+    });
+
+    const countsByDate = result.operations.reduce<Record<string, number>>((accumulator, operation) => {
+      accumulator[operation.operationDate] = (accumulator[operation.operationDate] ?? 0) + 1;
+      return accumulator;
+    }, {});
+
+    expect(Object.values(countsByDate).every((count) => count >= 1 && count <= 2)).toBe(true);
   });
 });

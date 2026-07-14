@@ -135,7 +135,7 @@ describe('DashboardSummaryLayout', () => {
 
     expect(areaFormatter(10, 'perdidas')).toEqual(['10 USD', 'Perdidas']);
     expect(areaFormatter(0, 'breakeven')).toEqual(['0 USD', 'Breakeven']);
-    expect(areaFormatter(25, 'neto')).toEqual(['25 USD', 'Resultado neto (solo ganancias)']);
+    expect(areaFormatter(25, 'neto')).toEqual(['25 USD', 'Ganancias']);
 
     expect(
       pieFormatter(60, 'Ganadas', {

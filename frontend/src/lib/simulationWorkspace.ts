@@ -36,6 +36,17 @@ export function normalizeSimulationOperationDraft(operation: SimulationOperation
     };
   }
 
+  if (operation.resultType === 'breakeven') {
+    const invested = Number.isFinite(operation.investedAmount) ? Math.max(0, operation.investedAmount) : 0;
+    return {
+      ...operation,
+      side: operation.side ?? 'buy',
+      technicalResultR: 1,
+      monetaryResult: round2(invested),
+      investedAmount: invested,
+    };
+  }
+
   return {
     ...operation,
     side: operation.side ?? 'buy',
@@ -52,6 +63,7 @@ export function createSimulationOperationDrafts(
   return operations.map((operation) => normalizeSimulationOperationDraft({
     id: 'id' in operation ? operation.id : createOperationDraftId(operation.operationDate, operation.operationIndex),
     operationDate: operation.operationDate,
+    operationTime: operation.operationTime ?? '09:00',
     operationIndex: operation.operationIndex,
     side: operation.side,
     resultType: operation.resultType,
@@ -93,6 +105,7 @@ export function summarizeSimulationOperations(operations: SimulationOperationDra
 export function toSimulationOperationInputs(operations: SimulationOperationDraft[]): SimulationOperationInput[] {
   return operations.map((operation) => ({
     operationDate: operation.operationDate,
+    operationTime: operation.operationTime,
     operationIndex: operation.operationIndex,
     side: operation.side,
     resultType: operation.resultType,

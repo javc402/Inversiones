@@ -780,6 +780,10 @@
     gap: 8px;
   }
 
+  .entries-dates-field input[type='datetime-local'] {
+    font-size: 13px;
+  }
+
   .entries-form-span-2,
   .entries-form-error {
     grid-column: auto;
@@ -802,5 +806,22 @@
   .entries-form-actions .primary-btn,
   .entries-form-actions .secondary-btn {
     width: min(320px, 100%);
+  }
+}
+
+@media (max-width: 640px) {
+  .entries-dates-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+
+  .entries-dates-field {
+    width: 100%;
+  }
+
+  .entries-dates-field input[type='datetime-local'] {
+    min-height: 44px;
+    line-height: 1.2;
+    padding: 10px 12px;
   }
 }

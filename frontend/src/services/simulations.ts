@@ -43,6 +43,7 @@ export interface SimulationOperation {
   simulationId: string;
   userId: string;
   operationDate: string;
+  operationTime: string;
   operationIndex: number;
   side: SimulationSide | null;
   resultType: SimulationResultType;
@@ -89,6 +90,7 @@ export interface SaveSimulationInput extends SimulationInput {
 
 export interface SimulationOperationInput {
   operationDate: string;
+  operationTime?: string;
   operationIndex: number;
   side: SimulationSide | null;
   resultType: SimulationResultType;
@@ -101,6 +103,7 @@ export interface SimulationOperationInput {
 
 export interface SimulationOperationEditableInput {
   operationDate?: string;
+  operationTime?: string;
   side?: SimulationSide | null;
   resultType?: SimulationResultType;
   investedAmount?: number;
@@ -147,6 +150,7 @@ type SimulationOperationRow = {
   simulation_id: string;
   user_id: string;
   operation_date: string;
+  operation_time?: string | null;
   operation_index: number;
   side: SimulationSide | null;
   result_type: SimulationResultType;
@@ -226,6 +230,24 @@ const SIMULATION_OPERATION_COLUMNS = [
   'simulation_id',
   'user_id',
   'operation_date',
+  'operation_time',
+  'operation_index',
+  'side',
+  'result_type',
+  'invested_amount',
+  'technical_result_r',
+  'monetary_result',
+  'note',
+  'is_manual_edit',
+  'created_at',
+  'updated_at',
+].join(', ');
+
+const LEGACY_SIMULATION_OPERATION_COLUMNS = [
+  'id',
+  'simulation_id',
+  'user_id',
+  'operation_date',
   'operation_index',
   'side',
   'result_type',
@@ -246,6 +268,26 @@ function round3(value: number): number {
 
 function isMissingColumnError(error: unknown): boolean {
   return error instanceof Error && /column .* does not exist|could not find/i.test(error.message);
+}
+
+function normalizeOperationTime(value?: string | null): string {
+  if (!value) return '09:00';
+  const trimmed = value.trim();
+  const hhmmMatch = trimmed.match(/^(\d{2}):(\d{2})$/);
+  if (hhmmMatch) {
+    const hour = Number(hhmmMatch[1]);
+    const minute = Number(hhmmMatch[2]);
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) return `${hhmmMatch[1]}:${hhmmMatch[2]}`;
+  }
+
+  const hhmmssMatch = trimmed.match(/^(\d{2}):(\d{2}):(\d{2})$/);
+  if (hhmmssMatch) {
+    const hour = Number(hhmmssMatch[1]);
+    const minute = Number(hhmmssMatch[2]);
+    if (hour >= 0 && hour <= 23 && minute >= 0 && minute <= 59) return `${hhmmssMatch[1]}:${hhmmssMatch[2]}`;
+  }
+
+  return '09:00';
 }
 
 function normalizeWeekdays(values: string[]): SimulationWeekday[] {
@@ -299,6 +341,9 @@ function validateSimulationInput(input: SimulationInput): SimulationWeekday[] {
 
 function validateOperationInput(operation: SimulationOperationInput): void {
   if (!operation.operationDate) throw new Error('La fecha de operación es obligatoria.');
+  if (operation.operationTime !== undefined && !/^(?:[01]\d|2[0-3]):[0-5]\d(?:[:][0-5]\d)?$/.test(operation.operationTime)) {
+    throw new Error('La hora de operación debe tener formato HH:mm.');
+  }
   if (!Number.isInteger(operation.operationIndex) || operation.operationIndex <= 0) {
     throw new Error('El índice de operación debe ser un entero mayor a 0.');
   }
@@ -330,6 +375,7 @@ function buildSimulationOperationUpdatePayload(input: SimulationOperationEditabl
   };
 
   if (input.operationDate !== undefined) payload.operation_date = input.operationDate;
+  if (input.operationTime !== undefined) payload.operation_time = normalizeOperationTime(input.operationTime);
   if (input.side !== undefined) payload.side = input.side;
   if (input.resultType !== undefined) payload.result_type = input.resultType;
   if (input.investedAmount !== undefined) payload.invested_amount = input.investedAmount;
@@ -409,22 +455,43 @@ function mapLegacySimulationRow(row: Omit<SimulationRow, 'risk_pct_min' | 'risk_
 }
 
 function mapSimulationOperationRow(row: SimulationOperationRow): SimulationOperation {
+  const investedAmount = Number(row.invested_amount);
+  const technicalResultR = row.technical_result_r === null ? null : Number(row.technical_result_r);
+  const monetaryResult = Number(row.monetary_result);
+
+  const normalizedTechnicalResultR = row.result_type === 'breakeven' ? 1 : technicalResultR;
+  const normalizedMonetaryResult = row.result_type === 'breakeven' ? investedAmount : monetaryResult;
+
   return {
     id: row.id,
     simulationId: row.simulation_id,
     userId: row.user_id,
     operationDate: row.operation_date,
+    operationTime: normalizeOperationTime(row.operation_time),
     operationIndex: Number(row.operation_index),
     side: row.side,
     resultType: row.result_type,
-    investedAmount: Number(row.invested_amount),
-    technicalResultR: row.technical_result_r === null ? null : Number(row.technical_result_r),
-    monetaryResult: Number(row.monetary_result),
+    investedAmount,
+    technicalResultR: normalizedTechnicalResultR,
+    monetaryResult: normalizedMonetaryResult,
     note: row.note,
     isManualEdit: row.is_manual_edit,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
+}
+
+function compareSimulationOperationsByDateTimeIndex(a: SimulationOperation, b: SimulationOperation): number {
+  if (a.operationDate !== b.operationDate) {
+    return a.operationDate.localeCompare(b.operationDate);
+  }
+
+  const timeCompare = a.operationTime.localeCompare(b.operationTime);
+  if (timeCompare !== 0) {
+    return timeCompare;
+  }
+
+  return a.operationIndex - b.operationIndex;
 }
 
 async function getAuthenticatedUserId(): Promise<string | null> {
@@ -758,12 +825,7 @@ export async function listSimulationOperations(simulationId: string): Promise<Si
     if (!error) {
     const operations = ((data ?? []) as unknown as SimulationOperationRow[])
       .map(mapSimulationOperationRow)
-    .sort((a, b) => {
-      if (a.operationDate === b.operationDate) {
-        return a.operationIndex - b.operationIndex;
-      }
-      return a.operationDate.localeCompare(b.operationDate);
-    });
+      .sort(compareSimulationOperationsByDateTimeIndex);
 
     void logAuditActivity('simulations.operations.list', {
       module: 'simulations',
@@ -779,7 +841,7 @@ export async function listSimulationOperations(simulationId: string): Promise<Si
 
     const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
-    .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''))
+    .select(LEGACY_SIMULATION_OPERATION_COLUMNS)
     .eq('simulation_id', simulationId)
     .eq('user_id', userId)
     .order('operation_date', { ascending: true });
@@ -788,12 +850,7 @@ export async function listSimulationOperations(simulationId: string): Promise<Si
 
     const operations = ((legacyData ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
-    .sort((a, b) => {
-      if (a.operationDate === b.operationDate) {
-        return a.operationIndex - b.operationIndex;
-      }
-      return a.operationDate.localeCompare(b.operationDate);
-    });
+    .sort(compareSimulationOperationsByDateTimeIndex);
 
   void logAuditActivity('simulations.operations.list', {
     module: 'simulations',
@@ -845,12 +902,13 @@ export async function replaceSimulationOperations(
     simulation_id: simulationId,
     user_id: userId,
     operation_date: item.operationDate,
+    operation_time: normalizeOperationTime(item.operationTime),
     operation_index: item.operationIndex,
     side: item.side,
     result_type: item.resultType,
     invested_amount: item.investedAmount,
-    technical_result_r: item.technicalResultR,
-    monetary_result: item.monetaryResult,
+    technical_result_r: item.resultType === 'breakeven' ? 1 : item.technicalResultR,
+    monetary_result: item.resultType === 'breakeven' ? item.investedAmount : item.monetaryResult,
     note: item.note?.trim() ?? '',
     is_manual_edit: item.isManualEdit ?? false,
   }));
@@ -863,12 +921,7 @@ export async function replaceSimulationOperations(
     if (!error) {
     const insertedOperations = ((data ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
-    .sort((a, b) => {
-      if (a.operationDate === b.operationDate) {
-        return a.operationIndex - b.operationIndex;
-      }
-      return a.operationDate.localeCompare(b.operationDate);
-    });
+    .sort(compareSimulationOperationsByDateTimeIndex);
 
     void logAuditActivity('simulations.operations.replace', {
       module: 'simulations',
@@ -884,19 +937,14 @@ export async function replaceSimulationOperations(
 
     const { data: legacyData, error: legacyError } = await supabase
     .from('simulation_operations')
-    .insert(payload)
-    .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''));
+    .insert(payload.map(({ operation_time: _operation_time, ...legacyItem }) => legacyItem))
+    .select(LEGACY_SIMULATION_OPERATION_COLUMNS);
 
     if (legacyError) throw legacyError;
 
     const insertedOperations = ((legacyData ?? []) as unknown as SimulationOperationRow[])
     .map(mapSimulationOperationRow)
-    .sort((a, b) => {
-      if (a.operationDate === b.operationDate) {
-        return a.operationIndex - b.operationIndex;
-      }
-      return a.operationDate.localeCompare(b.operationDate);
-    });
+    .sort(compareSimulationOperationsByDateTimeIndex);
 
   void logAuditActivity('simulations.operations.replace', {
     module: 'simulations',
@@ -960,7 +1008,7 @@ export async function updateSimulationOperation(
     .eq('id', operationId)
     .eq('simulation_id', simulationId)
     .eq('user_id', userId)
-    .select(SIMULATION_OPERATION_COLUMNS.replace(', risk_pct', ''))
+    .select(LEGACY_SIMULATION_OPERATION_COLUMNS)
     .single();
 
     if (legacyError) throw legacyError;

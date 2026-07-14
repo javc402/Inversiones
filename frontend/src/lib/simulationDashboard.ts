@@ -35,6 +35,14 @@ function round2(value: number): number {
   return Number(value.toFixed(2));
 }
 
+function simulationFinancialAmount(operation: SimulationOperationDraft): number {
+  if (operation.resultType === 'breakeven' || operation.resultType === 'no_trade') {
+    return 0;
+  }
+
+  return operation.monetaryResult;
+}
+
 function appendAmount(point: SimulationTimelinePoint, operation: SimulationOperationDraft): void {
   if (operation.resultType === 'breakeven') {
     point.breakevenAmount = round2(point.breakevenAmount + operation.monetaryResult);
@@ -234,23 +242,54 @@ export function simulationMonthLabel(month: number): string {
 }
 
 export function calculateSimulationWinRate(operations: SimulationOperationDraft[]): number {
-  const executed = operations.filter((operation) => operation.resultType !== 'no_trade');
-  if (executed.length === 0) return 0;
-  return (executed.filter((operation) => operation.resultType === 'win').length / executed.length) * 100;
+  const wins = operations.filter((operation) => operation.resultType === 'win').length;
+  const losses = operations.filter((operation) => operation.resultType === 'sl').length;
+  const resolved = wins + losses;
+  if (resolved === 0) return 0;
+  return (wins / resolved) * 100;
 }
 
 export function calculateSimulationLossRate(operations: SimulationOperationDraft[]): number {
-  const executed = operations.filter((operation) => operation.resultType !== 'no_trade');
-  if (executed.length === 0) return 0;
-  return (executed.filter((operation) => operation.resultType === 'sl').length / executed.length) * 100;
+  const wins = operations.filter((operation) => operation.resultType === 'win').length;
+  const losses = operations.filter((operation) => operation.resultType === 'sl').length;
+  const resolved = wins + losses;
+  if (resolved === 0) return 0;
+  return (losses / resolved) * 100;
+}
+
+export function calculateSimulationMonetaryWeights(winTotal: number, lossTotal: number): { winWeight: number; lossWeight: number } {
+  const grossWin = Math.max(0, winTotal);
+  const grossLoss = Math.abs(Math.min(0, lossTotal));
+  const total = grossWin + grossLoss;
+  if (total === 0) {
+    return { winWeight: 0, lossWeight: 0 };
+  }
+
+  return {
+    winWeight: (grossWin / total) * 100,
+    lossWeight: (grossLoss / total) * 100,
+  };
 }
 
 export function calculateSimulationWinTotal(operations: SimulationOperationDraft[]): number {
-  return round2(operations.reduce((sum, operation) => sum + Math.max(operation.monetaryResult, 0), 0));
+  return round2(operations.reduce((sum, operation) => {
+    if (operation.resultType !== 'win') {
+      return sum;
+    }
+
+    return sum + Math.max(simulationFinancialAmount(operation), 0);
+  }, 0));
 }
 
 export function calculateSimulationLossTotal(operations: SimulationOperationDraft[]): number {
-  return round2(operations.reduce((sum, operation) => operation.monetaryResult < 0 ? sum + operation.monetaryResult : sum, 0));
+  return round2(operations.reduce((sum, operation) => {
+    if (operation.resultType !== 'sl') {
+      return sum;
+    }
+
+    const amount = simulationFinancialAmount(operation);
+    return amount < 0 ? sum + amount : sum;
+  }, 0));
 }
 
 export function calculateSimulationProfitFactor(winTotal: number, lossTotal: number): string {
@@ -284,7 +323,7 @@ export function calculateSimulationTradingInsights(
       continue;
     }
 
-    const amount = operation.monetaryResult;
+    const amount = simulationFinancialAmount(operation);
     const week = weekOfPeriod(date, mode);
     byWeek.set(week, (byWeek.get(week) ?? 0) + amount);
 

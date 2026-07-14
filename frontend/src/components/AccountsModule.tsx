@@ -395,6 +395,50 @@ function parseEntryReferenceDate(entry: Pick<MarketEntry, 'plannedAt' | 'updated
   return null;
 }
 
+function compareEntriesByReferenceDate(a: MarketEntry, b: MarketEntry): number {
+  const dateA = parseEntryReferenceDate(a)?.getTime() ?? Number.POSITIVE_INFINITY;
+  const dateB = parseEntryReferenceDate(b)?.getTime() ?? Number.POSITIVE_INFINITY;
+
+  if (dateA !== dateB) {
+    return dateA - dateB;
+  }
+
+  return a.createdAt.localeCompare(b.createdAt) || a.updatedAt.localeCompare(b.updatedAt) || a.id.localeCompare(b.id);
+}
+
+function getEntryFinancialAmount(entry: MarketEntry): number {
+  if (entry.status !== 'closed' || entry.resultR === null) {
+    return 0;
+  }
+
+  if (entry.resultR === 1) {
+    return 0;
+  }
+
+  return entry.riskAmount * entry.resultR;
+}
+
+export function calculateAccountCurrentBalance(initialBalance: number, entries: MarketEntry[]): number {
+  const sortedEntries = [...entries].sort(compareEntriesByReferenceDate);
+  const finalBalance = sortedEntries.reduce((balance, entry) => balance + getEntryFinancialAmount(entry), initialBalance);
+
+  return Number(finalBalance.toFixed(2));
+}
+
+type AccountBalanceStatus = 'above' | 'below' | 'equal';
+
+function getAccountBalanceStatus(currentBalance: number, initialBalance: number): AccountBalanceStatus {
+  if (currentBalance > initialBalance) return 'above';
+  if (currentBalance < initialBalance) return 'below';
+  return 'equal';
+}
+
+function getAccountBalanceStatusCopy(status: AccountBalanceStatus): { label: string; icon: 'trendingUp' | 'trendingDown' | 'horizontalRule' } {
+  if (status === 'above') return { label: 'Por encima del balance inicial', icon: 'trendingUp' };
+  if (status === 'below') return { label: 'Por debajo del balance inicial', icon: 'trendingDown' };
+  return { label: 'En breakeven con el balance inicial', icon: 'horizontalRule' };
+}
+
 function isInSameWeek(reference: Date, now: Date): boolean {
   const referenceWeek = getIsoWeekInfo(reference);
   const currentWeek = getIsoWeekInfo(now);
@@ -565,6 +609,36 @@ export default function AccountsModule() {
     return buildSummaryRowsByAccount(entries, new Date());
   }, [entries]);
 
+  const currentBalanceByAccount = useMemo(() => {
+    const byAccount = new Map<string, MarketEntry[]>();
+
+    for (const entry of entries) {
+      const bucket = byAccount.get(entry.accountId) ?? [];
+      bucket.push(entry);
+      byAccount.set(entry.accountId, bucket);
+    }
+
+    const result = new Map<string, number>();
+    for (const account of accounts) {
+      result.set(account.id, calculateAccountCurrentBalance(account.initial_balance, byAccount.get(account.id) ?? []));
+    }
+
+    return result;
+  }, [accounts, entries]);
+
+  const accountBalanceStatusByAccount = useMemo(() => {
+    const result = new Map<string, AccountBalanceStatus>();
+
+    for (const account of accounts) {
+      const currentBalance = currentBalanceByAccount.get(account.id) ?? account.initial_balance;
+      result.set(account.id, getAccountBalanceStatus(currentBalance, account.initial_balance));
+    }
+
+    return result;
+  }, [accounts, currentBalanceByAccount]);
+
+  const isFundedAccount = form.account_type === 'funded';
+
   const accountsContent = useMemo(() => {
     if (loading) {
       return <p className="accounts-loading">Cargando cuentas...</p>;
@@ -592,12 +666,20 @@ export default function AccountsModule() {
             </button>
 
             <div className="account-card-head">
-              <div className="account-avatar" aria-hidden="true">
-                {account.name.charAt(0).toUpperCase()}
-              </div>
+              {(() => {
+                const currentBalance = currentBalanceByAccount.get(account.id) ?? account.initial_balance;
+                const status = accountBalanceStatusByAccount.get(account.id) ?? getAccountBalanceStatus(currentBalance, account.initial_balance);
+                const copy = getAccountBalanceStatusCopy(status);
+
+                return (
+                  <div className={`account-avatar account-avatar-${status}`} title={copy.label} aria-label={copy.label}>
+                    <AppIcon name={copy.icon} className="account-avatar-icon" />
+                  </div>
+                );
+              })()}
               <div className="account-head-copy">
                 <h3>{account.name}</h3>
-                <p className="account-id">Balance actual: ${account.initial_balance.toLocaleString()}</p>
+                <p className="account-id">Balance actual: {(currentBalanceByAccount.get(account.id) ?? account.initial_balance).toLocaleString()} {account.base_currency}</p>
               </div>
             </div>
 
@@ -950,35 +1032,50 @@ export default function AccountsModule() {
               <div className="accounts-section-title">Gestion de riesgo</div>
 
               <label>
-                <FieldLabel text="Riesgo max por operación %" help="Porcentaje máximo del capital que arriesgas en cada entrada." />
+                <FieldLabel
+                  text={`Riesgo max por operación %${isFundedAccount ? ' *' : ''}`}
+                  help="Porcentaje máximo del capital que arriesgas en cada entrada."
+                />
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   value={form.risk_per_trade_pct}
                   onChange={(event) => handleFormChange('risk_per_trade_pct', event.target.value)}
+                  required={isFundedAccount}
+                  aria-required={isFundedAccount}
                 />
               </label>
 
               <label>
-                <FieldLabel text="Riesgo diario max %" help="Límite de pérdida permitida acumulada durante una jornada de trading." />
+                <FieldLabel
+                  text={`Riesgo diario max %${isFundedAccount ? ' *' : ''}`}
+                  help="Límite de pérdida permitida acumulada durante una jornada de trading."
+                />
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   value={form.max_daily_risk_pct}
                   onChange={(event) => handleFormChange('max_daily_risk_pct', event.target.value)}
+                  required={isFundedAccount}
+                  aria-required={isFundedAccount}
                 />
               </label>
 
               <label>
-                <FieldLabel text="Drawdown max permitido %" help="Máxima caída de capital aceptada antes de detener operativa o revisar estrategia." />
+                <FieldLabel
+                  text={`Drawdown max permitido %${isFundedAccount ? ' *' : ''}`}
+                  help="Máxima caída de capital aceptada antes de detener operativa o revisar estrategia."
+                />
                 <input
                   type="number"
                   min="0"
                   step="0.01"
                   value={form.max_drawdown_pct}
                   onChange={(event) => handleFormChange('max_drawdown_pct', event.target.value)}
+                  required={isFundedAccount}
+                  aria-required={isFundedAccount}
                 />
               </label>
 
