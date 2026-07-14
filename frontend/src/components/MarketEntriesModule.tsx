@@ -697,7 +697,7 @@ interface MarketEntriesCreateFormProps {
   filteredNewsArticles: NewsArticle[];
   perAccountRows: AccountRowForm[];
   updateAccountRow: (index: number, patch: Partial<AccountRowForm>) => void;
-  accounts: TradingAccount[];
+  activeAccounts: TradingAccount[];
   addAccountRow: () => void;
   removeAccountRow: (index: number) => void;
   canAddMoreAccounts: boolean;
@@ -715,7 +715,7 @@ function MarketEntriesCreateForm({
   filteredNewsArticles,
   perAccountRows,
   updateAccountRow,
-  accounts,
+  activeAccounts,
   addAccountRow,
   removeAccountRow,
   canAddMoreAccounts,
@@ -962,7 +962,7 @@ function MarketEntriesCreateForm({
             <div className="entries-accounts-row" key={row.id}>
               <select value={row.accountId} onChange={(event) => updateAccountRow(index, { accountId: event.target.value })} required>
                 <option value="">Selecciona cuenta</option>
-                {accounts
+                {activeAccounts
                   .filter((account) => {
                     if (account.id === row.accountId) return true;
                     return !perAccountRows.some((selectedRow) => selectedRow.accountId === account.id);
@@ -1283,7 +1283,12 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
   const editSubmitLockRef = useRef(false);
   const entriesModalRef = useRef<HTMLDialogElement | null>(null);
 
-  const canAddMoreAccounts = accounts.length > 0 && perAccountRows.length < accounts.length;
+  const activeAccounts = useMemo(
+    () => accounts.filter((account) => account.status !== 'inactive'),
+    [accounts]
+  );
+
+  const canAddMoreAccounts = activeAccounts.length > 0 && perAccountRows.length < activeAccounts.length;
   const isCompletedOnCreate = commonForm.status === 'closed';
   const isNoEntryOnCreate = commonForm.status === 'no_entry';
   const pendingEditStorageKey = 'inversiones_pending_entry_edit_id';
@@ -1318,7 +1323,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
       setNewsArticles(loadedNews);
 
       if (perAccountRows.length === 1 && !perAccountRows[0].accountId) {
-        setPerAccountRows(buildDefaultAccountRows(loadedAccounts));
+        setPerAccountRows(buildDefaultAccountRows(loadedAccounts.filter((account) => account.status !== 'inactive')));
       }
     } catch {
       setAccounts([]);
@@ -1341,7 +1346,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
         setAccounts(loadedAccounts);
         setPerAccountRows((prev) => {
           if (prev.length === 1 && !prev[0].accountId) {
-            return buildDefaultAccountRows(loadedAccounts);
+            return buildDefaultAccountRows(loadedAccounts.filter((account) => account.status !== 'inactive'));
           }
           return prev;
         });
@@ -1463,7 +1468,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
     setModalMode('create');
     setEditingEntry(null);
     setCommonForm(defaultCommonForm);
-    setPerAccountRows(buildDefaultAccountRows(accounts));
+    setPerAccountRows(buildDefaultAccountRows(activeAccounts));
     setEditForm(defaultEditForm);
     setApplyCommonToGroup(false);
     setError('');
@@ -1754,7 +1759,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
                 filteredNewsArticles={filteredNewsArticles}
                 perAccountRows={perAccountRows}
                 updateAccountRow={updateAccountRow}
-                accounts={accounts}
+                activeAccounts={activeAccounts}
                 addAccountRow={addAccountRow}
                 removeAccountRow={removeAccountRow}
                 canAddMoreAccounts={canAddMoreAccounts}
@@ -1792,7 +1797,7 @@ export default function MarketEntriesModule({ userEmail }: Readonly<MarketEntrie
           <h2>Entradas al mercado</h2>
           <p>Una entrada puede asociarse a varias cuentas, guardando un registro independiente con su riesgo por cuenta.</p>
         </div>
-        <button type="button" className="primary-btn entries-create-btn" onClick={openCreateModal} disabled={accounts.length === 0}>
+        <button type="button" className="primary-btn entries-create-btn" onClick={openCreateModal} disabled={activeAccounts.length === 0}>
           <AppIcon name="edit" />
           Nueva entrada
         </button>

@@ -638,6 +638,7 @@ export default function AccountsModule() {
   }, [accounts, currentBalanceByAccount]);
 
   const isFundedAccount = form.account_type === 'funded';
+  const fundedMoneyUnit = form.base_currency.trim() || 'moneda base';
 
   const accountsContent = useMemo(() => {
     if (loading) {
@@ -1049,8 +1050,8 @@ export default function AccountsModule() {
 
               <label>
                 <FieldLabel
-                  text={`Riesgo diario max %${isFundedAccount ? ' *' : ''}`}
-                  help="Límite de pérdida permitida acumulada durante una jornada de trading."
+                  text={`Riesgo diario máximo (${fundedMoneyUnit})${isFundedAccount ? ' *' : ''}`}
+                  help="Importe máximo que puedes perder en un solo día. Si se supera, la cuenta debe bloquearse hasta revisar el riesgo."
                 />
                 <input
                   type="number"
@@ -1065,8 +1066,8 @@ export default function AccountsModule() {
 
               <label>
                 <FieldLabel
-                  text={`Drawdown max permitido %${isFundedAccount ? ' *' : ''}`}
-                  help="Máxima caída de capital aceptada antes de detener operativa o revisar estrategia."
+                  text={`Drawdown máximo permitido (${fundedMoneyUnit})${isFundedAccount ? ' *' : ''}`}
+                  help="Es el saldo mínimo permitido de la cuenta calculado desde el máximo alcanzado. Si la cuenta llegó a 5,400 y el límite de pérdida es 2,000, el umbral sería 3,400. Si el saldo cae por debajo de ese valor, la cuenta se bloquea automáticamente y no se pueden agregar más entradas."
                 />
                 <input
                   type="number"

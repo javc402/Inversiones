@@ -73,6 +73,21 @@ describe('MarketEntriesModule', () => {
     expect(screen.getByRole('button', { name: /Nueva entrada/i })).toBeDisabled();
   });
 
+  it('should disable create button when all accounts are inactive', async () => {
+    vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([
+      {
+        id: 'acc-1',
+        name: 'Cuenta Inactiva',
+        alias: 'Inactiva',
+        status: 'inactive',
+      } as never,
+    ]);
+
+    render(<MarketEntriesModule userEmail="test@example.com" />);
+
+    expect(await screen.findByRole('button', { name: /Nueva entrada/i })).toBeDisabled();
+  });
+
   it('should show kpi cards', () => {
     render(<MarketEntriesModule userEmail="test@example.com" />);
     expect(screen.getByText('Registros visibles')).toBeInTheDocument();
