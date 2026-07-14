@@ -251,8 +251,9 @@ describe('AccountsModule', () => {
     });
   });
 
-  it('marca como obligatorios los campos de riesgo cuando la cuenta es funded', async () => {
+  it('permite guardar cuenta sin requerir campos de riesgo cuando la cuenta es funded', async () => {
     vi.mocked(accountsService.listTradingAccounts).mockResolvedValueOnce([]);
+    vi.mocked(accountsService.createTradingAccount).mockResolvedValueOnce(undefined);
 
     render(<AccountsModule />);
 
@@ -263,9 +264,10 @@ describe('AccountsModule', () => {
 
     const fundedSpinButtons = within(dialog).getAllByRole('spinbutton');
 
-    expect(fundedSpinButtons[1]).toBeRequired();
-    expect(fundedSpinButtons[2]).toBeRequired();
-    expect(fundedSpinButtons[3]).toBeRequired();
+    // Los campos de riesgo son ahora opcionales
+    expect(fundedSpinButtons[1]).not.toBeRequired();
+    expect(fundedSpinButtons[2]).not.toBeRequired();
+    expect(fundedSpinButtons[3]).not.toBeRequired();
   });
 
   it('bloquea doble submit al guardar cuenta', async () => {

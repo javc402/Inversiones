@@ -255,6 +255,14 @@ export function toStringOrEmpty(value: number | null): string {
   return value === null ? '' : String(value);
 }
 
+export function formatMoneyValue(value: number): string {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) {
+    return '';
+  }
+  return `$${parsed.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
 export function mapAccountToForm(account: TradingAccount): AccountFormState {
   return {
     name: account.name,
@@ -423,6 +431,32 @@ export function calculateAccountCurrentBalance(initialBalance: number, entries: 
   const finalBalance = sortedEntries.reduce((balance, entry) => balance + getEntryFinancialAmount(entry), initialBalance);
 
   return Number(finalBalance.toFixed(2));
+}
+
+export function calculateMaxAccountBalance(initialBalance: number, entries: MarketEntry[]): number {
+  const sortedEntries = [...entries].sort(compareEntriesByReferenceDate);
+  let maxBalance = initialBalance;
+  let currentBalance = initialBalance;
+
+  for (const entry of sortedEntries) {
+    currentBalance += getEntryFinancialAmount(entry);
+    maxBalance = Math.max(maxBalance, currentBalance);
+  }
+
+  return Number(maxBalance.toFixed(2));
+}
+
+export function calculateMinAccountBalance(initialBalance: number, entries: MarketEntry[]): number {
+  const sortedEntries = [...entries].sort(compareEntriesByReferenceDate);
+  let minBalance = initialBalance;
+  let currentBalance = initialBalance;
+
+  for (const entry of sortedEntries) {
+    currentBalance += getEntryFinancialAmount(entry);
+    minBalance = Math.min(minBalance, currentBalance);
+  }
+
+  return Number(minBalance.toFixed(2));
 }
 
 type AccountBalanceStatus = 'above' | 'below' | 'equal';
@@ -626,6 +660,40 @@ export default function AccountsModule() {
     return result;
   }, [accounts, entries]);
 
+  const maxBalanceByAccount = useMemo(() => {
+    const byAccount = new Map<string, MarketEntry[]>();
+
+    for (const entry of entries) {
+      const bucket = byAccount.get(entry.accountId) ?? [];
+      bucket.push(entry);
+      byAccount.set(entry.accountId, bucket);
+    }
+
+    const result = new Map<string, number>();
+    for (const account of accounts) {
+      result.set(account.id, calculateMaxAccountBalance(account.initial_balance, byAccount.get(account.id) ?? []));
+    }
+
+    return result;
+  }, [accounts, entries]);
+
+  const minBalanceByAccount = useMemo(() => {
+    const byAccount = new Map<string, MarketEntry[]>();
+
+    for (const entry of entries) {
+      const bucket = byAccount.get(entry.accountId) ?? [];
+      bucket.push(entry);
+      byAccount.set(entry.accountId, bucket);
+    }
+
+    const result = new Map<string, number>();
+    for (const account of accounts) {
+      result.set(account.id, calculateMinAccountBalance(account.initial_balance, byAccount.get(account.id) ?? []));
+    }
+
+    return result;
+  }, [accounts, entries]);
+
   const accountBalanceStatusByAccount = useMemo(() => {
     const result = new Map<string, AccountBalanceStatus>();
 
@@ -680,7 +748,7 @@ export default function AccountsModule() {
               })()}
               <div className="account-head-copy">
                 <h3>{account.name}</h3>
-                <p className="account-id">Balance actual: {(currentBalanceByAccount.get(account.id) ?? account.initial_balance).toLocaleString()} {account.base_currency}</p>
+                <p className="account-id">Balance actual: {formatMoneyValue(currentBalanceByAccount.get(account.id) ?? account.initial_balance)}</p>
               </div>
             </div>
 
@@ -688,16 +756,10 @@ export default function AccountsModule() {
               <span className={`account-status-chip account-status-chip-${account.status}`}>
                 {account.status === 'active' ? 'ACTIVA' : 'INACTIVA'}
               </span>
-            </div>
-
-            <div className="account-chip-row">
               <span className="account-type-pill">{account.account_type.toUpperCase()}</span>
             </div>
 
             <div className="account-contact-lines">
-              <p>
-                <strong>Alias:</strong> {account.alias || '-'}
-              </p>
               <p>
                 <strong>Broker/Firma:</strong> {account.broker_name}
               </p>
@@ -705,11 +767,27 @@ export default function AccountsModule() {
                 <strong>Plataforma:</strong> {account.platform.toUpperCase()}
               </p>
               <p>
-                <strong>Balance inicial:</strong> {account.initial_balance.toLocaleString()} {account.base_currency}
+                <strong>Balance inicial:</strong> {formatMoneyValue(account.initial_balance)}
               </p>
               <p>
-                <strong>Riesgo/Trade:</strong> {account.risk_per_trade_pct ?? '-'}%
+                <strong>Balance actual:</strong> {formatMoneyValue(currentBalanceByAccount.get(account.id) ?? account.initial_balance)}
               </p>
+              <p>
+                <strong>Máximo alcanzado:</strong> {formatMoneyValue(maxBalanceByAccount.get(account.id) ?? account.initial_balance)}
+              </p>
+              <p>
+                <strong>Mínimo alcanzado:</strong> {formatMoneyValue(minBalanceByAccount.get(account.id) ?? account.initial_balance)}
+              </p>
+              {account.account_type === 'funded' && (
+                <>
+                  <p>
+                    <strong>Límite pérdida diaria:</strong> {account.daily_loss_limit_pct ? formatMoneyValue(account.daily_loss_limit_pct) : '-'}
+                  </p>
+                  <p>
+                    <strong>Límite pérdida total:</strong> {account.max_loss_limit_pct ? formatMoneyValue(account.max_loss_limit_pct) : '-'}
+                  </p>
+                </>
+              )}
             </div>
 
           {(() => {
@@ -774,7 +852,7 @@ export default function AccountsModule() {
         ))}
       </div>
     );
-  }, [filteredAccounts, loading, summaryRowsByAccount]);
+  }, [filteredAccounts, loading, summaryRowsByAccount, currentBalanceByAccount, maxBalanceByAccount, minBalanceByAccount]);
 
   function openCreateModal() {
     setModalMode('create');
@@ -1030,56 +1108,6 @@ export default function AccountsModule() {
                 />
               </label>
 
-              <div className="accounts-section-title">Gestion de riesgo</div>
-
-              <label>
-                <FieldLabel
-                  text={`Riesgo max por operación %${isFundedAccount ? ' *' : ''}`}
-                  help="Porcentaje máximo del capital que arriesgas en cada entrada."
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.risk_per_trade_pct}
-                  onChange={(event) => handleFormChange('risk_per_trade_pct', event.target.value)}
-                  required={isFundedAccount}
-                  aria-required={isFundedAccount}
-                />
-              </label>
-
-              <label>
-                <FieldLabel
-                  text={`Riesgo diario máximo (${fundedMoneyUnit})${isFundedAccount ? ' *' : ''}`}
-                  help="Importe máximo que puedes perder en un solo día. Si se supera, la cuenta debe bloquearse hasta revisar el riesgo."
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.max_daily_risk_pct}
-                  onChange={(event) => handleFormChange('max_daily_risk_pct', event.target.value)}
-                  required={isFundedAccount}
-                  aria-required={isFundedAccount}
-                />
-              </label>
-
-              <label>
-                <FieldLabel
-                  text={`Drawdown máximo permitido (${fundedMoneyUnit})${isFundedAccount ? ' *' : ''}`}
-                  help="Es el saldo mínimo permitido de la cuenta calculado desde el máximo alcanzado. Si la cuenta llegó a 5,400 y el límite de pérdida es 2,000, el umbral sería 3,400. Si el saldo cae por debajo de ese valor, la cuenta se bloquea automáticamente y no se pueden agregar más entradas."
-                />
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.max_drawdown_pct}
-                  onChange={(event) => handleFormChange('max_drawdown_pct', event.target.value)}
-                  required={isFundedAccount}
-                  aria-required={isFundedAccount}
-                />
-              </label>
-
               {form.account_type === 'funded' && (
                 <>
                   <div className="accounts-section-title">Reglas de fondeo</div>
@@ -1116,7 +1144,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <FieldLabel text="Límite pérdida diaria %" help="Pérdida diaria máxima permitida según reglas de la firma." />
+                    <FieldLabel text="Límite pérdida diaria" help="Pérdida diaria máxima permitida según reglas de la firma." />
                     <input
                       type="number"
                       min="0"
@@ -1127,7 +1155,7 @@ export default function AccountsModule() {
                   </label>
 
                   <label>
-                    <FieldLabel text="Límite pérdida total %" help="Drawdown total máximo permitido por la firma durante todo el proceso." />
+                    <FieldLabel text="Límite pérdida total" help="Es el saldo mínimo permitido de la cuenta calculado desde el máximo alcanzado. Si la cuenta llegó a 5,400 y el límite de pérdida es 2,000, el umbral sería 3,400. Si el saldo cae por debajo de ese valor, la cuenta se bloquea automáticamente y no se pueden agregar más entradas." />
                     <input
                       type="number"
                       min="0"

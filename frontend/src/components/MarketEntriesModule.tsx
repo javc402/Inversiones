@@ -617,7 +617,6 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
     <article className="entries-card">
       <header className="entries-card-header">
         <div>
-          <p className="entries-card-account">{entry.accountName || 'Sin cuenta asociada'}</p>
           <h3>{isNoEntry ? (entrySymbol || 'Sin entrada al mercado') : `${entrySymbol} · ${directionLabel(entry.direction)}`}</h3>
           {isGroupedEntry && (
             <span className="entries-group-badge">Grupo · {groupSize} cuentas</span>
@@ -657,7 +656,6 @@ function EntryCard({ entry, groupSize, onEdit, onDelete }: Readonly<{
       {!isNoEntry && (
         <div className="entries-risk-row">
           <span>Riesgo cuenta: ${entry.riskAmount.toFixed(2)}</span>
-          <span>% inversion: {entry.investmentPercent.toFixed(2)}%</span>
           <span>Resultado R: {entry.resultR === null ? 'N/A' : entry.resultR.toFixed(1)}</span>
           <span>Resultado cuenta: {accountResult === null ? 'N/A' : `$${accountResult.toFixed(2)}`}</span>
         </div>
